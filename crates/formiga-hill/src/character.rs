@@ -7,6 +7,7 @@
 
 use crate::cast::{Id, Member};
 use crate::dice::Dice;
+use crate::finds::Use;
 use formiga_art::{BodyClip, ExpressionKind};
 use formiga_core::{ActionKind, Axes, Celebration, Gesture, Habit, HabitCue, TemperamentKind};
 
@@ -69,6 +70,8 @@ pub enum Cue {
     Huff,
     Sparkle,
     Sleep,
+    /// A speech bubble while its line is on show.
+    Speech,
 }
 
 /// Something the person at the Hill holds out.
@@ -423,6 +426,45 @@ impl Character {
     }
 
     /// Playing with a friend: a play bow if it has one, the game, and its own celebration.
+    /// Enjoying something that stands on the ground, in its own way.
+    pub fn enjoy(&self, use_: Use, dice: &mut Dice) -> Vec<Beat> {
+        let lazy = self.kind == TemperamentKind::Lazybones;
+        let linger = dice.range(0.0, 1.5);
+        match use_ {
+            Use::Look => {
+                let face = match self.kind {
+                    TemperamentKind::Scholar => ExpressionKind::Focused,
+                    TemperamentKind::Grump => ExpressionKind::Grumpy,
+                    _ => ExpressionKind::Curious,
+                };
+                vec![Beat::new(Gesture::Watch, face, 1.8 + linger).idle()]
+            }
+            Use::Sit => vec![Beat::new(Gesture::Sit, ExpressionKind::Content, 3.0 + linger).idle()],
+            Use::Gaze if lazy => vec![
+                Beat::new(Gesture::Watch, ExpressionKind::Sleepy, 1.5),
+                Beat::new(ActionKind::Sleep, ExpressionKind::Sleepy, 4.0 + linger)
+                    .cue(Cue::Sleep)
+                    .idle(),
+            ],
+            Use::Gaze => {
+                vec![Beat::new(Gesture::Watch, ExpressionKind::Focused, 2.5 + linger).idle()]
+            }
+            Use::Play => vec![
+                self.celebrate(1.2),
+                Beat::new(ActionKind::SoloPlay, ExpressionKind::Joy, 1.5 + linger).idle(),
+            ],
+            Use::Rest if lazy || dice.chance(0.3) => vec![
+                Beat::new(Gesture::Crouch, ExpressionKind::Sleepy, 0.45),
+                Beat::new(ActionKind::Sleep, ExpressionKind::Sleepy, 4.0 + linger)
+                    .cue(Cue::Sleep)
+                    .idle(),
+            ],
+            Use::Rest => {
+                vec![Beat::new(Gesture::Sit, ExpressionKind::Content, 3.0 + linger).idle()]
+            }
+        }
+    }
+
     pub fn play_together(&self) -> Vec<Beat> {
         let mut beats: Vec<_> = self.flourish(HabitCue::Play).into_iter().collect();
         beats.push(

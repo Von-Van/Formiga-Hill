@@ -14,6 +14,15 @@ const NOTE: [&str; 7] = [
 ];
 const SPARKLE: [&str; 5] = ["..#..", "..o..", "#o*o#", "..o..", "..#.."];
 const DOZE: [&str; 5] = ["###", "..#", ".#.", "#..", "###"];
+const SPEECH: [&str; 7] = [
+    ".#######.",
+    "#ooooooo#",
+    "#o*o*o*o#",
+    "#ooooooo#",
+    ".###.###.",
+    "....##...",
+    "....#....",
+];
 
 /// Draws `cue` with its bottom centre at `(x, y)`, `age` seconds after it began.
 pub fn draw_cue(scene: &mut Canvas, cue: Cue, x: i32, y: i32, age: f32, reduce_motion: bool) {
@@ -24,7 +33,9 @@ pub fn draw_cue(scene: &mut Canvas, cue: Cue, x: i32, y: i32, age: f32, reduce_m
     } else {
         (age * 7.0).min(10.0) as i32
     };
-    let fade = if reduce_motion {
+    // A doze and a speech bubble last as long as what they belong to; the rest are a moment's.
+    let lasting = matches!(cue, Cue::Sleep | Cue::Speech);
+    let fade = if reduce_motion || lasting {
         255
     } else {
         (255.0 * (1.0 - ((age - 1.1) / 0.6).clamp(0.0, 1.0))) as u8
@@ -112,6 +123,33 @@ pub fn draw_cue(scene: &mut Canvas, cue: Cue, x: i32, y: i32, age: f32, reduce_m
             ellipse(scene, x + 4 + drift, y - 2, 3, 2, rgba(0xd8d4d8, alpha));
             ellipse(scene, x + 7 + drift, y - 4, 2, 2, rgba(0xeeeaee, alpha));
         }
+        Cue::Speech => {
+            // Held while the line is on show; the dots light one at a time, then all three.
+            let lit = if reduce_motion {
+                3
+            } else {
+                (age * 3.0) as usize % 4
+            };
+            let middle: String = SPEECH[2]
+                .chars()
+                .enumerate()
+                .map(|(index, cell)| match cell {
+                    '*' if lit < 3 && index != 2 + lit * 2 => 'o',
+                    other => other,
+                })
+                .collect();
+            let rows = [
+                SPEECH[0], SPEECH[1], &middle, SPEECH[3], SPEECH[4], SPEECH[5], SPEECH[6],
+            ];
+            sprite(
+                scene,
+                &rows,
+                x - 4,
+                y - 7,
+                [0x6b5a48, 0xfbf6ee, 0x6b5a48],
+                255,
+            );
+        }
         Cue::Sleep => {
             // Two z's, the second higher and fainter, coming round again and again.
             let cycle = if reduce_motion {
@@ -175,10 +213,20 @@ mod tests {
             draw_cue(&mut fresh, cue, 20, 30, 0.2, false);
             assert!(fresh.alpha_bounds().is_some(), "{cue:?} drew nothing");
             if cue != Cue::Sleep {
+                // Every passing sign fades; see below for the lasting ones.
                 let mut gone = Canvas::new(40, 40);
                 draw_cue(&mut gone, cue, 20, 30, 5.0, false);
                 assert!(gone.alpha_bounds().is_none(), "{cue:?} never faded");
             }
+        }
+    }
+
+    #[test]
+    fn a_doze_and_a_speech_bubble_last_as_long_as_their_moment() {
+        for cue in [Cue::Sleep, Cue::Speech] {
+            let mut late = Canvas::new(40, 40);
+            draw_cue(&mut late, cue, 20, 30, 30.0, false);
+            assert!(late.alpha_bounds().is_some(), "{cue:?} faded away");
         }
     }
 

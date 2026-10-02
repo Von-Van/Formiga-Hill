@@ -11,6 +11,7 @@ mod scenery;
 mod train;
 
 use crate::cast::{Cast, Id, Member};
+use crate::hilltop::Arrangement;
 use crate::paint::{blit, ellipse, rgba};
 use formiga_art::{AnimationSpec, Canvas, CreatureRenderer, FRAME_SIZE};
 use formiga_core::ActionKind;
@@ -27,6 +28,9 @@ const STAND_RIGHT: i32 = 330;
 
 pub struct Station {
     backdrop: Canvas,
+    /// What the backdrop shows: the display case's souvenirs, and the Hilltop on the skyline.
+    keepsakes: Vec<String>,
+    hilltop: Arrangement,
     train: Train,
     travelers: Vec<StationTraveler>,
     reduce_motion: bool,
@@ -62,7 +66,7 @@ impl StationTraveler {
 }
 
 impl Station {
-    pub fn new(cast: &Cast, journey: Journey) -> Self {
+    pub fn new(cast: &Cast, journey: Journey, keepsakes: &[String]) -> Self {
         let reduce_motion = cast.reduce_motion();
         let count = cast.members.len() as i32;
         let mut travelers: Vec<StationTraveler> = cast
@@ -90,12 +94,32 @@ impl Station {
         // Those further back are drawn first.
         travelers.sort_by_key(|traveler| traveler.bounds.3);
         Self {
-            backdrop: scenery::backdrop(),
+            backdrop: scenery::backdrop(keepsakes, &Arrangement::new()),
+            keepsakes: keepsakes.to_vec(),
+            hilltop: Arrangement::new(),
             train: Train::new(),
             travelers,
             reduce_motion,
             journey,
         }
+    }
+
+    /// Puts the colony's kept souvenirs in the display case.
+    pub fn show_keepsakes(&mut self, keepsakes: &[String]) {
+        keepsakes.clone_into(&mut self.keepsakes);
+        self.backdrop = scenery::backdrop(&self.keepsakes, &self.hilltop);
+    }
+
+    /// Shows what stands on the Hilltop, up on the skyline.
+    pub fn show_hilltop(&mut self, hilltop: &Arrangement) {
+        hilltop.clone_into(&mut self.hilltop);
+        self.backdrop = scenery::backdrop(&self.keepsakes, &self.hilltop);
+    }
+
+    /// Whether a point in the scene is on the display case.
+    pub fn on_display_case(&self, x: f32, y: f32) -> bool {
+        let (left, top, right, bottom) = scenery::CASE;
+        (left as f32..right as f32).contains(&x) && (top as f32..bottom as f32).contains(&y)
     }
 
     pub fn travelers(&self) -> &[StationTraveler] {
@@ -340,7 +364,7 @@ mod tests {
     #[test]
     fn every_traveller_is_drawn_standing_on_the_platform() {
         let cast = sample();
-        let station = Station::new(&cast, Journey::Here);
+        let station = Station::new(&cast, Journey::Here, &[]);
         assert_eq!(station.travelers().len(), cast.members.len());
         for traveler in station.travelers() {
             assert_eq!(
@@ -354,7 +378,7 @@ mod tests {
 
     #[test]
     fn travellers_do_not_overlap_on_a_full_platform() {
-        let station = Station::new(&crowd(6), Journey::Here);
+        let station = Station::new(&crowd(6), Journey::Here, &[]);
         for pair in station.travelers().windows(2) {
             let gap = pair[1].origin.0 - pair[0].origin.0;
             assert!(gap >= 40, "only {gap} pixels between neighbours");
@@ -363,8 +387,8 @@ mod tests {
 
     #[test]
     fn composing_draws_the_travellers_over_the_scenery() {
-        let station = Station::new(&sample(), Journey::Here);
-        let mut empty = scenery::backdrop();
+        let station = Station::new(&sample(), Journey::Here, &[]);
+        let mut empty = scenery::backdrop(&[], &Arrangement::new());
         scenery::smoke(&mut empty, 0.0, false);
         let scene = station.compose(0.0);
         assert_eq!((scene.width(), scene.height()), (SCENE_WIDTH, SCENE_HEIGHT));
@@ -382,20 +406,20 @@ mod tests {
     fn reduced_motion_holds_one_resting_frame() {
         let mut snapshot = formiga_travel::sample::snapshot();
         snapshot.presentation.reduce_motion = true;
-        let station = Station::new(&Cast::new(snapshot).unwrap(), Journey::Here);
+        let station = Station::new(&Cast::new(snapshot).unwrap(), Journey::Here, &[]);
         assert_eq!(station.frame_key(0.0), station.frame_key(7.3));
     }
 
     #[test]
     fn an_arrival_brings_the_train_in_and_settles_on_its_own() {
         let cast = sample();
-        let mut station = Station::new(&cast, Journey::Arriving { since: 0.0 });
+        let mut station = Station::new(&cast, Journey::Arriving { since: 0.0 }, &[]);
         assert!(station.in_motion(1.0));
         assert!(
             station.traveler_at(100.0, 150.0).is_none(),
             "no tooltips mid-arrival"
         );
-        let settled = Station::new(&cast, Journey::Here);
+        let settled = Station::new(&cast, Journey::Here, &[]);
         assert_ne!(
             station.compose(3.5),
             settled.compose(3.5),
@@ -408,7 +432,7 @@ mod tests {
 
     #[test]
     fn going_home_ends_with_everyone_gone() {
-        let mut station = Station::new(&sample(), Journey::Here);
+        let mut station = Station::new(&sample(), Journey::Here, &[]);
         station.set_off_home(5.0);
         assert!(!station.gone_home(6.0));
         station.set_off_home(7.0);
@@ -417,7 +441,7 @@ mod tests {
             "calling again does not restart the train"
         );
         let empty = {
-            let mut scene = scenery::backdrop();
+            let mut scene = scenery::backdrop(&[], &Arrangement::new());
             scenery::smoke(&mut scene, 60.0, false);
             scene
         };
@@ -430,14 +454,14 @@ mod tests {
 
     #[test]
     fn skipping_an_arrival_puts_everyone_on_the_platform() {
-        let mut station = Station::new(&sample(), Journey::Arriving { since: 0.0 });
+        let mut station = Station::new(&sample(), Journey::Arriving { since: 0.0 }, &[]);
         station.skip_arrival();
         assert!(station.is_settled());
     }
 
     #[test]
     fn hit_testing_finds_whoever_is_under_the_pointer() {
-        let station = Station::new(&sample(), Journey::Here);
+        let station = Station::new(&sample(), Journey::Here, &[]);
         let traveler = &station.travelers()[1];
         let (left, top, right, bottom) = traveler.bounds;
         let middle = ((left + right) as f32 / 2.0, (top + bottom) as f32 / 2.0);

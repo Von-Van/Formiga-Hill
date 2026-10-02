@@ -1,10 +1,18 @@
-//! The Hill window: the station and the green, the colony in them, and the way home.
+//! The Hill window: the station, the green, the Fairground, the Woods and the Hilltop, the
+//! colony in them, and the way home.
+
+mod arranging;
+mod rummaging;
 
 use crate::cast::{Cast, Id};
 use crate::character::Offer;
-use crate::green::Green;
+use crate::fairground::{self, Event, HideAndSeek, Phase};
+use crate::memories::Memories;
+use crate::playground::{Playground, Trust};
 use crate::station::{Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
+use crate::story::{Director, Library, souvenirs};
 use crate::trip::Trip;
+use arranging::Placing;
 use eframe::egui;
 use formiga_art::Canvas;
 use formiga_travel::Theme;
@@ -34,16 +42,48 @@ const DISSOLVE_SECS: f32 = 0.5;
 enum Area {
     Station,
     Green,
+    Fairground,
+    Woods,
+    Hilltop,
 }
+
+/// Every area, as the "Go to" menu lists them.
+const AREAS: [(Area, &str); 5] = [
+    (Area::Station, "The station"),
+    (Area::Green, "The Village Green"),
+    (Area::Fairground, "The Fairground"),
+    (Area::Woods, "The Woods"),
+    (Area::Hilltop, "The Hilltop"),
+];
 
 pub struct HillApp {
     arrival: Arrival,
     station: Station,
     /// Made the first time anyone goes there, and kept for the rest of the visit.
-    green: Option<Green>,
+    green: Option<Playground>,
+    /// The same, and the game of hide-and-seek played there.
+    fairground: Option<(Playground, HideAndSeek)>,
+    /// Who the person has asked to be "it" at hide-and-seek, if anyone in particular.
+    it: Option<Id>,
+    /// Who is going to the Woods, and the outing under way.
+    woods: rummaging::Woods,
+    /// The summit, made the first time anyone goes up.
+    hilltop: Option<Playground>,
+    /// What the person is about to stand somewhere on the Hilltop.
+    placing: Option<Placing>,
+    /// Where each piece on the Hilltop is drawn, for pointing at them.
+    piece_bounds: Vec<(u8, (i32, i32, i32, i32))>,
+    /// Whether the journal of finds is open.
+    journal: bool,
+    /// Where the pointer is over the scene, in scene pixels.
+    pointer: Option<(f32, f32)>,
+    /// When the last frame was drawn, for anything that moves by how long a key is held.
+    last_frame: f32,
     area: Area,
     /// What the person is holding out on the green.
     tool: Offer,
+    /// How each traveller has warmed to the person, wherever they have met this visit.
+    trust: Trust,
     /// The last picture of the area just left, dissolving into the new one.
     leaving: Option<(Canvas, f32)>,
     texture: Option<egui::TextureHandle>,
@@ -52,14 +92,24 @@ pub struct HillApp {
     /// The visit is over, one way or another, and nothing more is written.
     departed: bool,
     last_recall_check: f32,
+    library: Library,
+    /// The story being played on the green, if any, and the package it came from.
+    story: Option<(String, Director)>,
+    memories: Memories,
+    /// A short note in the bottom bar, and when it was posted.
+    notice: Option<(String, f32)>,
 }
 
+/// How long a notice stays in the bottom bar.
+const NOTICE_SECS: f32 = 8.0;
+
 const INK: egui::Color32 = egui::Color32::from_rgb(0x4a, 0x36, 0x26);
+const PAPER: egui::Color32 = egui::Color32::from_rgb(0xf6, 0xee, 0xd8);
 const LETTERBOX: egui::Color32 = egui::Color32::from_rgb(0x2f, 0x3b, 0x2c);
 const TAG: egui::Color32 = egui::Color32::from_rgba_unmultiplied_const(0xf6, 0xee, 0xd8, 0xe0);
 
 impl HillApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, arrival: Arrival) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, arrival: Arrival, library: Library) -> Self {
         let presentation = arrival.cast.snapshot.presentation;
         cc.egui_ctx.set_theme(match presentation.theme {
             Theme::System => egui::ThemePreference::System,
@@ -69,20 +119,123 @@ impl HillApp {
         cc.egui_ctx
             .set_zoom_factor(f32::from(presentation.text_scale_percent.clamp(100, 150)) / 100.0);
         // Every visit begins with the train pulling in.
-        let station = Station::new(&arrival.cast, Journey::Arriving { since: 0.0 });
+        let mut memories = Memories::open(
+            Memories::folder().as_deref(),
+            &arrival.cast.snapshot.colony_id,
+        );
+        memories.arrived();
+        let mut station = Station::new(
+            &arrival.cast,
+            Journey::Arriving { since: 0.0 },
+            &memories.colony().souvenirs,
+        );
+        station.show_hilltop(&memories.colony().hilltop);
+        for problem in &library.problems {
+            eprintln!("formiga-hill: a package was not loaded: {problem}");
+        }
         Self {
             arrival,
             station,
             green: None,
+            fairground: None,
+            it: None,
+            woods: rummaging::Woods::default(),
+            hilltop: None,
+            placing: None,
+            piece_bounds: Vec::new(),
+            journal: false,
+            pointer: None,
+            last_frame: 0.0,
             area: Area::Station,
             tool: Offer::Pet,
+            trust: Trust::default(),
             leaving: None,
             texture: None,
             shown_frames: Vec::new(),
             started: Instant::now(),
             departed: false,
             last_recall_check: 0.0,
+            library,
+            story: None,
+            memories,
+            notice: None,
         }
+    }
+
+    fn start_story(&mut self, package: &str, story: &str, now: f32) {
+        let Some(green) = &mut self.green else {
+            return;
+        };
+        let Some((_, chosen)) = self
+            .library
+            .stories()
+            .find(|(p, s)| p.id == package && s.id == story)
+        else {
+            return;
+        };
+        // The same colony always casts a story the same way.
+        let seed = self
+            .arrival
+            .cast
+            .snapshot
+            .colony_id
+            .bytes()
+            .chain(story.bytes())
+            .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+                (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+            });
+        match Director::new(chosen.clone(), &self.arrival.cast, seed) {
+            Ok(director) => {
+                green.reserve(director.players());
+                self.story = Some((package.to_owned(), director));
+            }
+            Err(problem) => self.notice = Some((problem, now)),
+        }
+    }
+
+    /// Plays the story on, and settles it once it ends.
+    fn run_story(&mut self, now: f32) {
+        let (Some(green), Some((package, director))) = (&mut self.green, &mut self.story) else {
+            return;
+        };
+        director.run(green, &self.arrival.cast, now);
+        green.set_speaker(
+            director
+                .shown()
+                .and_then(|shown| shown.speaker.as_ref().map(|(id, _)| *id)),
+        );
+        if director.finished() {
+            green.release();
+            let kept: Vec<&str> = director
+                .souvenirs()
+                .iter()
+                .filter_map(|id| souvenirs::name(id))
+                .collect();
+            self.notice = Some((
+                if kept.is_empty() {
+                    format!("The end of \u{201c}{}\u{201d}.", director.title())
+                } else {
+                    format!(
+                        "The end of \u{201c}{}\u{201d}. Kept: {}.",
+                        director.title(),
+                        kept.join(", ").to_lowercase()
+                    )
+                },
+                now,
+            ));
+            let finished = format!("{package}/{}", director.story_id());
+            self.memories.finished(finished, director.souvenirs());
+            self.station
+                .show_keepsakes(&self.memories.colony().souvenirs);
+            self.story = None;
+        }
+    }
+
+    fn leave_story(&mut self) {
+        if let Some(green) = &mut self.green {
+            green.release();
+        }
+        self.story = None;
     }
 
     /// The way home. Writes the receipt once, however the visit ends.
@@ -123,16 +276,115 @@ impl HillApp {
             self.leaving = Some((self.compose(now), now));
         }
         if area == Area::Green && self.green.is_none() {
-            self.green = Some(Green::new(&self.arrival.cast, now));
+            self.green = Some(crate::green::open(&self.arrival.cast, now));
+        }
+        if area == Area::Fairground && self.fairground.is_none() {
+            let (mut ground, game) = fairground::open(&self.arrival.cast, now);
+            fairground::show_hilltop(&mut ground, &self.memories.colony().hilltop);
+            self.fairground = Some((ground, game));
+        }
+        if area == Area::Woods {
+            self.open_woods(now);
+        }
+        if area == Area::Hilltop {
+            self.open_hilltop(now);
+        }
+        // Leaving the Woods brings the basket home; leaving the Hilltop puts down what was held.
+        if self.woods.outing.is_some() {
+            self.finish_outing(now);
+        }
+        self.placing = None;
+        // Walking away calls a game off.
+        if let Some((ground, game)) = &mut self.fairground
+            && game.phase() != Phase::Ready
+        {
+            game.stop(ground, now);
         }
         self.area = area;
         self.shown_frames.clear();
     }
 
     fn compose(&mut self, now: f32) -> Canvas {
-        match (self.area, &mut self.green) {
-            (Area::Green, Some(green)) => green.compose(now),
+        match (self.area, &mut self.green, &mut self.fairground) {
+            (Area::Green, Some(green), _) => green.compose(now),
+            (Area::Fairground, _, Some((ground, _))) => ground.compose(now),
+            (Area::Woods, _, _) => self.compose_woods(now),
+            (Area::Hilltop, _, _) => self.compose_hilltop(now),
             _ => self.station.compose(now),
+        }
+    }
+
+    /// Everywhere else the colony can go.
+    fn go_menu(&mut self, ui: &mut egui::Ui, now: f32) {
+        let mut target = None;
+        ui.menu_button("Go to\u{2026}", |ui| {
+            for (area, label) in AREAS {
+                if area != self.area && ui.button(label).clicked() {
+                    target = Some(area);
+                    ui.close();
+                }
+            }
+        });
+        if let Some(area) = target {
+            self.go_to(area, now);
+        }
+    }
+
+    /// Tells the person what is happening in the game, and remembers how it went once it is over.
+    fn fairground_events(&mut self, now: f32) {
+        let Some((_, game)) = &mut self.fairground else {
+            return;
+        };
+        let cast = &self.arrival.cast;
+        let name = |id: Option<Id>| {
+            id.and_then(|id| cast.member(id))
+                .map_or("Someone".to_owned(), |member| member.name.clone())
+        };
+        let it = game.seeker();
+        for event in game.take_events() {
+            let line = match event {
+                Event::Dozed => format!("{} has nodded off mid-count.", name(it)),
+                Event::Coming => format!(
+                    "\u{201c}Ready or not, here I come!\u{201d} calls {}.",
+                    name(it)
+                ),
+                Event::Noticed { place } => {
+                    format!(
+                        "{} heard something by {}.",
+                        name(it),
+                        game.place_name(place)
+                    )
+                }
+                Event::Nobody { place } => format!("Nobody behind {}.", game.place_name(place)),
+                Event::Found { hider, place } => format!(
+                    "{} found {} behind {}!",
+                    name(it),
+                    name(Some(hider)),
+                    game.place_name(place)
+                ),
+                Event::AllFound { took } => {
+                    let ticket = souvenirs::FAIR_TICKET;
+                    let first = !self
+                        .memories
+                        .colony()
+                        .souvenirs
+                        .iter()
+                        .any(|kept| kept == ticket);
+                    let quickest = it.is_some_and(|it| self.memories.found_everyone(it, took));
+                    let mut line = format!("{} found everyone in {}", name(it), clock(took));
+                    if quickest {
+                        line.push_str(", the quickest yet");
+                    }
+                    line.push('!');
+                    if first && let Some(kept) = souvenirs::name(ticket) {
+                        line.push_str(&format!(" Kept: {}.", kept.to_lowercase()));
+                    }
+                    self.station
+                        .show_keepsakes(&self.memories.colony().souvenirs);
+                    line
+                }
+            };
+            self.notice = Some((line, now));
         }
     }
 
@@ -183,29 +435,210 @@ impl HillApp {
                         self.station.set_off_home(now);
                     }
                     let settled = self.station.is_settled();
-                    let green = egui::Button::new("Walk to the Village Green");
-                    if ui.add_enabled(settled, green).clicked() {
-                        self.go_to(Area::Green, now);
-                    }
+                    ui.add_enabled_ui(settled, |ui| self.go_menu(ui, now));
                 });
             }
+            Area::Green if self.story.is_some() => self.story_panel(ui),
             Area::Green => {
-                ui.label("Hold out:");
-                for (offer, label, key) in TOOLS {
-                    let chosen = self.tool == offer;
-                    let response = ui.selectable_label(chosen, format!("{label}  {key}"));
-                    if response.clicked() {
-                        self.tool = offer;
-                    }
+                tools(ui, &mut self.tool);
+                ui.separator();
+                self.stories_menu(ui, now);
+                if let Some((notice, _)) = &self.notice {
+                    ui.label(egui::RichText::new(notice).italics());
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Back to the station").clicked() {
-                        self.go_to(Area::Station, now);
-                    }
+                    self.go_menu(ui, now);
+                });
+            }
+            Area::Fairground => self.fairground_bar(ui, now),
+            Area::Woods => {
+                self.woods_bar(ui, now);
+                if let Some((notice, _)) = &self.notice {
+                    ui.label(egui::RichText::new(notice).italics());
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.go_menu(ui, now);
+                });
+            }
+            Area::Hilltop => {
+                self.hilltop_bar(ui);
+                if let Some((notice, _)) = &self.notice {
+                    ui.label(egui::RichText::new(notice).italics());
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.go_menu(ui, now);
                 });
             }
         });
         ui.add_space(6.0);
+    }
+
+    /// The game under way, or the offers and a game to watch when nobody is playing.
+    fn fairground_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+        let Some((ground, game)) = &mut self.fairground else {
+            return;
+        };
+        let cast = &self.arrival.cast;
+        let name = |id: Option<Id>| {
+            id.and_then(|id| cast.member(id))
+                .map_or("Someone".to_owned(), |member| member.name.clone())
+        };
+        let mut start = false;
+        match game.phase() {
+            Phase::Ready => {
+                tools(ui, &mut self.tool);
+                ui.separator();
+                start = ui.button("Watch hide-and-seek").clicked();
+                let turn = game.next_it().map_or("Whoever's keenest".to_owned(), |id| {
+                    format!("{}'s turn", name(Some(id)))
+                });
+                let chosen = self.it.map_or(turn.clone(), |id| name(Some(id)));
+                egui::ComboBox::from_id_salt("it")
+                    .selected_text(format!("It: {chosen}"))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.it, None, turn);
+                        for member in &cast.members {
+                            ui.selectable_value(&mut self.it, Some(member.id), &member.name);
+                        }
+                    });
+                if let Some(best) = self
+                    .it
+                    .or(game.next_it())
+                    .and_then(|id| self.memories.colony().quickest_seekers.get(&id.to_string()))
+                {
+                    ui.label(format!("Quickest: {}", clock(*best)));
+                }
+            }
+            Phase::Counting { .. } => {
+                ui.label(format!(
+                    "{} is counting. Everyone's hiding!",
+                    name(game.seeker())
+                ));
+                if ui.button("Call it off").clicked() {
+                    game.stop(ground, now);
+                }
+            }
+            Phase::Seeking { .. } => {
+                let (found, of) = game.tally();
+                ui.label(format!(
+                    "{} is looking  \u{b7}  found {found} of {of}  \u{b7}  {}",
+                    name(game.seeker()),
+                    clock(game.searching_for(now))
+                ));
+                if ui.button("Call it off").clicked() {
+                    game.stop(ground, now);
+                }
+            }
+            Phase::Over { .. } => {}
+        }
+        if start {
+            game.start(ground, self.it.take(), now);
+        }
+        if let Some((notice, _)) = &self.notice {
+            ui.label(egui::RichText::new(notice).italics());
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            self.go_menu(ui, now);
+        });
+    }
+
+    fn stories_menu(&mut self, ui: &mut egui::Ui, now: f32) {
+        let travellers = self.arrival.cast.members.len();
+        let mut start = None;
+        ui.menu_button("Stories", |ui| {
+            for (package, story) in self.library.stories() {
+                let finished = self
+                    .memories
+                    .colony()
+                    .stories
+                    .contains(&format!("{}/{}", package.id, story.id));
+                let label = if finished {
+                    format!("{}  \u{2713}", story.title)
+                } else {
+                    story.title.clone()
+                };
+                let fits = travellers >= story.min_cast;
+                let button = ui
+                    .add_enabled(fits, egui::Button::new(label))
+                    .on_disabled_hover_text(format!(
+                        "Needs at least {} travellers",
+                        story.min_cast
+                    ));
+                if button.clicked() {
+                    start = Some((package.id.clone(), story.id.clone()));
+                    ui.close();
+                }
+            }
+            let kept = &self.memories.colony().souvenirs;
+            if !kept.is_empty() {
+                ui.separator();
+                ui.label(egui::RichText::new("Kept").strong());
+                for id in kept {
+                    if let Some(name) = souvenirs::name(id) {
+                        ui.label(name);
+                    }
+                }
+            }
+        });
+        if let Some((package, story)) = start {
+            self.start_story(&package, &story, now);
+        }
+    }
+
+    /// The story's words: who is speaking and what they say, or the choice to make.
+    fn story_panel(&mut self, ui: &mut egui::Ui) {
+        let Some((_, director)) = &mut self.story else {
+            return;
+        };
+        let mut leave = false;
+        egui::Frame::new()
+            .fill(PAPER)
+            .corner_radius(6.0)
+            .inner_margin(egui::Margin::symmetric(12, 8))
+            .show(ui, |ui| {
+                ui.set_width(ui.available_width());
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(director.title())
+                            .italics()
+                            .color(INK)
+                            .small(),
+                    );
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        leave = ui.small_button("Leave the story").clicked();
+                    });
+                });
+                if let Some(shown) = director.shown().cloned() {
+                    if let Some((_, name)) = &shown.speaker {
+                        ui.label(egui::RichText::new(name).strong().color(INK));
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(egui::RichText::new(&shown.text).color(INK).size(16.0));
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui.button("Next  \u{25b8}").clicked() {
+                            director.read_on();
+                        }
+                    });
+                } else if !director.choices().is_empty() {
+                    let mut chosen = None;
+                    ui.horizontal_wrapped(|ui| {
+                        for (index, choice) in director.choices().into_iter().enumerate() {
+                            if ui.button(format!("{}  {choice}", index + 1)).clicked() {
+                                chosen = Some(index);
+                            }
+                        }
+                    });
+                    if let Some(index) = chosen {
+                        director.choose(index);
+                    }
+                } else {
+                    ui.label(egui::RichText::new("\u{2026}").color(INK));
+                }
+            });
+        if leave {
+            self.leave_story();
+        }
     }
 }
 
@@ -214,6 +647,23 @@ const TOOLS: [(Offer, &str, &str); 3] = [
     (Offer::Snack, "A snack", "2"),
     (Offer::Toy, "A toy", "3"),
 ];
+
+/// What the person can hold out, to choose from.
+fn tools(ui: &mut egui::Ui, tool: &mut Offer) {
+    ui.label("Hold out:");
+    for (offer, label, key) in TOOLS {
+        let response = ui.selectable_label(*tool == offer, format!("{label}  {key}"));
+        if response.clicked() {
+            *tool = offer;
+        }
+    }
+}
+
+/// Seconds as a game clock: 0:07, 1:32.
+fn clock(seconds: f32) -> String {
+    let whole = seconds.max(0.0).round() as u32;
+    format!("{}:{:02}", whole / 60, whole % 60)
+}
 
 impl eframe::App for HillApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
@@ -230,21 +680,80 @@ impl eframe::App for HillApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         ctx.input(|input| {
-            if input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Escape) {
-                self.station.skip_arrival();
-            }
-            for (key, (offer, _, _)) in [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3]
-                .into_iter()
-                .zip(TOOLS)
-            {
-                if input.key_pressed(key) {
-                    self.tool = offer;
+            let onwards =
+                input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Enter);
+            match &mut self.story {
+                Some((_, director)) => {
+                    if onwards && director.shown().is_some() {
+                        director.read_on();
+                    }
+                    let numbers = [
+                        egui::Key::Num1,
+                        egui::Key::Num2,
+                        egui::Key::Num3,
+                        egui::Key::Num4,
+                    ];
+                    for (index, key) in numbers.into_iter().enumerate() {
+                        if input.key_pressed(key) && index < director.choices().len() {
+                            director.choose(index);
+                        }
+                    }
+                }
+                None => {
+                    if onwards || input.key_pressed(egui::Key::Escape) {
+                        self.station.skip_arrival();
+                    }
+                    if self.area == Area::Woods && input.key_pressed(egui::Key::Space) {
+                        self.woods_strike(now);
+                    }
+                    if input.key_pressed(egui::Key::Escape) {
+                        self.placing = None;
+                    }
+                    if input.key_pressed(egui::Key::Escape)
+                        && self.area == Area::Fairground
+                        && let Some((ground, game)) = &mut self.fairground
+                        && game.phase() != Phase::Ready
+                    {
+                        game.stop(ground, now);
+                    }
+                    for (key, (offer, _, _)) in [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3]
+                        .into_iter()
+                        .zip(TOOLS)
+                    {
+                        if input.key_pressed(key) {
+                            self.tool = offer;
+                        }
+                    }
                 }
             }
         });
+        if self
+            .notice
+            .as_ref()
+            .is_some_and(|(_, since)| now - since > NOTICE_SECS)
+        {
+            self.notice = None;
+        }
         if let (Area::Green, Some(green)) = (self.area, &mut self.green) {
             green.tick(&self.arrival.cast, now);
         }
+        if let (Area::Fairground, Some((ground, game))) = (self.area, &mut self.fairground) {
+            ground.tick(&self.arrival.cast, now);
+            game.tick(ground, now);
+        }
+        self.fairground_events(now);
+        if self.area == Area::Woods {
+            // With reduced motion, the catching marker turns while the pointer or Space is held.
+            let holding =
+                ctx.input(|input| input.pointer.primary_down() || input.key_down(egui::Key::Space));
+            let dt = (now - self.last_frame).clamp(0.0, 0.1);
+            self.tick_woods(now, holding, dt);
+        }
+        if let (Area::Hilltop, Some(ground)) = (self.area, &mut self.hilltop) {
+            ground.tick(&self.arrival.cast, now);
+        }
+        self.last_frame = now;
+        self.run_story(now);
         let texture = self.refresh_scene(&ctx, now);
 
         egui::Panel::bottom("platform").show(ui, |ui| self.bottom_bar(ui, now));
@@ -276,15 +785,89 @@ impl eframe::App for HillApp {
                     painter.galley(label.center() - galley.size() / 2.0, galley, INK);
                 };
 
-                let hovered = match (self.area, &mut self.green) {
-                    (Area::Green, Some(green)) => {
-                        green.set_pointer(pointer);
-                        let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
-                        if let Some(id) = hovered {
+                let mut on_case = false;
+                self.pointer = pointer;
+                let hovered = match (self.area, &mut self.green, &mut self.fairground) {
+                    (Area::Woods, _, _) => {
+                        let mut hovered = None;
+                        if let Some((ground, _)) = &mut self.woods.outing {
+                            ground.set_pointer(pointer);
+                            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                        }
+                        let spot = self.woods_hover(pointer);
+                        if let Some((label, (x, y))) = &spot {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            tag(label, to_screen(*x, *y));
+                        }
+                        if response.clicked() {
+                            self.woods_click(pointer, now);
+                        }
+                        hovered.filter(|_| spot.is_none())
+                    }
+                    (Area::Hilltop, _, _) => {
+                        let mut hovered = None;
+                        if let Some(ground) = &mut self.hilltop {
+                            ground.set_pointer(pointer);
+                            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                        }
+                        let piece = self.hilltop_hover(pointer);
+                        if let Some((label, (x, y))) = &piece {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            tag(label, to_screen(*x, *y));
+                        } else if hovered.is_some() {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        if response.clicked()
+                            && !self.hilltop_click(pointer)
+                            && self.placing.is_none()
+                            && let (Some(id), Some(ground)) = (hovered, &mut self.hilltop)
+                        {
+                            ground.offer(id, self.tool, &mut self.trust, now);
+                        }
+                        hovered.filter(|_| piece.is_none())
+                    }
+                    (Area::Fairground, _, Some((ground, game))) => {
+                        ground.set_pointer(pointer);
+                        let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                        let playing = game.phase() != Phase::Ready;
+                        // During a game the person only watches; otherwise, as on the green.
+                        if let (false, Some(id)) = (playing, hovered) {
                             ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                             if response.clicked() {
-                                green.offer(id, self.tool, now);
+                                ground.offer(id, self.tool, &mut self.trust, now);
                             }
+                        }
+                        // "It" wears its name all game, so the watcher can follow it about.
+                        let tagged = hovered.into_iter().chain(game.seeker()).collect::<Vec<_>>();
+                        for id in tagged {
+                            if let (Some((x, y)), Some(member)) =
+                                (ground.head(id, now), self.arrival.cast.member(id))
+                            {
+                                let label = if game.seeker() == Some(id) {
+                                    format!("{} \u{b7} it", member.name)
+                                } else {
+                                    member.name.clone()
+                                };
+                                tag(&label, to_screen(x, y - 6.0));
+                            }
+                        }
+                        hovered
+                    }
+                    (Area::Green, Some(green), _) => {
+                        green.set_pointer(pointer);
+                        let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
+                        if let Some((_, director)) = &mut self.story {
+                            // During a story, a click on the scene reads on.
+                            if response.clicked() && director.shown().is_some() {
+                                director.read_on();
+                            }
+                        } else if let Some(id) = hovered {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            if response.clicked() {
+                                green.offer(id, self.tool, &mut self.trust, now);
+                            }
+                        }
+                        if let Some(id) = hovered {
                             // Only the one under the pointer wears a name on the green.
                             if let (Some((x, y)), Some(member)) =
                                 (green.head(id, now), self.arrival.cast.member(id))
@@ -311,10 +894,30 @@ impl eframe::App for HillApp {
                                 tag(&traveler.name, centre);
                             }
                         }
+                        on_case = pointer.is_some_and(|(x, y)| self.station.on_display_case(x, y));
                         pointer.and_then(|(x, y)| self.station.traveler_at(x, y).map(|t| t.id))
                     }
                 };
-                if let Some(id) = hovered {
+                if on_case && hovered.is_none() {
+                    let kept: Vec<&str> = self
+                        .memories
+                        .colony()
+                        .souvenirs
+                        .iter()
+                        .filter_map(|id| souvenirs::name(id))
+                        .collect();
+                    response.on_hover_ui_at_pointer(|ui| {
+                        ui.strong("The display case");
+                        if kept.is_empty() {
+                            ui.label(
+                                "Empty for now. Souvenirs from stories and games are kept here.",
+                            );
+                        }
+                        for name in kept {
+                            ui.label(name);
+                        }
+                    });
+                } else if let Some(id) = hovered {
                     let lines = describe(&self.arrival.cast, id);
                     response.on_hover_ui_at_pointer(|ui| {
                         for (index, line) in lines.iter().enumerate() {
@@ -328,7 +931,9 @@ impl eframe::App for HillApp {
                 }
             });
 
-        if self.area == Area::Green || self.leaving.is_some() || self.station.in_motion(now) {
+        self.journal_window(&ctx);
+
+        if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));
         } else if matches!(self.arrival.visit, Visit::Trip(_)) {
             // Keep looking for a recall even when nothing on screen moves.
