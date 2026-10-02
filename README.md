@@ -76,10 +76,10 @@ The design's `formiga-hill-runtime` (cast resolution, scenes, packages, the Hill
 ## Formiga Desktop's crates
 
 `formiga-core`, `formiga-art` and `formiga-travel` all come from Formiga Desktop, from one source
-so their types agree. Until Desktop publishes its Hill work, that source is the
-`work/hill-enablement` branch of the local Desktop checkout, so Hill builds only on this machine
-and CI cannot build it. Once Desktop releases, point all three at the GitHub repository at that
-release's tag.
+so their types agree. Until Desktop releases its Hill work, that source is the
+`work/hill-enablement` branch on GitHub, pinned to a commit by `Cargo.lock`
+(`cargo update -p formiga-travel -p formiga-core -p formiga-art` moves all three). Once Desktop
+releases, point all three at that release's tag.
 
 ### Working against a Desktop checkout
 
@@ -90,9 +90,11 @@ committed manifest, create `.cargo/config.toml` (it is ignored by git):
 [patch."https://github.com/Von-Van/Formiga-Desktop"]
 formiga-core = { path = "../Formiga Desktop/crates/formiga-core" }
 formiga-art = { path = "../Formiga Desktop/crates/formiga-art" }
+formiga-travel = { path = "../Formiga Desktop/crates/formiga-travel" }
 ```
 
-Delete it again before cutting a release.
+Patch all three or none, so their types agree, and point the paths at whichever Desktop checkout
+or worktree has the changes. Delete it again before committing a change that depends on it.
 
 ## Checks
 
