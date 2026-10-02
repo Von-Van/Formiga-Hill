@@ -109,6 +109,21 @@ impl Actor {
         self.steps.clear();
         self.steps.extend(steps);
         self.step_since = now;
+        // A cut is over before it could be drawn mid-stride.
+        while self.reduce_motion
+            && let Some(Step::Walk { to } | Step::Stride { to }) = self.steps.front().copied()
+        {
+            self.cut_to(to);
+            self.steps.pop_front();
+        }
+    }
+
+    /// With motion reduced a walk is a cut: it is simply there, facing the way it went.
+    fn cut_to(&mut self, to: (f32, f32)) {
+        if (to.0 - self.pos.0).abs() > 0.5 {
+            self.facing_right = to.0 > self.pos.0;
+        }
+        self.pos = to;
     }
 
     pub fn walking(&self) -> bool {
@@ -159,6 +174,10 @@ impl Actor {
         let mut budget = dt;
         while let Some(step) = self.steps.front().copied() {
             let done = match step {
+                Step::Walk { to } | Step::Stride { to } if self.reduce_motion => {
+                    self.cut_to(to);
+                    true
+                }
                 Step::Walk { to } | Step::Stride { to } => {
                     let (dx, dy) = (to.0 - self.pos.0, to.1 - self.pos.1);
                     let distance = (dx * dx + dy * dy).sqrt();
@@ -366,6 +385,25 @@ mod tests {
         assert!(!actor.facing_right);
         actor.advance(1.0, 10.0, &[]);
         assert_eq!(actor.pos, (40.0, 180.0));
+        assert!(actor.is_idle());
+    }
+
+    #[test]
+    fn with_reduced_motion_a_walk_is_a_cut() {
+        let cast = crate::cast::Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let mut actor = Actor::new(&cast.members[0], (100.0, 180.0), true, true);
+        actor.begin(0.0, [Step::Stride { to: (40.0, 180.0) }]);
+        assert_eq!(actor.pos, (40.0, 180.0), "there before it is first drawn");
+        assert!(!actor.facing_right);
+        assert!(actor.is_idle());
+
+        let wave = Beat::new(Gesture::Reach, ExpressionKind::Joy, 1.0);
+        actor.begin(0.0, [Step::Beat(wave), Step::Walk { to: (160.0, 170.0) }]);
+        actor.advance(0.5, 0.5, &[]);
+        assert_eq!(actor.pos, (40.0, 180.0), "it waves where it is first");
+        actor.advance(1.0, 0.5, &[]);
+        assert_eq!(actor.pos, (160.0, 170.0));
+        assert!(actor.facing_right);
         assert!(actor.is_idle());
     }
 

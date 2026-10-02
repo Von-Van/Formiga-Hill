@@ -575,7 +575,11 @@ fn parse_beat(
             ));
         }
         Action::Souvenir { id: id.clone() }
-    } else if raw.end.is_some() {
+    } else if let Some(end) = raw.end {
+        // `end = false` reads as "don't end here", so it must not quietly end the story.
+        if !end {
+            return Err("an end beat is `end = true`; to carry on, leave the beat out".into());
+        }
         Action::End
     } else {
         Action::Goto {
@@ -633,9 +637,21 @@ fn parse_selector(text: &str, earlier: &[String]) -> Result<Selector, String> {
 }
 
 fn parse_condition(text: &str, role: &dyn Fn(&str) -> Option<usize>) -> Result<Condition, String> {
-    if let Some(rest) = text.strip_prefix('!') {
-        return Ok(Condition::Not(Box::new(parse_condition(rest, role)?)));
-    }
+    // The `!`s are counted rather than read one at a time, so however many a package puts in front
+    // of a condition, Hill cannot run out of stack loading it. Two cancel out.
+    let plain = text.trim_start_matches('!');
+    let condition = parse_plain_condition(plain, role)?;
+    Ok(if (text.len() - plain.len()) % 2 == 1 {
+        Condition::Not(Box::new(condition))
+    } else {
+        condition
+    })
+}
+
+fn parse_plain_condition(
+    text: &str,
+    role: &dyn Fn(&str) -> Option<usize>,
+) -> Result<Condition, String> {
     let named = |name: &str| role(name).ok_or_else(|| format!("there is no role \"{name}\""));
     let (verb, argument) = text.split_once(':').ok_or_else(|| {
         format!("\"{text}\" is not a condition, such as flag:shared or kind:host=grump")
@@ -856,12 +872,36 @@ mod tests {
             ),
             (r#"{ souvenir = "a_real_diamond" }"#, "souvenirs"),
             (r#"{ if = "mood:host", goto = "one" }"#, "condition"),
+            (r#"{ end = false }"#, "end = true"),
         ];
         for (beat, expected) in cases {
             let error =
                 story(&format!("[[scenes]]\nid = \"one\"\nbeats = [ {beat} ]")).unwrap_err();
             assert!(error.contains(expected), "{beat} gave \"{error}\"");
         }
+    }
+
+    #[test]
+    fn any_number_of_negations_loads_without_running_out_of_stack() {
+        let odd = "!".repeat(100_001);
+        let even = "!".repeat(100_000);
+        let parsed = story(&format!(
+            r#"
+            [[scenes]]
+            id = "one"
+            beats = [
+              {{ celebrate = "all", when = "{odd}flag:picked" }},
+              {{ celebrate = "all", when = "{even}flag:picked" }},
+            ]
+            "#
+        ))
+        .unwrap();
+        let picked = Condition::Flag("picked".into());
+        assert_eq!(
+            parsed.scenes[0].beats[0].when,
+            Some(Condition::Not(Box::new(picked.clone())))
+        );
+        assert_eq!(parsed.scenes[0].beats[1].when, Some(picked));
     }
 
     #[test]
