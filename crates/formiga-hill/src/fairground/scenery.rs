@@ -7,6 +7,7 @@
 
 use super::{SCENE_HEIGHT, SCENE_WIDTH};
 use crate::font::{GLYPH_HEIGHT, draw_text_shadowed, text_width};
+use crate::hilltop::{Arrangement, Tint, Vista, skyline};
 use crate::kit::window;
 use crate::materials::*;
 use crate::paint::{
@@ -34,11 +35,20 @@ const GOLD: Ramp = Ramp::new(0x6b4a24, 0x9a7434, 0xc9a14e, 0xe4c06c, 0xf6e3a2);
 const BULB: Rgba = rgb(0xffe7a0);
 const GLOW: Rgba = rgba(0xffd08a, 22);
 const SHADOW: Rgba = rgba(0x2a1e28, 80);
+/// The Hill on the skyline at dusk, its tree on top, and whatever stands there now in silhouette.
+const VISTA: Vista = Vista {
+    tree: (299.0, (HORIZON - 28) as f32),
+    crest: |x| (HORIZON + 6) as f32 - 34.0 * (1.0 - ((x - 300.0) / 90.0).powi(2)).max(0.0).sqrt(),
+    spread: 8.0,
+    shrink: 7,
+    tint: Tint::Silhouette(rgb(0x3a2c48)),
+};
 
 /// Everything behind the colony and its hiding places.
-pub fn backdrop() -> Canvas {
+pub fn backdrop(hilltop: &Arrangement) -> Canvas {
     let mut scene = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
     sky(&mut scene);
+    skyline(&mut scene, hilltop, &VISTA);
     ground(&mut scene);
     big_top(&mut scene, BIG_TOP.0, BIG_TOP.1);
     carousel(&mut scene, 196);
@@ -753,7 +763,12 @@ mod tests {
 
     #[test]
     fn the_backdrop_fills_every_pixel() {
-        assert!(backdrop().pixels().iter().all(|pixel| pixel.a == 255));
+        assert!(
+            backdrop(&Arrangement::new())
+                .pixels()
+                .iter()
+                .all(|pixel| pixel.a == 255)
+        );
     }
 
     #[test]

@@ -6,6 +6,7 @@ mod hide_and_seek;
 mod scenery;
 
 use crate::cast::Cast;
+use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Patch, Playground};
 use scenery::GROUND;
 use std::sync::LazyLock;
@@ -57,6 +58,11 @@ pub fn layout() -> Layout {
     }
 }
 
+/// Shows what stands on the Hilltop, in silhouette on the skyline.
+pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
+    ground.set_backdrop(scenery::backdrop(hilltop));
+}
+
 /// The fairground with the colony walking in, and the game ready to play.
 pub fn open(cast: &Cast, now: f32) -> (Playground, HideAndSeek) {
     let (props, places) = scenery::props();
@@ -64,7 +70,7 @@ pub fn open(cast: &Cast, now: f32) -> (Playground, HideAndSeek) {
         cast,
         now,
         layout(),
-        scenery::backdrop(),
+        scenery::backdrop(&Arrangement::new()),
         scenery::foreground(),
         props,
     );

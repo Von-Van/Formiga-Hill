@@ -11,6 +11,7 @@ mod scenery;
 mod train;
 
 use crate::cast::{Cast, Id, Member};
+use crate::hilltop::Arrangement;
 use crate::paint::{blit, ellipse, rgba};
 use formiga_art::{AnimationSpec, Canvas, CreatureRenderer, FRAME_SIZE};
 use formiga_core::ActionKind;
@@ -27,6 +28,9 @@ const STAND_RIGHT: i32 = 330;
 
 pub struct Station {
     backdrop: Canvas,
+    /// What the backdrop shows: the display case's souvenirs, and the Hilltop on the skyline.
+    keepsakes: Vec<String>,
+    hilltop: Arrangement,
     train: Train,
     travelers: Vec<StationTraveler>,
     reduce_motion: bool,
@@ -90,7 +94,9 @@ impl Station {
         // Those further back are drawn first.
         travelers.sort_by_key(|traveler| traveler.bounds.3);
         Self {
-            backdrop: scenery::backdrop(keepsakes),
+            backdrop: scenery::backdrop(keepsakes, &Arrangement::new()),
+            keepsakes: keepsakes.to_vec(),
+            hilltop: Arrangement::new(),
             train: Train::new(),
             travelers,
             reduce_motion,
@@ -100,7 +106,14 @@ impl Station {
 
     /// Puts the colony's kept souvenirs in the display case.
     pub fn show_keepsakes(&mut self, keepsakes: &[String]) {
-        self.backdrop = scenery::backdrop(keepsakes);
+        keepsakes.clone_into(&mut self.keepsakes);
+        self.backdrop = scenery::backdrop(&self.keepsakes, &self.hilltop);
+    }
+
+    /// Shows what stands on the Hilltop, up on the skyline.
+    pub fn show_hilltop(&mut self, hilltop: &Arrangement) {
+        hilltop.clone_into(&mut self.hilltop);
+        self.backdrop = scenery::backdrop(&self.keepsakes, &self.hilltop);
     }
 
     /// Whether a point in the scene is on the display case.
@@ -375,7 +388,7 @@ mod tests {
     #[test]
     fn composing_draws_the_travellers_over_the_scenery() {
         let station = Station::new(&sample(), Journey::Here, &[]);
-        let mut empty = scenery::backdrop(&[]);
+        let mut empty = scenery::backdrop(&[], &Arrangement::new());
         scenery::smoke(&mut empty, 0.0, false);
         let scene = station.compose(0.0);
         assert_eq!((scene.width(), scene.height()), (SCENE_WIDTH, SCENE_HEIGHT));
@@ -428,7 +441,7 @@ mod tests {
             "calling again does not restart the train"
         );
         let empty = {
-            let mut scene = scenery::backdrop(&[]);
+            let mut scene = scenery::backdrop(&[], &Arrangement::new());
             scenery::smoke(&mut scene, 60.0, false);
             scene
         };

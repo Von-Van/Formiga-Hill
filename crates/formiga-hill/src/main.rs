@@ -117,8 +117,10 @@ fn main() -> Result<()> {
                     memories::Memories::folder().as_deref(),
                     &arrival.cast.snapshot.colony_id,
                 );
-                station::Station::new(&arrival.cast, journey, &memories.colony().souvenirs)
-                    .compose(now)
+                let mut station =
+                    station::Station::new(&arrival.cast, journey, &memories.colony().souvenirs);
+                station.show_hilltop(&memories.colony().hilltop);
+                station.compose(now)
             }
             Area::Green => {
                 // Free play, run forward as the window would run it.
@@ -134,6 +136,7 @@ fn main() -> Result<()> {
             Area::Fairground => {
                 let until = args.at.unwrap_or(20.0);
                 let (mut fairground, _) = fairground::open(&arrival.cast, 0.0);
+                fairground::show_hilltop(&mut fairground, &sample_arrangement());
                 let mut now = 0.0;
                 while now < until {
                     now += 1.0 / 30.0;

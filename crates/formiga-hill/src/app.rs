@@ -124,11 +124,12 @@ impl HillApp {
             &arrival.cast.snapshot.colony_id,
         );
         memories.arrived();
-        let station = Station::new(
+        let mut station = Station::new(
             &arrival.cast,
             Journey::Arriving { since: 0.0 },
             &memories.colony().souvenirs,
         );
+        station.show_hilltop(&memories.colony().hilltop);
         for problem in &library.problems {
             eprintln!("formiga-hill: a package was not loaded: {problem}");
         }
@@ -278,7 +279,9 @@ impl HillApp {
             self.green = Some(crate::green::open(&self.arrival.cast, now));
         }
         if area == Area::Fairground && self.fairground.is_none() {
-            self.fairground = Some(fairground::open(&self.arrival.cast, now));
+            let (mut ground, game) = fairground::open(&self.arrival.cast, now);
+            fairground::show_hilltop(&mut ground, &self.memories.colony().hilltop);
+            self.fairground = Some((ground, game));
         }
         if area == Area::Woods {
             self.open_woods(now);

@@ -6,7 +6,9 @@ mod scenery;
 
 use crate::cast::Cast;
 use crate::finds::{self, art};
+use crate::paint::{blit, mix};
 use crate::playground::{Attraction, Layout, Patch, Playground, Prop};
+use formiga_art::{Canvas, Rgba};
 use std::collections::BTreeMap;
 
 /// What stands where: a find's id for each spot that has one.
@@ -118,6 +120,107 @@ pub fn open(cast: &Cast, now: f32, arrangement: &Arrangement) -> Playground {
     ground
 }
 
+/// How the Hilltop looks from somewhere below it: where the old tree stands on that view's
+/// skyline, how far off it is, and what the distance does to colours.
+pub struct Vista {
+    /// Where the tree meets the crest, in that view.
+    pub tree: (f32, f32),
+    /// The crest's height at a point across that view.
+    pub crest: fn(f32) -> f32,
+    /// How many of the summit's pixels across make one of the view's.
+    pub spread: f32,
+    /// How many of a piece's pixels make one of the view's, each way.
+    pub shrink: u32,
+    pub tint: Tint,
+}
+
+pub enum Tint {
+    /// Colours faded towards the distance's own, by this much.
+    Haze(Rgba, f32),
+    /// Dark against a bright sky.
+    Silhouette(Rgba),
+}
+
+/// Where the summit's tree stands, across the summit.
+const TREE_X: f32 = (TREE.0 + TREE.2) / 2.0;
+
+/// Draws what stands on the Hilltop, small and far off, on another view's skyline, back row
+/// first: so the Hill seen from below grows with what the colony has found.
+pub fn skyline(scene: &mut Canvas, arrangement: &Arrangement, vista: &Vista) {
+    let mut placed: Vec<(usize, &String)> = arrangement
+        .iter()
+        .map(|(spot, id)| (usize::from(*spot), id))
+        .filter(|(spot, _)| *spot < SPOTS.len())
+        .collect();
+    placed.sort_by(|a, b| SPOTS[a.0].1.total_cmp(&SPOTS[b.0].1));
+    for (spot, id) in placed {
+        if finds::find(id).is_none() {
+            continue;
+        }
+        let (x, y) = SPOTS[spot];
+        let piece = art::piece(id);
+        let small = shrink(&piece.sprite, vista.shrink, &vista.tint);
+        let across = vista.tree.0 + (x - TREE_X) / vista.spread;
+        // Nearer rows sit a little lower down the face of the Hill.
+        let down = (y - SPOTS[0].1) / 40.0 * 1.5;
+        let base = (vista.crest)(across) + 1.0 + down;
+        let anchor = (
+            piece.anchor.0 / vista.shrink as i32,
+            piece.anchor.1 / vista.shrink as i32,
+        );
+        blit(
+            scene,
+            &small,
+            across.round() as i32 - anchor.0,
+            base.round() as i32 - anchor.1,
+        );
+    }
+}
+
+/// A sprite made smaller by `factor` each way: each block that is mostly there becomes one pixel
+/// of its average colour, tinted for the distance.
+fn shrink(sprite: &Canvas, factor: u32, tint: &Tint) -> Canvas {
+    let factor = factor.max(1);
+    let (width, height) = (
+        sprite.width().div_ceil(factor),
+        sprite.height().div_ceil(factor),
+    );
+    let mut small = Canvas::new(width, height);
+    let block = (factor * factor) as usize;
+    for y in 0..height as i32 {
+        for x in 0..width as i32 {
+            let mut sum = [0u32; 3];
+            let mut opaque = 0;
+            for dy in 0..factor as i32 {
+                for dx in 0..factor as i32 {
+                    let pixel = sprite.get(x * factor as i32 + dx, y * factor as i32 + dy);
+                    if pixel.a >= 128 {
+                        opaque += 1;
+                        sum[0] += u32::from(pixel.r);
+                        sum[1] += u32::from(pixel.g);
+                        sum[2] += u32::from(pixel.b);
+                    }
+                }
+            }
+            if opaque * 3 < block {
+                continue;
+            }
+            let average = Rgba::new(
+                (sum[0] / opaque as u32) as u8,
+                (sum[1] / opaque as u32) as u8,
+                (sum[2] / opaque as u32) as u8,
+                255,
+            );
+            let color = match tint {
+                Tint::Haze(distance, amount) => mix(average, *distance, *amount),
+                Tint::Silhouette(dark) => *dark,
+            };
+            small.set(x, y, color);
+        }
+    }
+    small
+}
+
 /// The spot nearest a point in the scene, if it is close enough to mean that one.
 pub fn spot_at(x: f32, y: f32) -> Option<u8> {
     SPOTS
@@ -174,6 +277,33 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_hilltop_shows_on_another_skyline_and_only_there() {
+        let vista = Vista {
+            tree: (200.0, 60.0),
+            crest: |x| 60.0 + (x - 200.0).abs() * 0.1,
+            spread: 6.0,
+            shrink: 5,
+            tint: Tint::Silhouette(Rgba::new(40, 30, 50, 255)),
+        };
+        let mut empty = Canvas::new(384, 216);
+        skyline(&mut empty, &Arrangement::new(), &vista);
+        assert!(empty.alpha_bounds().is_none());
+        let mut grown = Canvas::new(384, 216);
+        let arrangement =
+            Arrangement::from([(0, "weathervane".to_owned()), (17, "geode".to_owned())]);
+        skyline(&mut grown, &arrangement, &vista);
+        let (left, top, right, bottom) = grown.alpha_bounds().expect("nothing showed");
+        assert!(
+            left >= 180 && right <= 280,
+            "spread too wide: {left}..{right}"
+        );
+        assert!(
+            top >= 40 && bottom <= 76,
+            "not on the crest: {top}..{bottom}"
+        );
     }
 
     #[test]

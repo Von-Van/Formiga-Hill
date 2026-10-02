@@ -224,6 +224,11 @@ impl Playground {
         self.reduce_motion
     }
 
+    /// Repaints what lies behind everyone, as when the Hilltop seen on the skyline changes.
+    pub fn set_backdrop(&mut self, backdrop: Canvas) {
+        self.backdrop = backdrop;
+    }
+
     /// Changes what stands on the ground, as when something is placed on the Hilltop.
     pub fn set_props(&mut self, props: Vec<Prop>) {
         self.props = props;

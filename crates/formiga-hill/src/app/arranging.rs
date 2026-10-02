@@ -39,6 +39,11 @@ impl HillApp {
             ground.set_props(props);
             ground.set_attractions(hilltop::attractions(&arrangement));
         }
+        // The Hill seen from below changes too.
+        self.station.show_hilltop(&arrangement);
+        if let Some((ground, _)) = &mut self.fairground {
+            crate::fairground::show_hilltop(ground, &arrangement);
+        }
     }
 
     /// The spot under a point: a piece standing there, front-most first, or an open spot.

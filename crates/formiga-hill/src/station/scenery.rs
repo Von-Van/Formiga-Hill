@@ -4,6 +4,7 @@
 //! Everything here is painted once into the backdrop, except the chimney smoke, which drifts.
 
 use crate::font::{GLYPH_HEIGHT, draw_text_shadowed, text_width};
+use crate::hilltop::{Arrangement, Tint, Vista, skyline};
 use crate::kit::{Courses, bush, flower_box, plaster, ridge_tiles, roof, stonework, timber};
 use crate::materials::*;
 use crate::paint::{
@@ -34,11 +35,22 @@ const CHIMNEY_TOP: (i32, i32) = (101, 52);
 /// right and bottom edges, for knowing when the pointer is over it.
 pub const CASE: (i32, i32, i32, i32) = (15, 101, 43, 134);
 
-/// The scene behind everyone, with whatever souvenirs the colony has kept in the display case.
-pub fn backdrop(keepsakes: &[String]) -> Canvas {
+/// The Hill as the station sees it: the tree at the top of the near hill, a little way off.
+const VISTA: Vista = Vista {
+    tree: (307.0, 68.0),
+    crest: |x| 160.0 - 92.0 * (1.0 - ((x - 312.0) / 112.0).powi(2)).max(0.0).sqrt(),
+    spread: 6.0,
+    shrink: 5,
+    tint: Tint::Haze(HILL_SHADE, 0.35),
+};
+
+/// The scene behind everyone, with whatever souvenirs the colony has kept in the display case
+/// and whatever stands on the Hilltop, up on the skyline.
+pub fn backdrop(keepsakes: &[String], hilltop: &Arrangement) -> Canvas {
     let mut scene = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
     sky(&mut scene);
     hills(&mut scene);
+    skyline(&mut scene, hilltop, &VISTA);
     garden(&mut scene);
     platform(&mut scene);
     track(&mut scene);
@@ -1126,19 +1138,25 @@ mod tests {
 
     #[test]
     fn the_backdrop_fills_every_pixel() {
-        let scene = backdrop(&[]);
+        let scene = backdrop(&[], &Arrangement::new());
         assert!(scene.pixels().iter().all(|pixel| pixel.a == 255));
     }
 
     #[test]
     fn the_backdrop_is_the_same_every_time() {
-        assert_eq!(backdrop(&[]), backdrop(&[]));
+        assert_eq!(
+            backdrop(&[], &Arrangement::new()),
+            backdrop(&[], &Arrangement::new())
+        );
     }
 
     #[test]
     fn kept_souvenirs_show_in_the_case_and_nothing_else_changes() {
-        let empty = backdrop(&[]);
-        let kept = backdrop(&["picnic_ribbon".to_owned(), "oak_acorn".to_owned()]);
+        let empty = backdrop(&[], &Arrangement::new());
+        let kept = backdrop(
+            &["picnic_ribbon".to_owned(), "oak_acorn".to_owned()],
+            &Arrangement::new(),
+        );
         let (left, top, right, bottom) = CASE;
         for y in 0..SCENE_HEIGHT as i32 {
             for x in 0..SCENE_WIDTH as i32 {
@@ -1154,7 +1172,7 @@ mod tests {
     #[test]
     fn smoke_drifts_unless_motion_is_reduced() {
         let draw = |elapsed, reduce| {
-            let mut scene = backdrop(&[]);
+            let mut scene = backdrop(&[], &Arrangement::new());
             smoke(&mut scene, elapsed, reduce);
             scene
         };
