@@ -161,6 +161,9 @@ pub struct Angling {
     swimmers: Vec<Swimmer>,
     phase: Phase,
     light: f32,
+    /// The light the trip started with, and below how much the dusk's fish come up.
+    full: f32,
+    dusk: f32,
     dusk_told: bool,
     /// Fish landed this trip, and their lengths; and anything that snagged.
     creel: Vec<(&'static str, f32)>,
@@ -190,6 +193,8 @@ pub struct Outset {
     pub party: Vec<Id>,
     /// Trips in a row that caught no new kind of fish.
     pub drought: u32,
+    /// What the Hilltop lends the Woods: light, and the dusk's fish up sooner.
+    pub influence: crate::woods::Influence,
     pub seed: u64,
 }
 
@@ -205,6 +210,7 @@ impl Angling {
         let Outset {
             party,
             drought,
+            influence,
             seed,
         } = outset;
         let characters: Vec<Character> = party
@@ -241,7 +247,9 @@ impl Angling {
             party,
             swimmers,
             phase: Phase::Arriving { since: now },
-            light: LIGHT,
+            light: LIGHT + influence.light,
+            full: LIGHT + influence.light,
+            dusk: DUSK + influence.earlier,
             dusk_told: false,
             creel: Vec::new(),
             basket: Vec::new(),
@@ -270,7 +278,7 @@ impl Angling {
     }
 
     pub fn light_left(&self) -> f32 {
-        (self.light / LIGHT).clamp(0.0, 1.0)
+        (self.light / self.full).clamp(0.0, 1.0)
     }
 
     /// The fish landed this trip, and their lengths in centimetres.
@@ -428,7 +436,7 @@ impl Angling {
         ) {
             self.light -= LIGHT_PER_SEC * dt;
         }
-        if self.light < DUSK && !self.dusk_told {
+        if self.light < self.dusk && !self.dusk_told {
             self.dusk_told = true;
             for swimmer in &mut self.swimmers {
                 swimmer.surfaced = true;
@@ -1084,6 +1092,7 @@ mod tests {
         let outset = Outset {
             party,
             drought: 0,
+            influence: crate::woods::Influence::default(),
             seed: 9,
         };
         let angling = Angling::new(&mut ground, outset, |_| false, 0.0);

@@ -446,6 +446,7 @@ fn fishing_moment(cast: &Cast, at: f32) -> Canvas {
     let outset = Outset {
         party,
         drought: 0,
+        influence: woods::influence(&sample_arrangement()),
         seed: 7,
     };
     let mut trip = Angling::new(&mut pool, outset, |_| false, 0.0);

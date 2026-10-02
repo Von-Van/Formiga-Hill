@@ -23,19 +23,21 @@ impl HillApp {
             |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3),
         );
         let mut ground = fishing::open(cast, &party, now);
+        let influence = crate::woods::influence(&colony.hilltop);
+        let note = influence.notes.first().copied();
         let outset = Outset {
             party,
             drought: colony.fish_drought,
+            influence,
             seed,
         };
         let caught = |id: &str| colony.fish.contains_key(id);
         let angling = Angling::new(&mut ground, outset, caught, now);
         self.woods.fishing = Some((ground, angling));
-        self.notice = Some((
-            "Each kind of fish keeps to its own part of the pool. Click the water to cast."
-                .to_owned(),
-            now,
-        ));
+        let line = note.unwrap_or(
+            "Each kind of fish keeps to its own part of the pool. Click the water to cast.",
+        );
+        self.notice = Some((line.to_owned(), now));
     }
 
     /// Plays the trip on; `holding` reels in while something is on the line.
