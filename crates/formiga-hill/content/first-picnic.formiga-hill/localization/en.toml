@@ -1,0 +1,64 @@
+# The First Picnic, in English. A line is plain text, or a table with `text` and a version for any
+# temperament that would say it differently. {role} becomes the name of whoever plays that role.
+
+title = "The First Picnic"
+
+[spread]
+intro = "Someone has left a picnic blanket on the green, and a basket that smells of warm buns."
+shy = "{shy} watches from the shade of the old oak."
+choose_share = "Open the basket"
+choose_game = "Find something to play with"
+
+[spread.hello]
+text = "{friend}! Look, a whole blanket, and nobody on it."
+sweetheart = "{friend}! Come and sit with me. There's room for everyone."
+grump = "Hmph. Somebody's left a blanket. Fine. We'll sit on it."
+showoff = "I found it first, {friend}. Everyone saw."
+lazybones = "A blanket. In the sun. This is the best day there has ever been."
+scholar = "Gingham, {friend}. Red and white. Somebody planned this."
+troublemaker = "Finders keepers, {friend}. It's ours now."
+explorer = "A blanket all the way out here, {friend}! I wonder who left it."
+guardian = "It's safe, {friend}. I've checked it twice."
+wallflower = "{friend}... would you sit here with me?"
+oddball = "A square of red and white, {friend}. Like a very flat cake."
+
+[share]
+intro = "{host} lifts the lid of the basket. Buns, still warm."
+
+[share.invite]
+text = "There's plenty, {shy}. Come and have one."
+grump = "Don't just stand there, {shy}. Eat something."
+sweetheart = "{shy}! I saved you the biggest one."
+
+[share.little]
+text = "Is there one for me?"
+troublemaker = "I want the one with the most jam."
+
+[game]
+intro = "{friend} goes to see what's in the toy chest."
+cheer = "{shy} cheers from the shade, very quietly."
+
+[game.after]
+text = "Again! Again!"
+grump = "I wasn't even trying."
+showoff = "Did everyone see that?"
+lazybones = "That was a lot of running."
+scholar = "I think I've worked out the rules now."
+
+[turn.ask]
+text = "Can I have a turn?"
+wallflower = "Um... could I have a turn, please?"
+troublemaker = "My turn. My turn!"
+
+[sunset]
+intro = "The sun dips behind the Hill."
+shared = "Not a crumb is left. Everyone is very full."
+played = "Everyone is out of breath, and very happy about it."
+ribbon = "{host} ties a ribbon of gingham into a bow, to keep."
+
+[sunset.end]
+text = "Same time tomorrow, {friend}?"
+grump = "I suppose we could do this again, {friend}."
+sweetheart = "Thank you for today, {friend}. All of it."
+lazybones = "Let's never move again, {friend}."
+showoff = "Best picnic ever. Mostly because of me."

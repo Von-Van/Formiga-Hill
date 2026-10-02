@@ -1,0 +1,248 @@
+# Someone has left a picnic on the green. Three scenes and a choice: share the basket, or find
+# something to play with; then everyone sits down together as the sun goes behind the Hill.
+
+[story]
+id = "first-picnic"
+title = "title"
+area = "green"
+start = "spread"
+
+# The host is whoever is fondest of company, and their closest friend comes along.
+[roles.host]
+order = 1
+select = ["most:affection", "any"]
+
+[roles.friend]
+order = 2
+select = ["friend_of:host", "playmate_of:host", "any"]
+
+# Whoever would rather watch first, if anyone is left to.
+[roles.shy]
+order = 3
+select = ["least:boldness"]
+optional = true
+
+# A little one, if one came and has no part yet.
+[roles.little]
+order = 4
+select = ["mini"]
+optional = true
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "spread"
+
+[[scenes.beats]]
+narrate = "spread.intro"
+
+[[scenes.beats]]
+walk = "host"
+to = "blanket"
+
+[[scenes.beats]]
+walk = "friend"
+to = "beside:host"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "shy"
+to = "oak"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "little"
+to = "swing"
+meanwhile = true
+
+[[scenes.beats]]
+react = "host"
+feeling = "curious"
+
+[[scenes.beats]]
+say = "host"
+line = "spread.hello"
+
+[[scenes.beats]]
+react = "friend"
+feeling = "joy"
+
+[[scenes.beats]]
+pose = "shy"
+as = "peek"
+
+[[scenes.beats]]
+narrate = "spread.shy"
+about = "shy"
+meanwhile = true
+
+[[scenes.beats]]
+choose = [
+  { line = "spread.choose_share", goto = "share" },
+  { line = "spread.choose_game", goto = "game" },
+]
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "share"
+
+[[scenes.beats]]
+narrate = "share.intro"
+
+[[scenes.beats]]
+eat = "host"
+
+[[scenes.beats]]
+eat = "friend"
+meanwhile = true
+
+[[scenes.beats]]
+react = "friend"
+feeling = "fond"
+
+[[scenes.beats]]
+say = "host"
+line = "share.invite"
+when = "present:shy"
+
+[[scenes.beats]]
+walk = "shy"
+to = "beside:friend"
+
+[[scenes.beats]]
+walk = "little"
+to = "beside:host"
+meanwhile = true
+
+[[scenes.beats]]
+react = "shy"
+feeling = "shy"
+
+[[scenes.beats]]
+say = "little"
+line = "share.little"
+
+[[scenes.beats]]
+eat = "shy"
+
+[[scenes.beats]]
+eat = "little"
+meanwhile = true
+
+[[scenes.beats]]
+set = "shared"
+
+[[scenes.beats]]
+goto = "sunset"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "game"
+
+[[scenes.beats]]
+narrate = "game.intro"
+about = "friend"
+
+[[scenes.beats]]
+walk = "friend"
+to = "chest"
+
+[[scenes.beats]]
+pose = "friend"
+as = "inspect"
+
+[[scenes.beats]]
+walk = "friend"
+to = "beside:host"
+
+[[scenes.beats]]
+play = "host"
+with = "friend"
+
+[[scenes.beats]]
+say = "friend"
+line = "game.after"
+
+# The shy one wants a turn, if it is playful enough; otherwise it cheers from the shade.
+[[scenes.beats]]
+if = "high:shy.playfulness"
+goto = "turn"
+
+[[scenes.beats]]
+pose = "shy"
+as = "cheer"
+
+[[scenes.beats]]
+narrate = "game.cheer"
+about = "shy"
+meanwhile = true
+
+[[scenes.beats]]
+goto = "sunset"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "turn"
+
+[[scenes.beats]]
+walk = "shy"
+to = "beside:friend"
+
+[[scenes.beats]]
+say = "shy"
+line = "turn.ask"
+
+[[scenes.beats]]
+react = "friend"
+feeling = "joy"
+
+[[scenes.beats]]
+play = "shy"
+with = "friend"
+
+[[scenes.beats]]
+celebrate = "shy"
+
+[[scenes.beats]]
+goto = "sunset"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "sunset"
+
+[[scenes.beats]]
+narrate = "sunset.intro"
+
+[[scenes.beats]]
+walk = "all"
+to = "blanket"
+
+[[scenes.beats]]
+pose = "all"
+as = "sit"
+
+[[scenes.beats]]
+narrate = "sunset.shared"
+when = "flag:shared"
+meanwhile = true
+
+[[scenes.beats]]
+narrate = "sunset.played"
+when = "!flag:shared"
+meanwhile = true
+
+[[scenes.beats]]
+say = "host"
+line = "sunset.end"
+
+[[scenes.beats]]
+react = "friend"
+feeling = "fond"
+
+[[scenes.beats]]
+souvenir = "picnic_ribbon"
+
+[[scenes.beats]]
+narrate = "sunset.ribbon"
+
+[[scenes.beats]]
+end = true

@@ -21,6 +21,10 @@ pub enum Step {
     Walk {
         to: (f32, f32),
     },
+    /// The same, briskly: somewhere to be, because a story is waiting on it.
+    Stride {
+        to: (f32, f32),
+    },
     /// Turn towards another actor.
     Face(Id),
     /// Turn towards a point across the scene.
@@ -57,6 +61,8 @@ struct Frame {
 const FRAME_CACHE_LIMIT: usize = 1500;
 /// How long one turn of a spin lasts.
 const SPIN_TURN: f32 = 0.22;
+/// How much faster a stride is than a stroll.
+const STRIDE: f32 = 1.6;
 
 pub struct Actor {
     pub id: Id,
@@ -106,7 +112,10 @@ impl Actor {
     }
 
     pub fn walking(&self) -> bool {
-        matches!(self.steps.front(), Some(Step::Walk { .. }))
+        matches!(
+            self.steps.front(),
+            Some(Step::Walk { .. } | Step::Stride { .. })
+        )
     }
 
     pub fn current_beat(&self) -> Option<&Beat> {
@@ -133,7 +142,7 @@ impl Actor {
             .iter()
             .rev()
             .find_map(|step| match step {
-                Step::Walk { to } => Some(*to),
+                Step::Walk { to } | Step::Stride { to } => Some(*to),
                 _ => None,
             })
             .unwrap_or(self.pos)
@@ -150,16 +159,20 @@ impl Actor {
         let mut budget = dt;
         while let Some(step) = self.steps.front().copied() {
             let done = match step {
-                Step::Walk { to } => {
+                Step::Walk { to } | Step::Stride { to } => {
                     let (dx, dy) = (to.0 - self.pos.0, to.1 - self.pos.1);
                     let distance = (dx * dx + dy * dy).sqrt();
                     if dx.abs() > 0.5 {
                         self.facing_right = dx > 0.0;
                     }
-                    let stride = self.character.walk_speed() * budget;
+                    let speed = match step {
+                        Step::Stride { .. } => self.character.walk_speed() * STRIDE,
+                        _ => self.character.walk_speed(),
+                    };
+                    let stride = speed * budget;
                     if stride >= distance {
                         self.pos = to;
-                        budget -= distance / self.character.walk_speed();
+                        budget -= distance / speed;
                         true
                     } else {
                         self.pos.0 += dx / distance * stride;
@@ -200,7 +213,7 @@ impl Actor {
         let elapsed = self.step_elapsed(now);
         let still = self.reduce_motion;
         let (clip, frame, expression, mut facing_right) = match self.steps.front() {
-            Some(Step::Walk { .. }) => {
+            Some(Step::Walk { .. } | Step::Stride { .. }) => {
                 let clip = BodyClip::Action(ActionKind::Traverse);
                 (
                     clip,

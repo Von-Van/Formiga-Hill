@@ -10,9 +10,11 @@ mod font;
 mod green;
 mod kit;
 mod materials;
+mod memories;
 mod paint;
 mod sheet;
 mod station;
+mod story;
 mod trip;
 
 use anyhow::{Context, Result, bail};
@@ -38,6 +40,10 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-station <PNG>   Draw the station to a PNG and exit without opening a window
   --render-green <PNG>     Draw the Village Green to a PNG and exit without opening a window
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
+  --render-story <PNG>     Draw a story on the green --at seconds after it starts, reading each
+                           line for 2.5 seconds and taking the first choice
+  --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
+  --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
   --at <SECONDS>           Draw that far into the arrival, or into free play on the green
 ";
 
@@ -53,12 +59,18 @@ enum Area {
     Green,
     /// Not an area: the review sheet of everyone's reactions.
     Reactions,
+    /// The green, a story under way on it.
+    Story,
 }
 
 struct Args {
     source: Source,
     render: Option<(Area, PathBuf)>,
     at: Option<f32>,
+    /// Package folders to load beside Hill's own, for authors.
+    packages: Vec<PathBuf>,
+    /// Check these package folders and report, without opening a window.
+    check: Vec<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -66,6 +78,9 @@ fn main() -> Result<()> {
         print!("{USAGE}");
         return Ok(());
     };
+    if !args.check.is_empty() {
+        return check_packages(&args.check);
+    }
     let arrival = arrive(args.source)?;
 
     if let Some((area, path)) = args.render {
@@ -89,6 +104,14 @@ fn main() -> Result<()> {
                 green.compose(now)
             }
             Area::Reactions => sheet::reactions(&arrival.cast),
+            Area::Story => {
+                let library = story::Library::load(&args.packages);
+                let (_, chosen) = library
+                    .stories()
+                    .last()
+                    .context("there is no story to play")?;
+                story_moment(&arrival.cast, chosen, args.at.unwrap_or(12.0))?
+            }
         };
         write_png(&path, &canvas, 3)?;
         println!("Drew the {area:?} to {}", path.display());
@@ -109,7 +132,10 @@ fn main() -> Result<()> {
     eframe::run_native(
         "Formiga Hill",
         options,
-        Box::new(|cc| Ok(Box::new(HillApp::new(cc, arrival)))),
+        Box::new(|cc| {
+            let library = story::Library::load(&args.packages);
+            Ok(Box::new(HillApp::new(cc, arrival, library)))
+        }),
     )
     .map_err(|error| anyhow::anyhow!("the Hill window could not open: {error}"))
 }
@@ -118,6 +144,8 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut source = None;
     let mut render = None;
     let mut at = None;
+    let mut packages = Vec::new();
+    let mut check = Vec::new();
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
             bail!("choose one of --sample, {LAUNCH_ARGUMENT}, or --from-save");
@@ -138,6 +166,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Station, value("--render-station")?));
             }
             Some("--render-green") => render = Some((Area::Green, value("--render-green")?)),
+            Some("--render-story") => render = Some((Area::Story, value("--render-story")?)),
             Some("--render-reactions") => {
                 render = Some((Area::Reactions, value("--render-reactions")?));
             }
@@ -151,6 +180,8 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                         .with_context(|| format!("--at needs seconds, not {seconds:?}"))?,
                 );
             }
+            Some("--package") => packages.push(value("--package")?),
+            Some("--check-package") => check.push(value("--check-package")?),
             Some("-h" | "--help") => return Ok(None),
             _ => bail!("unexpected argument {arg:?}\n\n{USAGE}"),
         }
@@ -162,6 +193,8 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         source: source.unwrap_or(Source::Sample),
         render,
         at,
+        packages,
+        check,
     }))
 }
 
@@ -194,6 +227,81 @@ fn arrive(source: Source) -> Result<Arrival> {
             }
         }
     })
+}
+
+/// A story `at` seconds in, with each line read after two and a half seconds and the first choice
+/// always taken, for seeing how it is staged.
+fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
+    // The colony arrives and settles on the green first, as it would before anyone opens a story.
+    const SETTLE: f32 = 12.0;
+    let mut green = green::Green::new(cast, 0.0);
+    let mut now = 0.0;
+    while now < SETTLE {
+        now += 1.0 / 30.0;
+        green.tick(cast, now);
+    }
+    let mut director = story::Director::new(chosen.clone(), cast, 1).map_err(anyhow::Error::msg)?;
+    green.reserve(director.players());
+    let at = SETTLE + at;
+    let mut shown_since = None;
+    while now < at && !director.finished() {
+        now += 1.0 / 30.0;
+        green.tick(cast, now);
+        director.run(&mut green, cast, now);
+        let speaker = director
+            .shown()
+            .and_then(|shown| shown.speaker.as_ref().map(|(id, _)| *id));
+        green.set_speaker(speaker);
+        if director.shown().is_some() {
+            let since = *shown_since.get_or_insert(now);
+            if now - since > 2.5 && now + 1.0 / 30.0 < at {
+                director.read_on();
+                shown_since = None;
+            }
+        }
+        if !director.choices().is_empty() {
+            director.choose(0);
+        }
+    }
+    if let Some(shown) = director.shown() {
+        let speaker = shown.speaker.as_ref().map_or("", |(_, name)| name.as_str());
+        println!(
+            "On show: {speaker}{}{}",
+            if speaker.is_empty() { "" } else { ": " },
+            shown.text
+        );
+    }
+    Ok(green.compose(now))
+}
+
+/// Checks package folders as Hill would load them, and says what is wrong in each.
+fn check_packages(folders: &[PathBuf]) -> Result<()> {
+    let mut failed = 0;
+    for folder in folders {
+        let label = folder.display().to_string();
+        match story::read_folder(folder).and_then(|files| story::load(&files, &label)) {
+            Ok(package) => {
+                println!(
+                    "{} {} (\u{201c}{}\u{201d} by {}) loads:",
+                    package.id, package.version, package.title, package.author
+                );
+                for story in &package.stories {
+                    println!(
+                        "  \u{201c}{}\u{201d}, for {} or more travellers",
+                        story.title, story.min_cast
+                    );
+                }
+            }
+            Err(problem) => {
+                failed += 1;
+                println!("{problem}");
+            }
+        }
+    }
+    if failed > 0 {
+        bail!("{failed} of {} packages would not load", folders.len());
+    }
+    Ok(())
 }
 
 /// Writes the canvas scaled up by whole pixels.
