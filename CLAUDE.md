@@ -36,7 +36,7 @@ side of it.
   plan for the Woods → Hilltop loop is DESIGN.md §2; build it to that, and to the owner's go-ahead.
 - Watching earns keepsakes for the display case at most: the finds that build the Hilltop come
   only from the Woods.
-- Every find stays findable by any single companion: a companion's leanings and knacks weight
+- Every find and every kind of fish stays findable by any single companion: a companion's leanings and knacks weight
   the odds and widen the ring, and the spots only some company opens are extra chances; none of
   it gates anything. Any Hilltop spot takes any piece, so every
   piece fits within `finds::art::PIECE_MAX`.
@@ -63,8 +63,8 @@ side of it.
 - The gate, which CI runs on macOS and Windows:
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 - `--render-station`, `--render-green`, `--render-fairground`, `--render-hide-and-seek`,
-  `--render-woods`, `--render-hilltop` (each with `--at <seconds>`), `--render-finds` and
-  `--render-reactions` draw without a window; look at them, cropped and
+  `--render-woods`, `--render-fishing`, `--render-hilltop` (each with `--at <seconds>`),
+  `--render-finds`, `--render-fish` and `--render-reactions` draw without a window; look at them, cropped and
   enlarged, after changing anything visual or any behaviour in `character.rs`.
 - Behaviour is never written for a particular creature: it is read from the snapshot (axes,
   kind, pace, habits, bonds, family) in `character.rs`, so every colony plays out differently.

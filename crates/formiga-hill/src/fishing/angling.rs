@@ -1274,6 +1274,39 @@ mod tests {
     }
 
     #[test]
+    fn with_reduced_motion_fish_move_in_steps_and_the_cast_is_a_cut() {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        snapshot.presentation.reduce_motion = true;
+        let cast = Cast::new(snapshot).unwrap();
+        let (mut ground, mut angling) = trip(&cast, vec![cast.members[0].id]);
+        run(&mut ground, &mut angling, &cast, 0.0, 6.0);
+        // Over six seconds, fish that glide would be drawn somewhere new nearly every frame; in
+        // steps, only every step.
+        let mut changes = 0;
+        let mut last: Vec<(f32, f32)> = angling.swimmers.iter().map(|s| s.shown).collect();
+        let mut now = 6.0;
+        while now < 12.0 {
+            run(&mut ground, &mut angling, &cast, now, now + 1.0 / 30.0);
+            now += 1.0 / 30.0;
+            let shown: Vec<(f32, f32)> = angling.swimmers.iter().map(|s| s.shown).collect();
+            if shown != last {
+                changes += 1;
+                last = shown;
+            }
+        }
+        assert!(
+            (2..=6).contains(&changes),
+            "drawn somewhere new {changes} times in six seconds"
+        );
+        let ((x, y), _) = Haunt::Deep.area();
+        angling.cast(&mut ground, (x, y), 9.0);
+        assert!(
+            matches!(angling.phase(), Phase::Waiting { .. }),
+            "the float flew"
+        );
+    }
+
+    #[test]
     fn haunts_are_named_where_they_are() {
         for haunt in Haunt::ALL {
             let ((x, y), _) = haunt.area();

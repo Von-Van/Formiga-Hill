@@ -23,7 +23,7 @@ owns only the destination.
 | Village Green | Free play, pats, snacks and toys; stories are staged here for now | Built |
 | Fairground | Games the colony plays among themselves while you watch, starting with hide-and-seek | Built |
 | Clubhouse | Authored scenes (DESIGN.md §2) | Later |
-| Woods | Activities you play yourself, with a companion or two, for finds to take home (DESIGN.md §2, the Woods → Hilltop loop), starting with rummaging | Being built |
+| Woods | Activities you play yourself, with a companion or two, for finds to take home (DESIGN.md §2, the Woods → Hilltop loop): rummaging in the glade, fishing at the pool | Being built |
 | Hilltop | The colony's own place, empty at first, filled and arranged with what the Woods turns up | Being built |
 
 ## Where it is
@@ -47,7 +47,8 @@ owns only the destination.
 | Done | The Hilltop: any find stands on any of eighteen spots, moved or put back at will, and the colony visits what stands there, sitting on the stones, gazing through the telescope, napping by the berry bush. A journal of every find, who found it first, and hints of the rest |
 | Done | What stands on the Hilltop changes the Woods (a lantern lends light, the telescope brings rare signs out sooner, each piece draws the eye to its kind of spot), and shows small on the station's hill and in silhouette on the Fairground's skyline |
 | Done | Spots only some company opens: a badger sett for an explorer, a crevice only a little one fits, a boulder a close pair can heave over. Extra chances, never the only way to anything |
-| Next | More Woods activities (fishing, bug catching, longer expeditions); finds that open new Woods possibilities; the hidden Cursor Sovereign |
+| Done | Fishing at the pool: eight kinds of fish, each keeping to its own part of the pool (trout under the falls, pike in the reeds, carp by the lilies). Cast where you think they are, but not on top of a wary one; tell a nibble from a bite, each kind nibbling its own number of times; reel in and ease off when it pulls, or the line snaps. The Old One only comes up at dusk. A patient angler gets a longer moment to strike, a playful one draws fish in, a strong one strains the line less, a dozing lazybones gets bolder bites, and a second companion lands fish with the net. Fish are let go and remembered: how many, the longest, and who caught the first. Now and then something snags and comes home for the Hilltop |
+| Next | More Woods activities (bug catching, longer expeditions); finds that open new Woods possibilities; the hidden Cursor Sovereign |
 
 ## Running it
 
@@ -66,6 +67,8 @@ cargo run -p formiga-hill -- --render-hide-and-seek hiding.png --at 10
 cargo run -p formiga-hill -- --render-woods woods.png --at 30
 cargo run -p formiga-hill -- --render-hilltop hilltop.png
 cargo run -p formiga-hill -- --render-finds finds.png
+cargo run -p formiga-hill -- --render-fishing fishing.png --at 20
+cargo run -p formiga-hill -- --render-fish fish.png
 cargo run -p formiga-hill -- --render-reactions reactions.png
 cargo run -p formiga-hill -- --render-story story.png --at 20
 cargo run -p formiga-hill -- --check-package path/to/my-story.formiga-hill
