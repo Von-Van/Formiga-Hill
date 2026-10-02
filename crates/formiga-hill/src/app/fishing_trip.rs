@@ -65,6 +65,7 @@ impl HillApp {
                     "Hooked! Hold to reel in, and ease off when it pulls.".to_owned()
                 }
                 Event::Snapped => "Snap! It got away.".to_owned(),
+                Event::SlippedOff => "In the dusk, it slipped quietly off the hook.".to_owned(),
                 Event::Landed { fish, length } => {
                     format!("{}, {length:.1} cm! Admired, and let go.", kind(fish))
                 }

@@ -48,6 +48,9 @@ const REEL_SPEED: f32 = 42.0;
 const PULL_SPEED: f32 = 26.0;
 const STRAIN: f32 = 1.0;
 const EASE: f32 = 0.7;
+/// Once the light has gone, how long a fish left on the line untended stays on before it slips
+/// off, so a trip always ends.
+const UNTENDED_SECS: f32 = 8.0;
 /// How long a landed fish is held up to admire before it goes back.
 const ADMIRE_SECS: f32 = 2.2;
 /// With reduced motion, fish move in steps this far apart rather than gliding.
@@ -112,21 +115,35 @@ pub struct Fight {
     pub strain: f32,
     pulling_until: f32,
     next_pull: f32,
+    /// When it was hooked.
+    hooked_at: f32,
 }
 
 /// Something that happened, for the person to be told.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Event {
-    Spooked { fish: &'static str },
+    Spooked {
+        fish: &'static str,
+    },
     Nibble,
     Bite,
     TooSoon,
     Stolen,
-    Hooked { fish: &'static str },
+    Hooked {
+        fish: &'static str,
+    },
     Snapped,
-    Landed { fish: &'static str, length: f32 },
+    /// Left on the line in the dark, it slipped quietly off the hook.
+    SlippedOff,
+    Landed {
+        fish: &'static str,
+        length: f32,
+    },
     Snagged,
-    Pointed { who: Id, haunt: Haunt },
+    Pointed {
+        who: Id,
+        haunt: Haunt,
+    },
     Dusk,
     Leaving,
 }
@@ -175,6 +192,8 @@ pub struct Angling {
     clock: f32,
     /// Whether the person is holding the line in.
     holding: bool,
+    /// When the person last held the line in.
+    last_held: f32,
     /// What the snag will be, decided at the cast.
     snag: Option<&'static Find>,
     /// From who came along: how long the bite lasts, how far a cast can stray, how readily fish
@@ -259,6 +278,7 @@ impl Angling {
             last_step: now,
             clock: now,
             holding: false,
+            last_held: now,
             snag: None,
             window: 0.85 + 0.5 * patience,
             stray: 4.0 + 14.0 * (1.0 - (0.6 * patience + 0.4 * calm)),
@@ -367,6 +387,7 @@ impl Angling {
                         strain: 0.0,
                         pulling_until: now + 0.6,
                         next_pull: now + 1.6,
+                        hooked_at: now,
                     });
                     self.events.push(Event::Hooked {
                         fish: self.swimmers[index].fish.id,
@@ -683,6 +704,17 @@ impl Angling {
         let (low, high) = fish.length;
         let heft = 0.8 + 0.4 * ((length - low) / (high - low).max(1.0)).clamp(0.0, 1.0);
         let pulling = now < fight.pulling_until;
+        if self.holding {
+            self.last_held = now;
+        }
+        // In the dark with nobody tending the line, the fish slips off and the day is done.
+        if self.light <= 0.0 && now - self.last_held.max(fight.hooked_at) > UNTENDED_SECS {
+            self.scare(fight.swimmer, now);
+            self.let_go();
+            self.events.push(Event::SlippedOff);
+            self.phase = Phase::Ready;
+            return;
+        }
         if now >= fight.next_pull {
             fight.pulling_until = now + self.dice.range(0.5, 1.2) * (0.5 + fish.strength);
             fight.next_pull =
@@ -1319,6 +1351,21 @@ mod tests {
             matches!(angling.phase(), Phase::Waiting { .. }),
             "the float flew"
         );
+    }
+
+    #[test]
+    fn a_fish_left_on_the_line_in_the_dark_slips_off_and_the_day_ends() {
+        let cast = sample();
+        let (mut ground, mut angling) = trip(&cast, vec![cast.members[0].id]);
+        run(&mut ground, &mut angling, &cast, 0.0, 6.0);
+        let now = cast_and_hook(&mut ground, &mut angling, &cast, 6.0);
+        angling.light = 0.0;
+        // Nobody reels: the fish neither snaps the line nor stays on for ever.
+        angling.hold(false);
+        let events = run(&mut ground, &mut angling, &cast, now, now + 30.0);
+        assert!(events.contains(&Event::SlippedOff), "{events:?}");
+        assert!(events.contains(&Event::Leaving), "{events:?}");
+        assert!(!events.contains(&Event::Snapped));
     }
 
     #[test]
