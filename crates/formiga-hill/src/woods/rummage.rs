@@ -15,7 +15,7 @@
 //! for less light; two together catch things more easily, and a close pair more easily still. And
 //! what is out there leans towards who came (see `finds`).
 
-use super::{SPOTS, Spot};
+use super::{Influence, SPOTS, Spot};
 use crate::actor::Step;
 use crate::cast::Id;
 use crate::character::{Beat, Character, Cue};
@@ -135,8 +135,25 @@ struct Sign {
     until: f32,
 }
 
+/// What an outing sets out with.
+pub struct Outset {
+    /// Who came along; the first leads.
+    pub party: Vec<Id>,
+    /// Outings in a row that found nothing new.
+    pub drought: u32,
+    /// Whether the two who came are close friends.
+    pub close_pair: bool,
+    /// What the Hilltop lends the Woods.
+    pub influence: Influence,
+    pub seed: u64,
+}
+
 pub struct Rummage {
     party: Vec<Id>,
+    /// The light the outing started with.
+    full: f32,
+    /// Below this much light, rare things start to show themselves.
+    dusk: f32,
     caches: Vec<Option<&'static Find>>,
     searched: Vec<bool>,
     signs: Vec<Sign>,
@@ -178,27 +195,22 @@ pub fn best_at(character: &Character) -> Kind {
         .unwrap_or(Kind::Dig)
 }
 
-fn kind_index(kind: Kind) -> usize {
-    match kind {
-        Kind::Dig => 0,
-        Kind::Reach => 1,
-        Kind::Scoop => 2,
-        Kind::Shake => 3,
-    }
-}
-
 impl Rummage {
-    /// Sets out with `party` (the first leads), already standing in `ground`. `found_before` says
-    /// which finds the colony has already; `drought` is how many outings have found nothing new.
+    /// Sets out with the party, already standing in `ground`. `found_before` says which finds the
+    /// colony has already.
     pub fn new(
         ground: &mut Playground,
-        party: Vec<Id>,
+        outset: Outset,
         found_before: impl Fn(&str) -> bool,
-        drought: u32,
-        close_pair: bool,
-        seed: u64,
         now: f32,
     ) -> Self {
+        let Outset {
+            party,
+            drought,
+            close_pair,
+            influence,
+            seed,
+        } = outset;
         let characters: Vec<Character> = party
             .iter()
             .filter_map(|id| ground.character(*id).cloned())
@@ -206,10 +218,17 @@ impl Rummage {
         let refs: Vec<&Character> = characters.iter().collect();
         let mut dice = Dice::new(seed);
         let kinds: Vec<Kind> = SPOTS.iter().map(|spot| spot.kind).collect();
-        let caches = finds::stock(&kinds, &refs, found_before, drought, &mut dice);
+        let caches = finds::stock(
+            &kinds,
+            &refs,
+            found_before,
+            drought,
+            &influence.richer,
+            &mut dice,
+        );
         let mut knack_by_kind = [1.0; 4];
         for kind in Kind::ALL {
-            knack_by_kind[kind_index(kind)] = characters
+            knack_by_kind[kind.index()] = characters
                 .iter()
                 .map(|c| knack(c, kind))
                 .fold(0.85, f32::max);
@@ -225,12 +244,15 @@ impl Rummage {
         for sign in &mut signs {
             sign.next = now + 2.0 + dice.range(0.0, 3.0);
         }
+        let full = LIGHT + influence.light;
         Self {
             party,
+            full,
+            dusk: DUSK + influence.earlier,
             searched: vec![false; SPOTS.len()],
             caches,
             signs,
-            light: LIGHT,
+            light: full,
             basket: Vec::new(),
             phase: Phase::Arriving { since: now },
             events: Vec::new(),
@@ -251,8 +273,9 @@ impl Rummage {
         &self.party
     }
 
-    pub fn light(&self) -> f32 {
-        self.light
+    /// How much of the light is left, from 0 to 1.
+    pub fn light_left(&self) -> f32 {
+        (self.light / self.full).clamp(0.0, 1.0)
     }
 
     pub fn basket(&self) -> &[&'static str] {
@@ -474,7 +497,7 @@ impl Rummage {
                             centre,
                             width: ARC
                                 * rarity_arc(find.tier)
-                                * self.knack[kind_index(kind)]
+                                * self.knack[kind.index()]
                                 * self.help,
                             period: 1.5 * rarity_pace(find.tier),
                             misses: 0,
@@ -552,7 +575,7 @@ impl Rummage {
             };
             self.signs[index].next = now + self.dice.range(low, high);
             // The rarest only show themselves as the light goes.
-            if find.tier >= Tier::Rare && self.light > DUSK {
+            if find.tier >= Tier::Rare && self.light > self.dusk {
                 continue;
             }
             self.signs[index].until = now + SIGN_SECS;
@@ -644,11 +667,11 @@ impl Rummage {
             }
         }
         // The light left, gold going to dusk.
-        let bar = ((width - 4) as f32 * (self.light / LIGHT).clamp(0.0, 1.0)) as i32;
+        let bar = ((width - 4) as f32 * (self.light / self.full).clamp(0.0, 1.0)) as i32;
         let gold = mix(
             rgb(0x6a5a9a),
             rgb(0xf5d25e),
-            (self.light / LIGHT).clamp(0.0, 1.0),
+            (self.light / self.full).clamp(0.0, 1.0),
         );
         scene.fill_rect(left + 2, top + SLOT + 2, bar, 2, gold);
     }
@@ -870,7 +893,14 @@ mod tests {
 
     fn outing(cast: &Cast, party: Vec<Id>) -> (Playground, Rummage) {
         let mut ground = woods::open(cast, &party, 0.0);
-        let rummage = Rummage::new(&mut ground, party, |_| false, 0, false, 11, 0.0);
+        let outset = Outset {
+            party,
+            drought: 0,
+            close_pair: false,
+            influence: Influence::default(),
+            seed: 11,
+        };
+        let rummage = Rummage::new(&mut ground, outset, |_| false, 0.0);
         (ground, rummage)
     }
 
@@ -942,14 +972,14 @@ mod tests {
         let Phase::Catching(before) = rummage.phase else {
             panic!();
         };
-        let light = rummage.light();
+        let light = rummage.light;
         // Opposite the arc.
         rummage.strike(&mut ground, when_at(&before, before.centre + PI, 16.0));
         let Phase::Catching(after) = rummage.phase else {
             panic!("{:?}", rummage.phase);
         };
         assert!(after.width > before.width);
-        assert!(rummage.light() < light);
+        assert!(rummage.light < light);
         assert!(rummage.basket().is_empty());
     }
 
@@ -1015,7 +1045,7 @@ mod tests {
         };
         run(&mut ground, &mut rummage, &cast, 0.0, 60.0);
         assert_eq!(rummage.signs[rare].until, 0.0, "it showed in full daylight");
-        rummage.light = DUSK - 1.0;
+        rummage.light = rummage.dusk - 1.0;
         run(&mut ground, &mut rummage, &cast, 60.0, 90.0);
         assert!(rummage.signs[rare].until > 60.0);
     }

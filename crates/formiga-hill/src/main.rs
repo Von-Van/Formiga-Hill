@@ -379,7 +379,14 @@ fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
 fn woods_moment(cast: &Cast, at: f32) -> Canvas {
     let party: Vec<cast::Id> = cast.ids().take(2).collect();
     let mut glade = woods::open(cast, &party, 0.0);
-    let mut outing = woods::rummage::Rummage::new(&mut glade, party, |_| false, 0, false, 5, 0.0);
+    let outset = woods::rummage::Outset {
+        party,
+        drought: 0,
+        close_pair: false,
+        influence: woods::influence(&sample_arrangement()),
+        seed: 5,
+    };
+    let mut outing = woods::rummage::Rummage::new(&mut glade, outset, |_| false, 0.0);
     let mut now = 0.0;
     let mut next = 0;
     while now < at {

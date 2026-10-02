@@ -6,7 +6,8 @@ pub mod rummage;
 mod scenery;
 
 use crate::cast::{Cast, Id};
-use crate::finds::Kind;
+use crate::finds::{self, Kind};
+use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Patch, Playground};
 
 /// A place in the glade worth searching.
@@ -127,6 +128,78 @@ pub fn layout() -> Layout {
     }
 }
 
+/// How what stands on the Hilltop changes the Woods. Nothing is unlocked by it and nothing is
+/// shut out without it: it lends a little light, brings the rarest signs out sooner, and draws
+/// the eye to the kinds of places the colony has been finding things in.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Influence {
+    /// Extra light each outing starts with.
+    pub light: f32,
+    /// How much sooner, in light, the rarest signs start to show.
+    pub earlier: f32,
+    /// How much likelier a spot of each kind is to hold something.
+    pub richer: [f32; 4],
+    /// What to tell the person about it as they set off.
+    pub notes: Vec<&'static str>,
+}
+
+/// The most any of it can add up to, so the Hilltop helps without taking over.
+const MOST_LIGHT: f32 = 20.0;
+const MOST_EARLIER: f32 = 15.0;
+const MOST_RICHER: f32 = 0.2;
+
+pub fn influence(arrangement: &Arrangement) -> Influence {
+    let mut influence = Influence::default();
+    let note = |text: &'static str, notes: &mut Vec<&'static str>| {
+        if !notes.contains(&text) {
+            notes.push(text);
+        }
+    };
+    for id in arrangement.values() {
+        let Some(find) = finds::find(id) else {
+            continue;
+        };
+        // Each piece draws the eye to the sort of place it came from.
+        let richer = &mut influence.richer[find.kind.index()];
+        *richer = (*richer + 0.04).min(MOST_RICHER);
+        match find.id {
+            "lost_lantern" => {
+                influence.light += 10.0;
+                note(
+                    "The lantern post on the Hilltop lights the way home: a little more light.",
+                    &mut influence.notes,
+                );
+            }
+            "sun_coin" => {
+                influence.light += 6.0;
+                note(
+                    "With the sundial to go by, nobody loses track of the time: a little more light.",
+                    &mut influence.notes,
+                );
+            }
+            "fallen_star" => {
+                influence.light += 6.0;
+                influence.earlier += 8.0;
+                note(
+                    "The star stone glows on the Hilltop: rare things show themselves sooner.",
+                    &mut influence.notes,
+                );
+            }
+            "brass_lens" => {
+                influence.earlier += 10.0;
+                note(
+                    "From the telescope you can see where to look: rare things show themselves sooner.",
+                    &mut influence.notes,
+                );
+            }
+            _ => {}
+        }
+    }
+    influence.light = influence.light.min(MOST_LIGHT);
+    influence.earlier = influence.earlier.min(MOST_EARLIER);
+    influence
+}
+
 /// The glade, with the companions who came walking in.
 pub fn open(cast: &Cast, party: &[Id], now: f32) -> Playground {
     Playground::with_members(
@@ -143,6 +216,32 @@ pub fn open(cast: &Cast, party: &[Id], now: f32) -> Playground {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_hilltop_helps_the_woods_but_only_so_far() {
+        assert_eq!(influence(&Arrangement::new()), Influence::default());
+        let lit = influence(&Arrangement::from([
+            (0, "lost_lantern".to_owned()),
+            (1, "lost_lantern".to_owned()),
+            (2, "lost_lantern".to_owned()),
+            (3, "brass_lens".to_owned()),
+            (4, "fallen_star".to_owned()),
+        ]));
+        assert_eq!(lit.light, MOST_LIGHT);
+        assert_eq!(lit.earlier, MOST_EARLIER);
+        assert_eq!(
+            lit.notes.len(),
+            3,
+            "each kind of help is told once: {:?}",
+            lit.notes
+        );
+        let planted: Arrangement = (0..18)
+            .map(|spot| (spot, "wild_berries".to_owned()))
+            .collect();
+        let richer = influence(&planted).richer;
+        assert_eq!(richer[Kind::Shake.index()], MOST_RICHER);
+        assert_eq!(richer[Kind::Dig.index()], 0.0);
+    }
 
     #[test]
     fn every_spot_can_be_reached_and_each_kind_has_three() {

@@ -30,6 +30,16 @@ pub enum Kind {
 impl Kind {
     pub const ALL: [Self; 4] = [Self::Dig, Self::Reach, Self::Scoop, Self::Shake];
 
+    /// Its place in `ALL`, for anything kept per kind.
+    pub fn index(self) -> usize {
+        match self {
+            Self::Dig => 0,
+            Self::Reach => 1,
+            Self::Scoop => 2,
+            Self::Shake => 3,
+        }
+    }
+
     /// What a companion does there, for the person to read: "dig", "reach in".
     pub fn verb(self) -> &'static str {
         match self {
@@ -479,12 +489,14 @@ const STOCKED: f32 = 0.65;
 
 /// What is hidden where on one outing: a find, or nothing, for each spot of the given kinds.
 /// `found_before` says whether the colony already has a find in its journal; `drought` is how
-/// many outings in a row have turned up nothing new.
+/// many outings in a row have turned up nothing new; `richer` adds to the chance that a spot of
+/// each kind holds something, as what stands on the Hilltop draws the eye to it.
 pub fn stock(
     spots: &[Kind],
     party: &[&Character],
     found_before: impl Fn(&str) -> bool,
     drought: u32,
+    richer: &[f32; 4],
     dice: &mut Dice,
 ) -> Vec<Option<&'static Find>> {
     let weight = |find: &Find| {
@@ -493,7 +505,7 @@ pub fn stock(
     };
     let mut stocked: Vec<Option<&'static Find>> = Vec::with_capacity(spots.len());
     for kind in spots {
-        if !dice.chance(STOCKED) {
+        if !dice.chance((STOCKED + richer[kind.index()]).min(0.95)) {
             stocked.push(None);
             continue;
         }
@@ -594,7 +606,7 @@ mod tests {
             let mut dice = Dice::new(7);
             let mut seen = std::collections::BTreeMap::new();
             for _ in 0..400 {
-                for find in stock(&SPOTS, &[character], |_| true, 0, &mut dice)
+                for find in stock(&SPOTS, &[character], |_| true, 0, &[0.0; 4], &mut dice)
                     .into_iter()
                     .flatten()
                 {
@@ -627,6 +639,7 @@ mod tests {
                     &[&character],
                     |id| found.contains(id),
                     drought,
+                    &[0.0; 4],
                     &mut dice,
                 );
                 // A middling outing: the light lasts for about five good searches.

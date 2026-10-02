@@ -6,7 +6,7 @@ use crate::cast::Id;
 use crate::character::Character;
 use crate::finds;
 use crate::playground::Playground;
-use crate::woods::rummage::{self, BASKET, Ending, Event, LIGHT, Phase, Rummage};
+use crate::woods::rummage::{self, BASKET, Ending, Event, Outset, Phase, Rummage};
 use crate::woods::{self, SPOTS};
 use eframe::egui;
 use formiga_art::Canvas;
@@ -59,21 +59,20 @@ impl HillApp {
                 (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
             });
         let mut ground = woods::open(cast, &party, now);
-        let found = |id: &str| colony.finds.contains_key(id);
-        let rummage = Rummage::new(
-            &mut ground,
+        let influence = woods::influence(&colony.hilltop);
+        let note = influence.notes.first().copied();
+        let outset = Outset {
             party,
-            found,
-            colony.drought,
+            drought: colony.drought,
             close_pair,
+            influence,
             seed,
-            now,
-        );
+        };
+        let found = |id: &str| colony.finds.contains_key(id);
+        let rummage = Rummage::new(&mut ground, outset, found, now);
         self.woods.outing = Some((ground, rummage));
-        self.notice = Some((
-            "Choose somewhere to search. Watch for signs.".to_owned(),
-            now,
-        ));
+        let line = note.unwrap_or("Choose somewhere to search. Watch for signs.");
+        self.notice = Some((line.to_owned(), now));
     }
 
     /// Plays the outing on; with reduced motion, `holding` turns the marker.
@@ -245,7 +244,7 @@ impl HillApp {
             }
             Some((ground, rummage)) => {
                 ui.add(
-                    egui::ProgressBar::new((rummage.light() / LIGHT).clamp(0.0, 1.0))
+                    egui::ProgressBar::new(rummage.light_left())
                         .desired_width(70.0)
                         .text("light"),
                 );
