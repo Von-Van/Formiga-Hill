@@ -105,6 +105,16 @@ enum Ground {
     Shade,
 }
 
+/// How each traveller has warmed to the person over the visit, on every ground alike: a pat on
+/// the green still counts at the Fairground. Never kept: the next visit starts fresh, and nothing
+/// is lost by staying away.
+#[derive(Default)]
+pub struct Trust {
+    warmed: HashMap<Id, f32>,
+    /// Who was last offered what, and how many times running.
+    streak: Option<(Id, Offer, u32)>,
+}
+
 pub struct Playground {
     layout: Layout,
     backdrop: Canvas,
@@ -112,11 +122,6 @@ pub struct Playground {
     props: Vec<Prop>,
     actors: Vec<Actor>,
     dice: Dice,
-    /// How much each has warmed to the person this visit. Never kept: the next visit starts
-    /// fresh, and nothing is lost by staying away.
-    trust: HashMap<Id, f32>,
-    /// Who was last offered what, and how many times running.
-    streak: Option<(Id, Offer, u32)>,
     clock: f32,
     pointer: Option<(f32, f32)>,
     reduce_motion: bool,
@@ -174,8 +179,6 @@ impl Playground {
             props,
             actors,
             dice: Dice::new(seed),
-            trust: HashMap::new(),
-            streak: None,
             clock: now,
             pointer: None,
             reduce_motion,
@@ -304,21 +307,24 @@ impl Playground {
         self.look_at_the_pointer();
     }
 
-    /// Holds something out to a traveller, who answers in its own way.
-    pub fn offer(&mut self, id: Id, offer: Offer, now: f32) {
+    /// Holds something out to a traveller, who answers in its own way and as far as it has come
+    /// to trust the person.
+    pub fn offer(&mut self, id: Id, offer: Offer, trust: &mut Trust, now: f32) {
         let Some(index) = self.index_of(id) else {
             return;
         };
-        let in_a_row = match self.streak {
+        let in_a_row = match trust.streak {
             Some((last, last_offer, count)) if last == id && last_offer == offer => count + 1,
             _ => 0,
         };
-        self.streak = Some((id, offer, in_a_row));
-        let trust = self.trust.get(&id).copied().unwrap_or(0.0);
+        trust.streak = Some((id, offer, in_a_row));
+        let warmed = trust.warmed.get(&id).copied().unwrap_or(0.0);
         let beats = self.actors[index]
             .character
-            .react(offer, trust, in_a_row, &mut self.dice);
-        self.trust.insert(id, (trust + TRUST_STEP).min(MAX_TRUST));
+            .react(offer, warmed, in_a_row, &mut self.dice);
+        trust
+            .warmed
+            .insert(id, (warmed + TRUST_STEP).min(MAX_TRUST));
         let turn = self.pointer.map(|(x, _)| Step::FaceX(x));
         self.actors[index].begin(
             now,
@@ -652,7 +658,7 @@ mod tests {
         run(&mut green, &cast, 0.0, 12.0);
         let id = green.actors[0].id;
         green.set_pointer(Some((10.0, 150.0)));
-        green.offer(id, Offer::Pet, 12.0);
+        green.offer(id, Offer::Pet, &mut Trust::default(), 12.0);
         green.tick(&cast, 12.05);
         let actor = &green.actors[0];
         assert!(!actor.facing_right, "it turned to the hand");
@@ -671,11 +677,31 @@ mod tests {
     fn being_kind_builds_trust_but_only_so_far() {
         let cast = sample();
         let mut green = green::open(&cast, 0.0);
+        let mut trust = Trust::default();
         let id = green.actors[1].id;
         for pat in 0..10 {
-            green.offer(id, Offer::Snack, pat as f32);
+            green.offer(id, Offer::Snack, &mut trust, pat as f32);
         }
-        assert_eq!(green.trust[&id], MAX_TRUST);
+        assert_eq!(trust.warmed[&id], MAX_TRUST);
+    }
+
+    #[test]
+    fn trust_won_on_the_green_is_still_there_at_the_fairground() {
+        let cast = sample();
+        let mut trust = Trust::default();
+        let mut green = green::open(&cast, 0.0);
+        let id = green.actors[1].id;
+        for pat in 0..3 {
+            green.offer(id, Offer::Pet, &mut trust, pat as f32);
+        }
+        let (mut fairground, _) = crate::fairground::open(&cast, 3.0);
+        fairground.offer(id, Offer::Pet, &mut trust, 3.0);
+        assert_eq!(trust.warmed[&id], (4.0 * TRUST_STEP).min(MAX_TRUST));
+        assert_eq!(
+            trust.streak,
+            Some((id, Offer::Pet, 3)),
+            "the same pat, a fourth time"
+        );
     }
 
     #[test]

@@ -5,7 +5,7 @@ use crate::cast::{Cast, Id};
 use crate::character::Offer;
 use crate::fairground::{self, Event, HideAndSeek, Phase};
 use crate::memories::Memories;
-use crate::playground::Playground;
+use crate::playground::{Playground, Trust};
 use crate::station::{Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
 use crate::story::{Director, Library, souvenirs};
 use crate::trip::Trip;
@@ -53,6 +53,8 @@ pub struct HillApp {
     area: Area,
     /// What the person is holding out on the green.
     tool: Offer,
+    /// How each traveller has warmed to the person, wherever they have met this visit.
+    trust: Trust,
     /// The last picture of the area just left, dissolving into the new one.
     leaving: Option<(Canvas, f32)>,
     texture: Option<egui::TextureHandle>,
@@ -109,6 +111,7 @@ impl HillApp {
             it: None,
             area: Area::Station,
             tool: Offer::Pet,
+            trust: Trust::default(),
             leaving: None,
             texture: None,
             shown_frames: Vec::new(),
@@ -699,7 +702,7 @@ impl eframe::App for HillApp {
                         if let (false, Some(id)) = (playing, hovered) {
                             ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                             if response.clicked() {
-                                ground.offer(id, self.tool, now);
+                                ground.offer(id, self.tool, &mut self.trust, now);
                             }
                         }
                         // "It" wears its name all game, so the watcher can follow it about.
@@ -729,7 +732,7 @@ impl eframe::App for HillApp {
                         } else if let Some(id) = hovered {
                             ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                             if response.clicked() {
-                                green.offer(id, self.tool, now);
+                                green.offer(id, self.tool, &mut self.trust, now);
                             }
                         }
                         if let Some(id) = hovered {
