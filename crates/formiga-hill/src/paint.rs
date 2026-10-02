@@ -55,20 +55,26 @@ pub fn chance(x: i32, y: i32, salt: u32, per_256: u32) -> bool {
     noise(x, y, salt) & 0xff < per_256
 }
 
-/// Source-over: `top` drawn on `bottom` by its alpha.
+/// Source-over: `top` drawn on `bottom` by its alpha. Onto an opaque pixel this is a plain mix;
+/// onto a clear or half-clear one the colours are weighted by how much of each is there, so a
+/// soft shadow or a glow drawn into an empty sprite keeps its own colour rather than going dark.
 pub fn over(top: Rgba, bottom: Rgba) -> Rgba {
-    match top.a {
-        255 => top,
-        0 => bottom,
-        alpha => {
-            let alpha = u32::from(alpha);
-            let mix =
-                |a: u8, b: u8| ((u32::from(a) * alpha + u32::from(b) * (255 - alpha)) / 255) as u8;
+    match (top.a, bottom.a) {
+        (255, _) | (_, 0) => top,
+        (0, _) => bottom,
+        (top_alpha, bottom_alpha) => {
+            let top_alpha = u32::from(top_alpha);
+            // How much of the bottom shows through, out of 255 * 255.
+            let under = u32::from(bottom_alpha) * (255 - top_alpha);
+            let total = top_alpha * 255 + under;
+            let mix = |a: u8, b: u8| {
+                ((u32::from(a) * top_alpha * 255 + u32::from(b) * under) / total) as u8
+            };
             Rgba::new(
                 mix(top.r, bottom.r),
                 mix(top.g, bottom.g),
                 mix(top.b, bottom.b),
-                top.a.max(bottom.a),
+                (total / 255).min(255) as u8,
             )
         }
     }
@@ -212,6 +218,19 @@ pub fn blit(canvas: &mut Canvas, sprite: &Canvas, x: i32, y: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn drawing_over_nothing_keeps_the_colour() {
+        let shadow = rgba(0x2a4a2a, 70);
+        assert_eq!(over(shadow, Rgba::new(0, 0, 0, 0)), shadow);
+        let ground = rgb(0x7db36c);
+        let mixed = over(shadow, ground);
+        assert_eq!(mixed.a, 255);
+        assert!(mixed.g < ground.g && mixed.g > 0x4a, "{mixed:?}");
+        // Two half-clear layers build up rather than darkening.
+        let twice = over(shadow, shadow);
+        assert!(twice.a > shadow.a && twice.g == shadow.g, "{twice:?}");
+    }
 
     #[test]
     fn noise_is_stable_and_spread() {
