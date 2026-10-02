@@ -28,6 +28,32 @@ pub struct ColonyMemories {
     /// Desktop id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub quickest_seekers: BTreeMap<String, f32>,
+    /// Every find the colony has brought home from the Woods, by id: its journal.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub finds: BTreeMap<String, FindRecord>,
+    /// Finds brought home and not yet placed on the Hilltop, and how many of each.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub satchel: BTreeMap<String, u32>,
+    /// What stands on each of the Hilltop's spots.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub hilltop: BTreeMap<u8, String>,
+    /// Outings to the Woods, all told and by each traveller's Desktop id.
+    #[serde(default)]
+    pub outings: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub outings_by: BTreeMap<String, u32>,
+    /// Outings in a row that turned up nothing new: after a couple, the Woods makes sure.
+    #[serde(default)]
+    pub drought: u32,
+}
+
+/// One find in the journal.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FindRecord {
+    /// How many have been brought home.
+    pub count: u32,
+    /// Who led the outing that first found one, by Desktop id.
+    pub first_by: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -115,6 +141,82 @@ impl Memories {
         }
         self.keep();
         quickest
+    }
+
+    /// Remembers an outing to the Woods: who went, and what came home in the basket, which goes
+    /// into the journal and the satchel. Says which finds were new.
+    pub fn back_from_the_woods(&mut self, party: &[u64], basket: &[&str]) -> Vec<&'static str> {
+        let colony = self.colony_mut();
+        colony.outings += 1;
+        for id in party {
+            *colony.outings_by.entry(id.to_string()).or_default() += 1;
+        }
+        let leader = party.first().map(u64::to_string).unwrap_or_default();
+        let mut new = Vec::new();
+        for id in basket {
+            let Some(find) = crate::finds::find(id) else {
+                continue;
+            };
+            let record = colony.finds.entry(find.id.to_owned()).or_default();
+            if record.count == 0 {
+                record.first_by.clone_from(&leader);
+                new.push(find.id);
+            }
+            record.count += 1;
+            *colony.satchel.entry(find.id.to_owned()).or_default() += 1;
+        }
+        colony.drought = if new.is_empty() {
+            colony.drought + 1
+        } else {
+            0
+        };
+        self.keep();
+        new
+    }
+
+    /// Stands a find from the satchel on a Hilltop spot. Whatever stood there goes back into the
+    /// satchel. Says whether it was placed.
+    pub fn place(&mut self, spot: u8, id: &str) -> bool {
+        if usize::from(spot) >= crate::hilltop::SPOTS.len() {
+            return false;
+        }
+        let colony = self.colony_mut();
+        let Some(count) = colony.satchel.get_mut(id).filter(|count| **count > 0) else {
+            return false;
+        };
+        *count -= 1;
+        if *count == 0 {
+            colony.satchel.remove(id);
+        }
+        if let Some(old) = colony.hilltop.insert(spot, id.to_owned()) {
+            *colony.satchel.entry(old).or_default() += 1;
+        }
+        self.keep();
+        true
+    }
+
+    /// Takes whatever stands on a spot back into the satchel.
+    pub fn pick_up(&mut self, spot: u8) -> Option<String> {
+        let colony = self.colony_mut();
+        let id = colony.hilltop.remove(&spot)?;
+        *colony.satchel.entry(id.clone()).or_default() += 1;
+        self.keep();
+        Some(id)
+    }
+
+    /// Moves what stands on one spot to another, swapping with whatever is there.
+    pub fn move_piece(&mut self, from: u8, to: u8) {
+        if usize::from(to) >= crate::hilltop::SPOTS.len() || from == to {
+            return;
+        }
+        let colony = self.colony_mut();
+        let Some(moving) = colony.hilltop.remove(&from) else {
+            return;
+        };
+        if let Some(there) = colony.hilltop.insert(to, moving) {
+            colony.hilltop.insert(from, there);
+        }
+        self.keep();
     }
 
     /// Writes the book to disk beside itself and renames it into place. A failure is reported
@@ -213,6 +315,47 @@ mod tests {
         assert_eq!(memories.colony().quickest_seekers["7"], 21.5);
         assert_eq!(memories.colony().quickest_seekers["9"], 61.0);
         assert_eq!(memories.colony().souvenirs, vec!["fair_ticket".to_owned()]);
+    }
+
+    #[test]
+    fn finds_come_home_into_the_journal_and_the_satchel() {
+        let mut memories = Memories::open(None, "c");
+        let new =
+            memories.back_from_the_woods(&[7, 9], &["pinecone", "pinecone", "geode", "nonsense"]);
+        assert_eq!(new, vec!["pinecone", "geode"]);
+        let colony = memories.colony();
+        assert_eq!(colony.finds["pinecone"].count, 2);
+        assert_eq!(colony.finds["geode"].first_by, "7");
+        assert_eq!(colony.satchel["pinecone"], 2);
+        assert_eq!(colony.outings_by["9"], 1);
+        assert_eq!(colony.drought, 0);
+        memories.back_from_the_woods(&[9], &["pinecone"]);
+        assert_eq!(memories.colony().drought, 1, "nothing new that time");
+        assert_eq!(memories.colony().finds["pinecone"].first_by, "7");
+    }
+
+    #[test]
+    fn the_hilltop_takes_from_the_satchel_and_gives_back() {
+        let mut memories = Memories::open(None, "c");
+        memories.back_from_the_woods(&[7], &["pinecone", "geode"]);
+        assert!(!memories.place(3, "brass_lens"), "not in the satchel");
+        assert!(memories.place(3, "pinecone"));
+        assert!(!memories.colony().satchel.contains_key("pinecone"));
+        assert!(memories.place(3, "geode"), "a spot takes anything");
+        assert_eq!(memories.colony().hilltop[&3], "geode");
+        assert_eq!(
+            memories.colony().satchel["pinecone"],
+            1,
+            "what stood there went back"
+        );
+        memories.move_piece(3, 10);
+        assert_eq!(
+            memories.colony().hilltop.get(&10).map(String::as_str),
+            Some("geode")
+        );
+        assert_eq!(memories.pick_up(10).as_deref(), Some("geode"));
+        assert!(memories.colony().hilltop.is_empty());
+        assert!(!memories.place(99, "geode"), "no such spot");
     }
 
     #[test]

@@ -48,7 +48,12 @@ pub fn piece(id: &str) -> Piece {
         Kind::Scoop => water::piece(id),
         Kind::Shake => undergrowth::piece(id),
     };
-    drawn.unwrap_or_else(|| placeholder_piece(find.kind))
+    let piece = drawn.unwrap_or_else(|| placeholder_piece(find.kind));
+    debug_assert!(
+        piece.sprite.width() <= PIECE_MAX.0 && piece.sprite.height() <= PIECE_MAX.1,
+        "{id} is too big for a spot"
+    );
+    piece
 }
 
 fn tint(kind: Kind) -> Ramp {

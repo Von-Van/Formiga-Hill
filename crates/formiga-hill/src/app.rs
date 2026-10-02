@@ -1,5 +1,8 @@
-//! The Hill window: the station, the green and the Fairground, the colony in them, and the way
-//! home.
+//! The Hill window: the station, the green, the Fairground, the Woods and the Hilltop, the
+//! colony in them, and the way home.
+
+mod arranging;
+mod rummaging;
 
 use crate::cast::{Cast, Id};
 use crate::character::Offer;
@@ -9,6 +12,7 @@ use crate::playground::{Playground, Trust};
 use crate::station::{Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
 use crate::story::{Director, Library, souvenirs};
 use crate::trip::Trip;
+use arranging::Placing;
 use eframe::egui;
 use formiga_art::Canvas;
 use formiga_travel::Theme;
@@ -39,7 +43,18 @@ enum Area {
     Station,
     Green,
     Fairground,
+    Woods,
+    Hilltop,
 }
+
+/// Every area, as the "Go to" menu lists them.
+const AREAS: [(Area, &str); 5] = [
+    (Area::Station, "The station"),
+    (Area::Green, "The Village Green"),
+    (Area::Fairground, "The Fairground"),
+    (Area::Woods, "The Woods"),
+    (Area::Hilltop, "The Hilltop"),
+];
 
 pub struct HillApp {
     arrival: Arrival,
@@ -50,6 +65,20 @@ pub struct HillApp {
     fairground: Option<(Playground, HideAndSeek)>,
     /// Who the person has asked to be "it" at hide-and-seek, if anyone in particular.
     it: Option<Id>,
+    /// Who is going to the Woods, and the outing under way.
+    woods: rummaging::Woods,
+    /// The summit, made the first time anyone goes up.
+    hilltop: Option<Playground>,
+    /// What the person is about to stand somewhere on the Hilltop.
+    placing: Option<Placing>,
+    /// Where each piece on the Hilltop is drawn, for pointing at them.
+    piece_bounds: Vec<(u8, (i32, i32, i32, i32))>,
+    /// Whether the journal of finds is open.
+    journal: bool,
+    /// Where the pointer is over the scene, in scene pixels.
+    pointer: Option<(f32, f32)>,
+    /// When the last frame was drawn, for anything that moves by how long a key is held.
+    last_frame: f32,
     area: Area,
     /// What the person is holding out on the green.
     tool: Offer,
@@ -109,6 +138,13 @@ impl HillApp {
             green: None,
             fairground: None,
             it: None,
+            woods: rummaging::Woods::default(),
+            hilltop: None,
+            placing: None,
+            piece_bounds: Vec::new(),
+            journal: false,
+            pointer: None,
+            last_frame: 0.0,
             area: Area::Station,
             tool: Offer::Pet,
             trust: Trust::default(),
@@ -244,6 +280,17 @@ impl HillApp {
         if area == Area::Fairground && self.fairground.is_none() {
             self.fairground = Some(fairground::open(&self.arrival.cast, now));
         }
+        if area == Area::Woods {
+            self.open_woods(now);
+        }
+        if area == Area::Hilltop {
+            self.open_hilltop(now);
+        }
+        // Leaving the Woods brings the basket home; leaving the Hilltop puts down what was held.
+        if self.woods.outing.is_some() {
+            self.finish_outing(now);
+        }
+        self.placing = None;
         // Walking away calls a game off.
         if let Some((ground, game)) = &mut self.fairground
             && game.phase() != Phase::Ready
@@ -258,7 +305,25 @@ impl HillApp {
         match (self.area, &mut self.green, &mut self.fairground) {
             (Area::Green, Some(green), _) => green.compose(now),
             (Area::Fairground, _, Some((ground, _))) => ground.compose(now),
+            (Area::Woods, _, _) => self.compose_woods(now),
+            (Area::Hilltop, _, _) => self.compose_hilltop(now),
             _ => self.station.compose(now),
+        }
+    }
+
+    /// Everywhere else the colony can go.
+    fn go_menu(&mut self, ui: &mut egui::Ui, now: f32) {
+        let mut target = None;
+        ui.menu_button("Go to\u{2026}", |ui| {
+            for (area, label) in AREAS {
+                if area != self.area && ui.button(label).clicked() {
+                    target = Some(area);
+                    ui.close();
+                }
+            }
+        });
+        if let Some(area) = target {
+            self.go_to(area, now);
         }
     }
 
@@ -367,10 +432,7 @@ impl HillApp {
                         self.station.set_off_home(now);
                     }
                     let settled = self.station.is_settled();
-                    let green = egui::Button::new("Walk to the Village Green");
-                    if ui.add_enabled(settled, green).clicked() {
-                        self.go_to(Area::Green, now);
-                    }
+                    ui.add_enabled_ui(settled, |ui| self.go_menu(ui, now));
                 });
             }
             Area::Green if self.story.is_some() => self.story_panel(ui),
@@ -382,15 +444,28 @@ impl HillApp {
                     ui.label(egui::RichText::new(notice).italics());
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Walk to the Fairground").clicked() {
-                        self.go_to(Area::Fairground, now);
-                    }
-                    if ui.button("Back to the station").clicked() {
-                        self.go_to(Area::Station, now);
-                    }
+                    self.go_menu(ui, now);
                 });
             }
             Area::Fairground => self.fairground_bar(ui, now),
+            Area::Woods => {
+                self.woods_bar(ui, now);
+                if let Some((notice, _)) = &self.notice {
+                    ui.label(egui::RichText::new(notice).italics());
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.go_menu(ui, now);
+                });
+            }
+            Area::Hilltop => {
+                self.hilltop_bar(ui);
+                if let Some((notice, _)) = &self.notice {
+                    ui.label(egui::RichText::new(notice).italics());
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.go_menu(ui, now);
+                });
+            }
         });
         ui.add_space(6.0);
     }
@@ -460,9 +535,7 @@ impl HillApp {
             ui.label(egui::RichText::new(notice).italics());
         }
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui.button("Back to the Green").clicked() {
-                self.go_to(Area::Green, now);
-            }
+            self.go_menu(ui, now);
         });
     }
 
@@ -627,6 +700,12 @@ impl eframe::App for HillApp {
                     if onwards || input.key_pressed(egui::Key::Escape) {
                         self.station.skip_arrival();
                     }
+                    if self.area == Area::Woods && input.key_pressed(egui::Key::Space) {
+                        self.woods_strike(now);
+                    }
+                    if input.key_pressed(egui::Key::Escape) {
+                        self.placing = None;
+                    }
                     if input.key_pressed(egui::Key::Escape)
                         && self.area == Area::Fairground
                         && let Some((ground, game)) = &mut self.fairground
@@ -660,6 +739,17 @@ impl eframe::App for HillApp {
             game.tick(ground, now);
         }
         self.fairground_events(now);
+        if self.area == Area::Woods {
+            // With reduced motion, the catching marker turns while the pointer or Space is held.
+            let holding =
+                ctx.input(|input| input.pointer.primary_down() || input.key_down(egui::Key::Space));
+            let dt = (now - self.last_frame).clamp(0.0, 0.1);
+            self.tick_woods(now, holding, dt);
+        }
+        if let (Area::Hilltop, Some(ground)) = (self.area, &mut self.hilltop) {
+            ground.tick(&self.arrival.cast, now);
+        }
+        self.last_frame = now;
         self.run_story(now);
         let texture = self.refresh_scene(&ctx, now);
 
@@ -693,7 +783,46 @@ impl eframe::App for HillApp {
                 };
 
                 let mut on_case = false;
+                self.pointer = pointer;
                 let hovered = match (self.area, &mut self.green, &mut self.fairground) {
+                    (Area::Woods, _, _) => {
+                        let mut hovered = None;
+                        if let Some((ground, _)) = &mut self.woods.outing {
+                            ground.set_pointer(pointer);
+                            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                        }
+                        let spot = self.woods_hover(pointer);
+                        if let Some((label, (x, y))) = &spot {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            tag(label, to_screen(*x, *y));
+                        }
+                        if response.clicked() {
+                            self.woods_click(pointer, now);
+                        }
+                        hovered.filter(|_| spot.is_none())
+                    }
+                    (Area::Hilltop, _, _) => {
+                        let mut hovered = None;
+                        if let Some(ground) = &mut self.hilltop {
+                            ground.set_pointer(pointer);
+                            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                        }
+                        let piece = self.hilltop_hover(pointer);
+                        if let Some((label, (x, y))) = &piece {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            tag(label, to_screen(*x, *y));
+                        } else if hovered.is_some() {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                        }
+                        if response.clicked()
+                            && !self.hilltop_click(pointer)
+                            && self.placing.is_none()
+                            && let (Some(id), Some(ground)) = (hovered, &mut self.hilltop)
+                        {
+                            ground.offer(id, self.tool, &mut self.trust, now);
+                        }
+                        hovered.filter(|_| piece.is_none())
+                    }
                     (Area::Fairground, _, Some((ground, game))) => {
                         ground.set_pointer(pointer);
                         let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
@@ -798,6 +927,8 @@ impl eframe::App for HillApp {
                     });
                 }
             });
+
+        self.journal_window(&ctx);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));

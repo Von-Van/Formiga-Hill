@@ -374,16 +374,35 @@ fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
     ground.compose(now)
 }
 
-/// The first two travellers in the Woods, `at` seconds after they arrive.
+/// An outing to the Woods with the first two travellers, `at` seconds in, played by a steady
+/// hand: it searches the spots in turn and catches each moment as the marker crosses the gold.
 fn woods_moment(cast: &Cast, at: f32) -> Canvas {
     let party: Vec<cast::Id> = cast.ids().take(2).collect();
     let mut glade = woods::open(cast, &party, 0.0);
+    let mut outing = woods::rummage::Rummage::new(&mut glade, party, |_| false, 0, false, 5, 0.0);
     let mut now = 0.0;
+    let mut next = 0;
     while now < at {
         now += 1.0 / 30.0;
         glade.tick(cast, now);
+        outing.tick(&mut glade, now);
+        match outing.phase() {
+            woods::rummage::Phase::Exploring if next < woods::SPOTS.len() => {
+                outing.choose(&mut glade, next, now);
+                next += 1;
+            }
+            woods::rummage::Phase::Catching(_) if outing.on_the_gold(now) && now + 0.5 < at => {
+                outing.strike(&mut glade, now);
+            }
+            _ => {}
+        }
+        for event in outing.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
     }
-    glade.compose(now)
+    let mut scene = glade.compose(now);
+    outing.draw(&mut scene, now);
+    scene
 }
 
 /// A spread of finds over the Hilltop, with some spots left open, for seeing it lived in.
