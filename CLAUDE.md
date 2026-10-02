@@ -37,7 +37,8 @@ side of it.
 - Watching earns keepsakes for the display case at most: the finds that build the Hilltop come
   only from the Woods.
 - Every find stays findable by any single companion: a companion's leanings and knacks weight
-  the odds and widen the ring, never gate anything. Any Hilltop spot takes any piece, so every
+  the odds and widen the ring, and the spots only some company opens are extra chances; none of
+  it gates anything. Any Hilltop spot takes any piece, so every
   piece fits within `finds::art::PIECE_MAX`.
 - The same creatures, not lookalikes: draw travellers with `formiga-art` from the snapshot's
   appearance; never regenerate one.

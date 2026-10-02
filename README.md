@@ -45,7 +45,9 @@ owns only the destination.
 | Done | Rummaging in the Woods: bring one or two companions into a glade of twelve spots (dig, reach in, scoop, shake). Spots that hold something give signs, fainter for rarer finds, the rarest only as the light goes; choose where to search, then catch the moment on a turning ring. Walking and each try cost light, and the glade darkens to dusk. Each companion's knack, from its temperament, widens the ring for one kind of spot; curious ones point out signs; a pair, and a close pair more so, catch more easily. Reduced motion turns the ring only while you hold it |
 | Done | Twenty-eight finds in four rarities, leaning towards some companions (shiny things to the bold, old things to scholars, small things to little ones) without ruling anything out. Undiscovered finds turn up more often, and after two outings with nothing new one is certain, so a colony that only ever brings one companion still finds everything |
 | Done | The Hilltop: any find stands on any of eighteen spots, moved or put back at will, and the colony visits what stands there, sitting on the stones, gazing through the telescope, napping by the berry bush. A journal of every find, who found it first, and hints of the rest |
-| Next | The Hilltop seen from the other areas' skylines; more Woods activities (fishing, bug catching, longer expeditions); finds that open new Woods possibilities |
+| Done | What stands on the Hilltop changes the Woods (a lantern lends light, the telescope brings rare signs out sooner, each piece draws the eye to its kind of spot), and shows small on the station's hill and in silhouette on the Fairground's skyline |
+| Done | Spots only some company opens: a badger sett for an explorer, a crevice only a little one fits, a boulder a close pair can heave over. Extra chances, never the only way to anything |
+| Next | More Woods activities (fishing, bug catching, longer expeditions); finds that open new Woods possibilities; the hidden Cursor Sovereign |
 
 ## Running it
 
