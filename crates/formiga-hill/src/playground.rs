@@ -16,6 +16,7 @@ use crate::cast::{Cast, Id};
 use crate::character::{Character, Company, Cue, Idea, Offer};
 use crate::cues::draw_cue;
 use crate::dice::Dice;
+use crate::finds::Use;
 use crate::paint::blit;
 use formiga_art::{Canvas, GazeDirection};
 use std::collections::HashMap;
@@ -115,11 +116,24 @@ pub struct Trust {
     streak: Option<(Id, Offer, u32)>,
 }
 
+/// Something on the ground worth going over to: where to stand, which way to face, and what to do
+/// there.
+#[derive(Clone, Copy, Debug)]
+pub struct Attraction {
+    pub stand: (f32, f32),
+    pub facing_x: f32,
+    pub use_: Use,
+}
+
+/// How often someone setting off to wander goes to an attraction instead, if there are any.
+const ATTRACTED: f32 = 0.45;
+
 pub struct Playground {
     layout: Layout,
     backdrop: Canvas,
     foreground: Canvas,
     props: Vec<Prop>,
+    attractions: Vec<Attraction>,
     actors: Vec<Actor>,
     dice: Dice,
     clock: f32,
@@ -142,15 +156,33 @@ impl Playground {
         foreground: Canvas,
         props: Vec<Prop>,
     ) -> Self {
+        let everyone: Vec<Id> = cast.ids().collect();
+        Self::with_members(cast, &everyone, now, layout, backdrop, foreground, props)
+    }
+
+    /// As `new`, with only some of the colony: those who came along.
+    pub fn with_members(
+        cast: &Cast,
+        ids: &[Id],
+        now: f32,
+        layout: Layout,
+        backdrop: Canvas,
+        foreground: Canvas,
+        props: Vec<Prop>,
+    ) -> Self {
         let reduce_motion = cast.reduce_motion();
-        let count = cast.members.len().max(1);
-        let seed = cast
-            .ids()
-            .fold(0x6772_6565_6e00, |seed, id| seed ^ id.rotate_left(17));
-        let (left, top, right, bottom) = layout.ground;
-        let actors = cast
+        let members: Vec<_> = cast
             .members
             .iter()
+            .filter(|member| ids.contains(&member.id))
+            .collect();
+        let count = members.len().max(1);
+        let seed = ids
+            .iter()
+            .fold(0x6772_6565_6e00, |seed, id| seed ^ id.rotate_left(17));
+        let (left, top, right, bottom) = layout.ground;
+        let actors = members
+            .into_iter()
             .enumerate()
             .map(|(index, member)| {
                 let share = (index as f32 + 0.5) / count as f32;
@@ -177,6 +209,7 @@ impl Playground {
             backdrop,
             foreground,
             props,
+            attractions: Vec::new(),
             actors,
             dice: Dice::new(seed),
             clock: now,
@@ -189,6 +222,16 @@ impl Playground {
 
     pub fn reduce_motion(&self) -> bool {
         self.reduce_motion
+    }
+
+    /// Changes what stands on the ground, as when something is placed on the Hilltop.
+    pub fn set_props(&mut self, props: Vec<Prop>) {
+        self.props = props;
+    }
+
+    /// Changes what is worth going over to.
+    pub fn set_attractions(&mut self, attractions: Vec<Attraction>) {
+        self.attractions = attractions;
     }
 
     /// Takes these travellers out of free play.
@@ -463,6 +506,24 @@ impl Playground {
                 }
                 other => other,
             };
+        }
+        // Sometimes a wander ends at something worth a look.
+        if idea == Idea::Wander && !self.attractions.is_empty() && self.dice.chance(ATTRACTED) {
+            let pick = (self.dice.unit() * self.attractions.len() as f32) as usize;
+            let attraction = self.attractions[pick % self.attractions.len()];
+            let beats = self.actors[index]
+                .character
+                .enjoy(attraction.use_, &mut self.dice);
+            let steps = [
+                Step::Walk {
+                    to: self.layout.nearest(attraction.stand.0, attraction.stand.1),
+                },
+                Step::FaceX(attraction.facing_x),
+            ]
+            .into_iter()
+            .chain(beats.into_iter().map(Step::Beat));
+            self.actors[index].begin(now, steps);
+            return;
         }
         let beats = self.actors[index].character.beats_for(idea, &mut self.dice);
         let mut steps = match idea {

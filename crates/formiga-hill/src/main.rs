@@ -7,8 +7,10 @@ mod character;
 mod cues;
 mod dice;
 mod fairground;
+mod finds;
 mod font;
 mod green;
+mod hilltop;
 mod keepsake_art;
 mod kit;
 mod materials;
@@ -19,6 +21,7 @@ mod sheet;
 mod station;
 mod story;
 mod trip;
+mod woods;
 
 use anyhow::{Context, Result, bail};
 use app::{Arrival, HillApp, Visit};
@@ -47,6 +50,9 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-hide-and-seek <PNG>
                            Draw a game of hide-and-seek at the Fairground, --at seconds into
                            the search
+  --render-woods <PNG>     Draw a rummage in the Woods, --at seconds into it
+  --render-hilltop <PNG>   Draw the Hilltop with a sample of finds placed on it
+  --render-finds <PNG>     Draw every find's icon and Hilltop piece on one sheet, for review
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
   --render-story <PNG>     Draw a story on the green --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
@@ -69,6 +75,10 @@ enum Area {
     Fairground,
     /// The Fairground, a game of hide-and-seek under way.
     HideAndSeek,
+    Woods,
+    Hilltop,
+    /// Not an area: the review sheet of every find.
+    Finds,
     /// Not an area: the review sheet of everyone's reactions.
     Reactions,
     /// The green, a story under way on it.
@@ -132,6 +142,18 @@ fn main() -> Result<()> {
                 fairground.compose(now)
             }
             Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0)),
+            Area::Woods => woods_moment(&arrival.cast, args.at.unwrap_or(12.0)),
+            Area::Hilltop => {
+                let until = args.at.unwrap_or(20.0);
+                let mut hilltop = hilltop::open(&arrival.cast, 0.0, &sample_arrangement());
+                let mut now = 0.0;
+                while now < until {
+                    now += 1.0 / 30.0;
+                    hilltop.tick(&arrival.cast, now);
+                }
+                hilltop.compose(now)
+            }
+            Area::Finds => finds_sheet(),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Story => {
                 let library = story::Library::load(&args.packages);
@@ -201,6 +223,11 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             Some("--render-hide-and-seek") => {
                 render = Some((Area::HideAndSeek, value("--render-hide-and-seek")?));
             }
+            Some("--render-woods") => render = Some((Area::Woods, value("--render-woods")?)),
+            Some("--render-hilltop") => {
+                render = Some((Area::Hilltop, value("--render-hilltop")?));
+            }
+            Some("--render-finds") => render = Some((Area::Finds, value("--render-finds")?)),
             Some("--render-story") => render = Some((Area::Story, value("--render-story")?)),
             Some("--render-reactions") => {
                 render = Some((Area::Reactions, value("--render-reactions")?));
@@ -345,6 +372,75 @@ fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
         }
     }
     ground.compose(now)
+}
+
+/// The first two travellers in the Woods, `at` seconds after they arrive.
+fn woods_moment(cast: &Cast, at: f32) -> Canvas {
+    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let mut glade = woods::open(cast, &party, 0.0);
+    let mut now = 0.0;
+    while now < at {
+        now += 1.0 / 30.0;
+        glade.tick(cast, now);
+    }
+    glade.compose(now)
+}
+
+/// A spread of finds over the Hilltop, with some spots left open, for seeing it lived in.
+fn sample_arrangement() -> hilltop::Arrangement {
+    let picks = [
+        (0, "weathervane"),
+        (2, "brass_lens"),
+        (4, "sun_coin"),
+        (5, "acorn_stash"),
+        (6, "wild_berries"),
+        (8, "skimming_stone"),
+        (9, "fallen_star"),
+        (11, "old_nest"),
+        (13, "wooden_duck"),
+        (14, "smooth_pebble"),
+        (15, "tangled_kite"),
+        (17, "lost_lantern"),
+    ];
+    picks
+        .into_iter()
+        .map(|(spot, id)| (spot, id.to_owned()))
+        .collect()
+}
+
+/// Every find on one sheet: its icon in the corner, its Hilltop piece standing on a patch of
+/// summit grass, a row for each kind.
+fn finds_sheet() -> Canvas {
+    const CELL: (i32, i32) = (56, 70);
+    let columns = 7;
+    let mut sheet = Canvas::new((CELL.0 * columns) as u32, (CELL.1 * 4) as u32);
+    for (row, kind) in finds::Kind::ALL.into_iter().enumerate() {
+        let of_kind = finds::CATALOGUE.iter().filter(|find| find.kind == kind);
+        for (column, find) in of_kind.enumerate() {
+            let (left, top) = (column as i32 * CELL.0, row as i32 * CELL.1);
+            for y in 0..CELL.1 {
+                let t = y as f32 / CELL.1 as f32;
+                let color = if y < CELL.1 - 12 {
+                    paint::mix(paint::rgb(0xd6ecf2), paint::rgb(0xf6e8cf), t)
+                } else {
+                    paint::mix(paint::rgb(0x86bb7c), paint::rgb(0x639858), t)
+                };
+                sheet.fill_rect(left, top + y, CELL.0, 1, color);
+            }
+            sheet.fill_rect(left + CELL.0 - 1, top, 1, CELL.1, paint::rgb(0x9ab0a0));
+            sheet.fill_rect(left, top + CELL.1 - 1, CELL.0, 1, paint::rgb(0x9ab0a0));
+            let piece = finds::art::piece(find.id);
+            let base = (left + CELL.0 / 2, top + CELL.1 - 6);
+            paint::blit(
+                &mut sheet,
+                &piece.sprite,
+                base.0 - piece.anchor.0,
+                base.1 - piece.anchor.1,
+            );
+            paint::blit(&mut sheet, &finds::art::icon(find.id), left + 2, top + 2);
+        }
+    }
+    sheet
 }
 
 /// Checks package folders as Hill would load them, and says what is wrong in each.
