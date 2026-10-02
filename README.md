@@ -6,8 +6,8 @@ purpose, to spend time together.
 Hill is a separate desktop app that receives a colony from
 [Formiga Desktop](https://github.com/Von-Van/Formiga-Desktop) by train, draws each companion
 exactly as Desktop does, and gives them a small storybook place to be in: free play, short
-authored scenes, games the colony plays while you watch, and later expeditions into the Woods and
-a Hilltop the colony fills with what it finds there. Desktop stays the home of the colony; Hill
+authored scenes, games the colony plays while you watch, outings into the Woods that you play
+yourself, and a Hilltop the colony fills with what it finds there. Desktop stays the home of the colony; Hill
 owns only the destination.
 
 - [docs/DESIGN.md](docs/DESIGN.md): the design handoff (revised), including the Woods → Hilltop
@@ -23,8 +23,8 @@ owns only the destination.
 | Village Green | Free play, pats, snacks and toys; stories are staged here for now | Built |
 | Fairground | Games the colony plays among themselves while you watch, starting with hide-and-seek | Built |
 | Clubhouse | Authored scenes (DESIGN.md §2) | Later |
-| Woods | Activities you play yourself, with a companion or two, for finds to take home (DESIGN.md §2, the Woods → Hilltop loop) | Planned |
-| Hilltop | The colony's own place, empty at first, filled and arranged with what the Woods turns up | Planned |
+| Woods | Activities you play yourself, with a companion or two, for finds to take home (DESIGN.md §2, the Woods → Hilltop loop), starting with rummaging | Being built |
+| Hilltop | The colony's own place, empty at first, filled and arranged with what the Woods turns up | Being built |
 
 ## Where it is
 
@@ -42,7 +42,10 @@ owns only the destination.
 | Done | The Village Green repainted from above, with no houses: lawn, gravel path, the old oak and its swing, the well, a flower bed, the toy chest and the picnic blanket, against the edge of the woods |
 | Done | The Fairground at dusk, reached from the green: a big top, a carousel, a hoopla stall and things to hide behind, with the Hill's tree on the skyline. Free play there as on the green, and hide-and-seek to watch: you pick who is "it" (or let the colony decide), it counts with its eyes covered, everyone hides, and it goes looking. Where each hides, how each gives itself away, and how "it" searches all come from temperament; a parent never finds its little one until last. The first game seen through keeps a ticket in the display case |
 | Later | A mods folder and a package list for community stories; packaging Hill so Desktop can find it installed ([TRAVEL.md](docs/TRAVEL.md#not-done-yet)) |
-| Next | The Woods → Hilltop loop (DESIGN.md §2, §11): one deep Woods activity you play, with finds that differ by companion, and a Hilltop you arrange them on, seen from the other areas |
+| Done | Rummaging in the Woods: bring one or two companions into a glade of twelve spots (dig, reach in, scoop, shake). Spots that hold something give signs, fainter for rarer finds, the rarest only as the light goes; choose where to search, then catch the moment on a turning ring. Walking and each try cost light, and the glade darkens to dusk. Each companion's knack, from its temperament, widens the ring for one kind of spot; curious ones point out signs; a pair, and a close pair more so, catch more easily. Reduced motion turns the ring only while you hold it |
+| Done | Twenty-eight finds in four rarities, leaning towards some companions (shiny things to the bold, old things to scholars, small things to little ones) without ruling anything out. Undiscovered finds turn up more often, and after two outings with nothing new one is certain, so a colony that only ever brings one companion still finds everything |
+| Done | The Hilltop: any find stands on any of eighteen spots, moved or put back at will, and the colony visits what stands there, sitting on the stones, gazing through the telescope, napping by the berry bush. A journal of every find, who found it first, and hints of the rest |
+| Next | The Hilltop seen from the other areas' skylines; more Woods activities (fishing, bug catching, longer expeditions); finds that open new Woods possibilities |
 
 ## Running it
 
@@ -58,6 +61,9 @@ cargo run -p formiga-hill -- --render-station arriving.png --at 3.6
 cargo run -p formiga-hill -- --render-green green.png --at 25
 cargo run -p formiga-hill -- --render-fairground fairground.png --at 25
 cargo run -p formiga-hill -- --render-hide-and-seek hiding.png --at 10
+cargo run -p formiga-hill -- --render-woods woods.png --at 30
+cargo run -p formiga-hill -- --render-hilltop hilltop.png
+cargo run -p formiga-hill -- --render-finds finds.png
 cargo run -p formiga-hill -- --render-reactions reactions.png
 cargo run -p formiga-hill -- --render-story story.png --at 20
 cargo run -p formiga-hill -- --check-package path/to/my-story.formiga-hill
