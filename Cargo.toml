@@ -1,0 +1,35 @@
+[workspace]
+members = [
+    "crates/formiga-travel",
+    "crates/formiga-hill",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+authors = ["Formiga contributors"]
+publish = false
+
+[workspace.dependencies]
+# Formiga Desktop's shared crates, pinned to a Desktop release tag. Move both together; see
+# "Working against a Desktop checkout" in README.md for building against local Desktop changes.
+formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.66.1" }
+formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.66.1" }
+formiga-travel = { path = "crates/formiga-travel" }
+
+anyhow = "1.0.104"
+eframe = "0.36.2"
+getrandom = "0.4.3"
+png = "0.18.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.10.9"
+thiserror = "2.0.20"
+time = { version = "0.3.55", features = ["formatting", "local-offset", "macros", "parsing", "serde"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
