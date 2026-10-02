@@ -503,16 +503,8 @@ impl Playground {
             parent,
         };
         let mut idea = self.actors[index].character.idea(company, &mut self.dice);
-        if self.reduce_motion {
-            // A tableau rather than a stroll: everything happens where each one stands.
-            idea = match idea {
-                Idea::Wander | Idea::Visit(_) | Idea::PlayWith(_) | Idea::FollowParent(_) => {
-                    Idea::Rest
-                }
-                other => other,
-            };
-        }
-        // Sometimes a wander ends at something worth a look.
+        // Sometimes a wander ends at something worth a look. With motion reduced the way there is
+        // a cut, so nobody is kept from what stands on the Hilltop.
         if idea == Idea::Wander && !self.attractions.is_empty() && self.dice.chance(ATTRACTED) {
             let pick = (self.dice.unit() * self.attractions.len() as f32) as usize;
             let attraction = self.attractions[pick % self.attractions.len()];
@@ -529,6 +521,15 @@ impl Playground {
             .chain(beats.into_iter().map(Step::Beat));
             self.actors[index].begin(now, steps);
             return;
+        }
+        if self.reduce_motion {
+            // Otherwise a tableau rather than a stroll: everything happens where each one stands.
+            idea = match idea {
+                Idea::Wander | Idea::Visit(_) | Idea::PlayWith(_) | Idea::FollowParent(_) => {
+                    Idea::Rest
+                }
+                other => other,
+            };
         }
         let beats = self.actors[index].character.beats_for(idea, &mut self.dice);
         let mut steps = match idea {
@@ -577,12 +578,18 @@ impl Playground {
         let Some(target) = self.index_of(other).map(|o| self.actors[o].destination()) else {
             return me;
         };
-        let (_, top, _, bottom) = self.layout.ground;
         let side = if me.0 < target.0 { -1.0 } else { 1.0 };
-        let y = (target.1 + 2.0).clamp(top, bottom);
-        let mut x = target.0 + side * BESIDE;
+        self.beside_point((target.0, target.1 + 2.0), side * BESIDE)
+    }
+
+    /// Where to stand `offset` to one side of `at`: that side if there is ground there, the other
+    /// if not, and failing both the nearest ground to it.
+    pub fn beside_point(&self, at: (f32, f32), offset: f32) -> (f32, f32) {
+        let (_, top, _, bottom) = self.layout.ground;
+        let y = at.1.clamp(top, bottom);
+        let mut x = at.0 + offset;
         if !(self.layout.walkable)(x, y) {
-            x = target.0 - side * BESIDE;
+            x = at.0 - offset;
         }
         self.layout.nearest(x, y)
     }
@@ -780,6 +787,25 @@ mod tests {
         run(&mut green, &cast, 0.0, 40.0);
         let now: Vec<_> = green.actors.iter().map(|actor| actor.pos).collect();
         assert_eq!(start, now);
+    }
+
+    #[test]
+    fn with_reduced_motion_what_stands_on_the_hilltop_is_still_enjoyed() {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        snapshot.presentation.reduce_motion = true;
+        let cast = Cast::new(snapshot).unwrap();
+        let mut green = green::open(&cast, 0.0);
+        let stand = green.layout.nearest(200.0, 170.0);
+        green.set_attractions(vec![Attraction {
+            stand,
+            facing_x: stand.0 + 12.0,
+            use_: Use::Look,
+        }]);
+        run(&mut green, &cast, 0.0, 120.0);
+        assert!(
+            green.actors.iter().any(|actor| actor.pos == stand),
+            "nobody went to have a look"
+        );
     }
 
     #[test]

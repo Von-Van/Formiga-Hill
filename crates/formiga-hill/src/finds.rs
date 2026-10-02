@@ -499,25 +499,14 @@ pub fn stock(
     richer: &[f32; 4],
     dice: &mut Dice,
 ) -> Vec<Option<&'static Find>> {
-    let weight = |find: &Find| {
-        let novelty = if found_before(find.id) { 1.0 } else { NOVELTY };
-        find.tier.weight() * affinity(find, party) * novelty
-    };
     let mut stocked: Vec<Option<&'static Find>> = Vec::with_capacity(spots.len());
     for kind in spots {
         if !dice.chance((STOCKED + richer[kind.index()]).min(0.95)) {
             stocked.push(None);
             continue;
         }
-        // Rarer things only once per outing.
-        let pool: Vec<&'static Find> = CATALOGUE
-            .iter()
-            .filter(|find| find.kind == *kind)
-            .filter(|find| {
-                find.tier == Common || !stocked.iter().flatten().any(|s| s.id == find.id)
-            })
-            .collect();
-        stocked.push(pick(&pool, weight, dice));
+        let find = choose(*kind, &stocked, party, &found_before, dice);
+        stocked.push(find);
     }
     // A long run of nothing new: something new is certainly out there, the least rare first.
     let undiscovered: Vec<&'static Find> = CATALOGUE
@@ -540,6 +529,40 @@ pub fn stock(
         }
     }
     stocked
+}
+
+/// What is in a spot that is never empty, such as one only some company opens: chosen as `stock`
+/// chooses, without the chance of nothing. `stocked` is what the outing holds already, so the
+/// rarer things still turn up only once.
+pub fn surely(
+    kind: Kind,
+    stocked: &[Option<&'static Find>],
+    party: &[&Character],
+    found_before: impl Fn(&str) -> bool,
+    dice: &mut Dice,
+) -> Option<&'static Find> {
+    choose(kind, stocked, party, &found_before, dice)
+}
+
+/// One find for a spot of `kind`, weighed by rarity, by who came and by what is new.
+fn choose(
+    kind: Kind,
+    stocked: &[Option<&'static Find>],
+    party: &[&Character],
+    found_before: &impl Fn(&str) -> bool,
+    dice: &mut Dice,
+) -> Option<&'static Find> {
+    // Rarer things only once per outing.
+    let pool: Vec<&'static Find> = CATALOGUE
+        .iter()
+        .filter(|find| find.kind == kind)
+        .filter(|find| find.tier == Common || !stocked.iter().flatten().any(|s| s.id == find.id))
+        .collect();
+    let weight = |find: &Find| {
+        let novelty = if found_before(find.id) { 1.0 } else { NOVELTY };
+        find.tier.weight() * affinity(find, party) * novelty
+    };
+    pick(&pool, weight, dice)
 }
 
 fn pick(

@@ -257,19 +257,12 @@ impl Rummage {
             let Some(who) = opener(&party, &characters, extra.opener, close_pair) else {
                 continue;
             };
-            let mut roll = || {
-                finds::stock(
-                    &[extra.spot.kind],
-                    &refs,
-                    &found_before,
-                    0,
-                    &[1.0; 4],
-                    &mut dice,
-                )[0]
+            let mut roll = |stocked: &[_]| {
+                finds::surely(extra.spot.kind, stocked, &refs, &found_before, &mut dice)
             };
-            let mut cache = roll();
+            let mut cache = roll(&caches);
             if extra.opener == Opener::ClosePair {
-                let other = roll();
+                let other = roll(&caches);
                 if other.map(|f| f.tier) > cache.map(|f| f.tier) {
                     cache = other;
                 }
@@ -433,12 +426,7 @@ impl Rummage {
             let to = if index == 0 {
                 place.stand
             } else {
-                let side = if place.stand.0 > 190.0 {
-                    -BESIDE
-                } else {
-                    BESIDE
-                };
-                (place.stand.0 + side, place.stand.1 + 3.0)
+                beside(ground, place.stand)
             };
             let mut steps = Vec::new();
             if index == 0 && self.party.len() > 1 {
@@ -766,6 +754,13 @@ impl Rummage {
         );
         scene.fill_rect(left + 2, top + SLOT + 2, bar, 2, gold);
     }
+}
+
+/// Where a second companion stands to help at a spot: towards the middle of the glade, unless the
+/// log or the oak is in the way there.
+fn beside(ground: &Playground, stand: (f32, f32)) -> (f32, f32) {
+    let side = if stand.0 > 190.0 { -BESIDE } else { BESIDE };
+    ground.beside_point((stand.0, stand.1 + 3.0), side)
 }
 
 /// Who in the party opens up an extra spot, if anyone: the most curious explorer, the first
@@ -1309,6 +1304,51 @@ mod tests {
         let pair = vec![cast.members[0].id, cast.members[1].id];
         let (_, rummage) = setting_off(&cast, pair, true);
         assert!(opened(&rummage).contains(&Opener::ClosePair));
+    }
+
+    #[test]
+    fn an_extra_spot_holds_something_however_the_dice_fall() {
+        let cast = sample();
+        let pair = vec![cast.members[0].id, cast.members[1].id];
+        let little = cast.members.iter().find(|member| member.parent().is_some());
+        let parties = [(pair, true)]
+            .into_iter()
+            .chain(little.map(|little| (vec![little.id], false)));
+        for (party, close_pair) in parties {
+            let mut ground = woods::open(&cast, &party, 0.0);
+            for seed in 0..200 {
+                let outset = Outset {
+                    party: party.clone(),
+                    drought: 0,
+                    close_pair,
+                    influence: Influence::default(),
+                    seed,
+                };
+                let rummage = Rummage::new(&mut ground, outset, |_| false, 0.0);
+                assert!(rummage.spot_count() > SPOTS.len());
+                for spot in SPOTS.len()..rummage.spot_count() {
+                    assert!(
+                        rummage.caches[spot].is_some(),
+                        "with seed {seed}, {} came up empty",
+                        rummage.spots[spot].name
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_second_companion_helps_from_open_ground_at_every_spot() {
+        let cast = sample();
+        let ground = woods::open(&cast, &[cast.members[0].id, cast.members[1].id], 0.0);
+        for spot in SPOTS.iter().chain(EXTRAS.iter().map(|extra| &extra.spot)) {
+            let (x, y) = beside(&ground, spot.stand);
+            assert!(
+                woods::walkable(x, y),
+                "helping at {}, it would stand at ({x}, {y})",
+                spot.name
+            );
+        }
     }
 
     #[test]
