@@ -74,6 +74,8 @@ pub struct Actor {
     pub pos: (f32, f32),
     pub facing_right: bool,
     pub gaze: GazeDirection,
+    /// How far off the ground it is drawn: peeking up over something it is hiding behind.
+    pub lift: f32,
     steps: VecDeque<Step>,
     /// When the step at the front began.
     step_since: f32,
@@ -96,6 +98,7 @@ impl Actor {
             pos,
             facing_right,
             gaze: GazeDirection::default(),
+            lift: 0.0,
             steps: VecDeque::new(),
             step_since: 0.0,
             frames: HashMap::new(),
@@ -306,7 +309,7 @@ impl Actor {
     fn origin(&self) -> (i32, i32) {
         (
             self.pos.0.round() as i32 - FRAME_SIZE as i32 / 2,
-            self.pos.1.round() as i32 - self.foot_row,
+            (self.pos.1 - self.lift).round() as i32 - self.foot_row,
         )
     }
 

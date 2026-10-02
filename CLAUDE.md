@@ -30,6 +30,12 @@ side of it.
 
 ## Design rules that apply to every change
 
+- Who plays decides where a game goes. Fairground games are automated: the colony plays and the
+  person watches, choosing at most who plays what. Woods activities are played by the person,
+  with a companion or two, for finds; finds fill the Hilltop, which the person arranges. The
+  plan for the Woods → Hilltop loop is DESIGN.md §2; build it to that, and to the owner's go-ahead.
+- Watching earns keepsakes for the display case at most: the finds that build the Hilltop come
+  only from the Woods.
 - The same creatures, not lookalikes: draw travellers with `formiga-art` from the snapshot's
   appearance; never regenerate one.
 - Soft play, not maintenance: no neglect penalties, streaks, hunger debt, or login pressure.
@@ -52,8 +58,8 @@ side of it.
   why, plain names, tests named as sentences (`a_receipt_cannot_settle_another_trip`).
 - The gate, which CI runs on macOS and Windows:
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-- `--render-station`, `--render-green` (each with `--at <seconds>`) and `--render-reactions`
-  draw without a window; look at them, cropped and enlarged, after changing anything visual or
-  any behaviour in `character.rs`.
+- `--render-station`, `--render-green`, `--render-fairground`, `--render-hide-and-seek` (each with
+  `--at <seconds>`) and `--render-reactions` draw without a window; look at them, cropped and
+  enlarged, after changing anything visual or any behaviour in `character.rs`.
 - Behaviour is never written for a particular creature: it is read from the snapshot (axes,
   kind, pace, habits, bonds, family) in `character.rs`, so every colony plays out differently.

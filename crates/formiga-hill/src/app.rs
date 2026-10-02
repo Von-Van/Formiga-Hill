@@ -1,9 +1,11 @@
-//! The Hill window: the station and the green, the colony in them, and the way home.
+//! The Hill window: the station, the green and the Fairground, the colony in them, and the way
+//! home.
 
 use crate::cast::{Cast, Id};
 use crate::character::Offer;
-use crate::green::Green;
+use crate::fairground::{self, Event, HideAndSeek, Phase};
 use crate::memories::Memories;
+use crate::playground::Playground;
 use crate::station::{Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
 use crate::story::{Director, Library, souvenirs};
 use crate::trip::Trip;
@@ -36,13 +38,18 @@ const DISSOLVE_SECS: f32 = 0.5;
 enum Area {
     Station,
     Green,
+    Fairground,
 }
 
 pub struct HillApp {
     arrival: Arrival,
     station: Station,
     /// Made the first time anyone goes there, and kept for the rest of the visit.
-    green: Option<Green>,
+    green: Option<Playground>,
+    /// The same, and the game of hide-and-seek played there.
+    fairground: Option<(Playground, HideAndSeek)>,
+    /// Who the person has asked to be "it" at hide-and-seek, if anyone in particular.
+    it: Option<Id>,
     area: Area,
     /// What the person is holding out on the green.
     tool: Offer,
@@ -81,12 +88,16 @@ impl HillApp {
         cc.egui_ctx
             .set_zoom_factor(f32::from(presentation.text_scale_percent.clamp(100, 150)) / 100.0);
         // Every visit begins with the train pulling in.
-        let station = Station::new(&arrival.cast, Journey::Arriving { since: 0.0 });
         let mut memories = Memories::open(
             Memories::folder().as_deref(),
             &arrival.cast.snapshot.colony_id,
         );
         memories.arrived();
+        let station = Station::new(
+            &arrival.cast,
+            Journey::Arriving { since: 0.0 },
+            &memories.colony().souvenirs,
+        );
         for problem in &library.problems {
             eprintln!("formiga-hill: a package was not loaded: {problem}");
         }
@@ -94,6 +105,8 @@ impl HillApp {
             arrival,
             station,
             green: None,
+            fairground: None,
+            it: None,
             area: Area::Station,
             tool: Offer::Pet,
             leaving: None,
@@ -172,6 +185,8 @@ impl HillApp {
             ));
             let finished = format!("{package}/{}", director.story_id());
             self.memories.finished(finished, director.souvenirs());
+            self.station
+                .show_keepsakes(&self.memories.colony().souvenirs);
             self.story = None;
         }
     }
@@ -221,16 +236,84 @@ impl HillApp {
             self.leaving = Some((self.compose(now), now));
         }
         if area == Area::Green && self.green.is_none() {
-            self.green = Some(Green::new(&self.arrival.cast, now));
+            self.green = Some(crate::green::open(&self.arrival.cast, now));
+        }
+        if area == Area::Fairground && self.fairground.is_none() {
+            self.fairground = Some(fairground::open(&self.arrival.cast, now));
+        }
+        // Walking away calls a game off.
+        if let Some((ground, game)) = &mut self.fairground
+            && game.phase() != Phase::Ready
+        {
+            game.stop(ground, now);
         }
         self.area = area;
         self.shown_frames.clear();
     }
 
     fn compose(&mut self, now: f32) -> Canvas {
-        match (self.area, &mut self.green) {
-            (Area::Green, Some(green)) => green.compose(now),
+        match (self.area, &mut self.green, &mut self.fairground) {
+            (Area::Green, Some(green), _) => green.compose(now),
+            (Area::Fairground, _, Some((ground, _))) => ground.compose(now),
             _ => self.station.compose(now),
+        }
+    }
+
+    /// Tells the person what is happening in the game, and remembers how it went once it is over.
+    fn fairground_events(&mut self, now: f32) {
+        let Some((_, game)) = &mut self.fairground else {
+            return;
+        };
+        let cast = &self.arrival.cast;
+        let name = |id: Option<Id>| {
+            id.and_then(|id| cast.member(id))
+                .map_or("Someone".to_owned(), |member| member.name.clone())
+        };
+        let it = game.seeker();
+        for event in game.take_events() {
+            let line = match event {
+                Event::Dozed => format!("{} has nodded off mid-count.", name(it)),
+                Event::Coming => format!(
+                    "\u{201c}Ready or not, here I come!\u{201d} calls {}.",
+                    name(it)
+                ),
+                Event::Noticed { place } => {
+                    format!(
+                        "{} heard something by {}.",
+                        name(it),
+                        game.place_name(place)
+                    )
+                }
+                Event::Nobody { place } => format!("Nobody behind {}.", game.place_name(place)),
+                Event::Found { hider, place } => format!(
+                    "{} found {} behind {}!",
+                    name(it),
+                    name(Some(hider)),
+                    game.place_name(place)
+                ),
+                Event::AllFound { took } => {
+                    let ticket = souvenirs::FAIR_TICKET;
+                    let first = !self
+                        .memories
+                        .colony()
+                        .souvenirs
+                        .iter()
+                        .any(|kept| kept == ticket);
+                    let quickest = it.is_some_and(|it| self.memories.found_everyone(it, took));
+                    let mut line = format!("{} found everyone in {}", name(it), clock(took));
+                    if quickest {
+                        line.push_str(", the quickest yet");
+                    }
+                    line.push('!');
+                    if first && let Some(kept) = souvenirs::name(ticket) {
+                        line.push_str(&format!(" Kept: {}.", kept.to_lowercase()));
+                    }
+                    self.station
+                        .show_keepsakes(&self.memories.colony().souvenirs);
+                    line
+                }
+            };
+            self.notice = Some((line, now));
         }
     }
 
@@ -289,27 +372,95 @@ impl HillApp {
             }
             Area::Green if self.story.is_some() => self.story_panel(ui),
             Area::Green => {
-                ui.label("Hold out:");
-                for (offer, label, key) in TOOLS {
-                    let chosen = self.tool == offer;
-                    let response = ui.selectable_label(chosen, format!("{label}  {key}"));
-                    if response.clicked() {
-                        self.tool = offer;
-                    }
-                }
+                tools(ui, &mut self.tool);
                 ui.separator();
                 self.stories_menu(ui, now);
                 if let Some((notice, _)) = &self.notice {
                     ui.label(egui::RichText::new(notice).italics());
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button("Walk to the Fairground").clicked() {
+                        self.go_to(Area::Fairground, now);
+                    }
                     if ui.button("Back to the station").clicked() {
                         self.go_to(Area::Station, now);
                     }
                 });
             }
+            Area::Fairground => self.fairground_bar(ui, now),
         });
         ui.add_space(6.0);
+    }
+
+    /// The game under way, or the offers and a game to watch when nobody is playing.
+    fn fairground_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+        let Some((ground, game)) = &mut self.fairground else {
+            return;
+        };
+        let cast = &self.arrival.cast;
+        let name = |id: Option<Id>| {
+            id.and_then(|id| cast.member(id))
+                .map_or("Someone".to_owned(), |member| member.name.clone())
+        };
+        let mut start = false;
+        match game.phase() {
+            Phase::Ready => {
+                tools(ui, &mut self.tool);
+                ui.separator();
+                start = ui.button("Watch hide-and-seek").clicked();
+                let turn = game.next_it().map_or("Whoever's keenest".to_owned(), |id| {
+                    format!("{}'s turn", name(Some(id)))
+                });
+                let chosen = self.it.map_or(turn.clone(), |id| name(Some(id)));
+                egui::ComboBox::from_id_salt("it")
+                    .selected_text(format!("It: {chosen}"))
+                    .show_ui(ui, |ui| {
+                        ui.selectable_value(&mut self.it, None, turn);
+                        for member in &cast.members {
+                            ui.selectable_value(&mut self.it, Some(member.id), &member.name);
+                        }
+                    });
+                if let Some(best) = self
+                    .it
+                    .or(game.next_it())
+                    .and_then(|id| self.memories.colony().quickest_seekers.get(&id.to_string()))
+                {
+                    ui.label(format!("Quickest: {}", clock(*best)));
+                }
+            }
+            Phase::Counting { .. } => {
+                ui.label(format!(
+                    "{} is counting. Everyone's hiding!",
+                    name(game.seeker())
+                ));
+                if ui.button("Call it off").clicked() {
+                    game.stop(ground, now);
+                }
+            }
+            Phase::Seeking { .. } => {
+                let (found, of) = game.tally();
+                ui.label(format!(
+                    "{} is looking  \u{b7}  found {found} of {of}  \u{b7}  {}",
+                    name(game.seeker()),
+                    clock(game.searching_for(now))
+                ));
+                if ui.button("Call it off").clicked() {
+                    game.stop(ground, now);
+                }
+            }
+            Phase::Over { .. } => {}
+        }
+        if start {
+            game.start(ground, self.it.take(), now);
+        }
+        if let Some((notice, _)) = &self.notice {
+            ui.label(egui::RichText::new(notice).italics());
+        }
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            if ui.button("Back to the Green").clicked() {
+                self.go_to(Area::Green, now);
+            }
+        });
     }
 
     fn stories_menu(&mut self, ui: &mut egui::Ui, now: f32) {
@@ -418,6 +569,23 @@ const TOOLS: [(Offer, &str, &str); 3] = [
     (Offer::Toy, "A toy", "3"),
 ];
 
+/// What the person can hold out, to choose from.
+fn tools(ui: &mut egui::Ui, tool: &mut Offer) {
+    ui.label("Hold out:");
+    for (offer, label, key) in TOOLS {
+        let response = ui.selectable_label(*tool == offer, format!("{label}  {key}"));
+        if response.clicked() {
+            *tool = offer;
+        }
+    }
+}
+
+/// Seconds as a game clock: 0:07, 1:32.
+fn clock(seconds: f32) -> String {
+    let whole = seconds.max(0.0).round() as u32;
+    format!("{}:{:02}", whole / 60, whole % 60)
+}
+
 impl eframe::App for HillApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
@@ -456,6 +624,13 @@ impl eframe::App for HillApp {
                     if onwards || input.key_pressed(egui::Key::Escape) {
                         self.station.skip_arrival();
                     }
+                    if input.key_pressed(egui::Key::Escape)
+                        && self.area == Area::Fairground
+                        && let Some((ground, game)) = &mut self.fairground
+                        && game.phase() != Phase::Ready
+                    {
+                        game.stop(ground, now);
+                    }
                     for (key, (offer, _, _)) in [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3]
                         .into_iter()
                         .zip(TOOLS)
@@ -477,6 +652,11 @@ impl eframe::App for HillApp {
         if let (Area::Green, Some(green)) = (self.area, &mut self.green) {
             green.tick(&self.arrival.cast, now);
         }
+        if let (Area::Fairground, Some((ground, game))) = (self.area, &mut self.fairground) {
+            ground.tick(&self.arrival.cast, now);
+            game.tick(ground, now);
+        }
+        self.fairground_events(now);
         self.run_story(now);
         let texture = self.refresh_scene(&ctx, now);
 
@@ -509,8 +689,36 @@ impl eframe::App for HillApp {
                     painter.galley(label.center() - galley.size() / 2.0, galley, INK);
                 };
 
-                let hovered = match (self.area, &mut self.green) {
-                    (Area::Green, Some(green)) => {
+                let mut on_case = false;
+                let hovered = match (self.area, &mut self.green, &mut self.fairground) {
+                    (Area::Fairground, _, Some((ground, game))) => {
+                        ground.set_pointer(pointer);
+                        let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                        let playing = game.phase() != Phase::Ready;
+                        // During a game the person only watches; otherwise, as on the green.
+                        if let (false, Some(id)) = (playing, hovered) {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            if response.clicked() {
+                                ground.offer(id, self.tool, now);
+                            }
+                        }
+                        // "It" wears its name all game, so the watcher can follow it about.
+                        let tagged = hovered.into_iter().chain(game.seeker()).collect::<Vec<_>>();
+                        for id in tagged {
+                            if let (Some((x, y)), Some(member)) =
+                                (ground.head(id, now), self.arrival.cast.member(id))
+                            {
+                                let label = if game.seeker() == Some(id) {
+                                    format!("{} \u{b7} it", member.name)
+                                } else {
+                                    member.name.clone()
+                                };
+                                tag(&label, to_screen(x, y - 6.0));
+                            }
+                        }
+                        hovered
+                    }
+                    (Area::Green, Some(green), _) => {
                         green.set_pointer(pointer);
                         let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
                         if let Some((_, director)) = &mut self.story {
@@ -551,10 +759,30 @@ impl eframe::App for HillApp {
                                 tag(&traveler.name, centre);
                             }
                         }
+                        on_case = pointer.is_some_and(|(x, y)| self.station.on_display_case(x, y));
                         pointer.and_then(|(x, y)| self.station.traveler_at(x, y).map(|t| t.id))
                     }
                 };
-                if let Some(id) = hovered {
+                if on_case && hovered.is_none() {
+                    let kept: Vec<&str> = self
+                        .memories
+                        .colony()
+                        .souvenirs
+                        .iter()
+                        .filter_map(|id| souvenirs::name(id))
+                        .collect();
+                    response.on_hover_ui_at_pointer(|ui| {
+                        ui.strong("The display case");
+                        if kept.is_empty() {
+                            ui.label(
+                                "Empty for now. Souvenirs from stories and games are kept here.",
+                            );
+                        }
+                        for name in kept {
+                            ui.label(name);
+                        }
+                    });
+                } else if let Some(id) = hovered {
                     let lines = describe(&self.arrival.cast, id);
                     response.on_hover_ui_at_pointer(|ui| {
                         for (index, line) in lines.iter().enumerate() {
@@ -568,7 +796,7 @@ impl eframe::App for HillApp {
                 }
             });
 
-        if self.area == Area::Green || self.leaving.is_some() || self.station.in_motion(now) {
+        if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));
         } else if matches!(self.arrival.visit, Visit::Trip(_)) {
             // Keep looking for a recall even when nothing on screen moves.

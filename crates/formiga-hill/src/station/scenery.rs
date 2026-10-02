@@ -4,9 +4,7 @@
 //! Everything here is painted once into the backdrop, except the chimney smoke, which drifts.
 
 use crate::font::{GLYPH_HEIGHT, draw_text_shadowed, text_width};
-use crate::kit::{
-    Courses, bush, flower_box, plaster, ridge_tiles, roof, stonework, timber, window,
-};
+use crate::kit::{Courses, bush, flower_box, plaster, ridge_tiles, roof, stonework, timber};
 use crate::materials::*;
 use crate::paint::{
     Ramp, bevel, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb, rgba, vline,
@@ -32,7 +30,12 @@ const HORIZON: i32 = 132;
 const CHIMNEY_TOP: (i32, i32) = (101, 52);
 
 /// The fixed part of the scene.
-pub fn backdrop() -> Canvas {
+/// The display case of kept souvenirs, set into the station house's left wall: its left, top,
+/// right and bottom edges, for knowing when the pointer is over it.
+pub const CASE: (i32, i32, i32, i32) = (15, 101, 43, 134);
+
+/// The scene behind everyone, with whatever souvenirs the colony has kept in the display case.
+pub fn backdrop(keepsakes: &[String]) -> Canvas {
     let mut scene = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
     sky(&mut scene);
     hills(&mut scene);
@@ -45,7 +48,8 @@ pub fn backdrop() -> Canvas {
     canopy(&mut scene);
     nameboard(&mut scene);
     lamp(&mut scene, 356);
-    bench(&mut scene, 15);
+    display_case(&mut scene, keepsakes);
+    bench(&mut scene, 186);
     planter(&mut scene, 130);
     luggage(&mut scene, 284);
     potted_fern(&mut scene, 368);
@@ -484,8 +488,7 @@ fn station_house(scene: &mut Canvas) {
         );
     }
 
-    window(scene, 18, 105, 22, 20, 2);
-    flower_box(scene, 17, 127, 24);
+    flower_box(scene, 16, 136, 26);
     door(scene, 52, 106);
     timetable(scene, 76, 109);
     ticket_window(scene, 98, 110);
@@ -699,6 +702,90 @@ fn ticket_window(scene: &mut Canvas, x: i32, y: i32) {
     put(scene, x + 3, y + 3, rgba(0xe9f6f7, 170));
     // The counter.
     bevel(scene, x - 1, y + height - 3, width + 2, 3, PLANK);
+}
+
+/// A glass-fronted case in the wall, in the station's green enamel, lined in velvet, with a place
+/// on its two shelves for each of Hill's souvenirs. Those kept sit in their places; the rest are
+/// empty cushions, waiting, never a list of what is missing.
+fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
+    let (left, top, right, bottom) = CASE;
+    let width = right - left;
+    let (glass_top, sill) = (top + 3, bottom - 4);
+    // Shade where it stands out from the wall.
+    vline(scene, right, top + 2, bottom - top - 2, rgba(0x4a3040, 80));
+    // The cornice, with a brass finial, and the stone sill below.
+    bevel(scene, left - 1, top, width + 2, 4, IRON);
+    put(scene, left + width / 2, top - 1, rgb(0xc9a14e));
+    put(scene, left + width / 2, top, rgb(0xf1d58a));
+    bevel(scene, left - 2, sill, width + 4, 4, STONE);
+    // The frame, and the velvet behind the glass.
+    rect(scene, left, glass_top, width, sill - glass_top, IRON.base);
+    vline(scene, left, glass_top, sill - glass_top, IRON.light);
+    vline(scene, right - 1, glass_top, sill - glass_top, IRON.edge);
+    let (inner_left, inner_top) = (left + 2, glass_top + 2);
+    let (inner_width, inner_height) = (width - 4, sill - glass_top - 3);
+    for y in inner_top..inner_top + inner_height {
+        let t = (y - inner_top) as f32 / inner_height as f32;
+        hline(
+            scene,
+            inner_left,
+            y,
+            inner_width,
+            mix(rgb(0x7a2c3a), rgb(0x3e1620), t),
+        );
+    }
+    // Two shelves, three places on each, in the catalogue's order.
+    let shelves = [inner_top + 8, inner_top + 20];
+    for shelf in shelves {
+        hline(scene, inner_left, shelf, inner_width, PLANK.light);
+        hline(scene, inner_left, shelf + 1, inner_width, PLANK.shadow);
+    }
+    for (index, id) in crate::story::souvenirs::ids().into_iter().enumerate() {
+        let shelf = shelves[index / 3];
+        let x = inner_left + (index % 3) as i32 * (crate::keepsake_art::ICON + 1);
+        if keepsakes.iter().any(|kept| kept == id) {
+            crate::keepsake_art::draw_souvenir(scene, id, x, shelf - crate::keepsake_art::ICON);
+        } else {
+            // An empty cushion, waiting.
+            ellipse(scene, x + 3, shelf - 1, 3, 1, rgb(0x5c2030));
+            hline(scene, x + 1, shelf - 2, 5, rgb(0x96404e));
+        }
+    }
+    // The glass: a faint sheen, two glints, and the line where the doors meet.
+    rect(
+        scene,
+        inner_left,
+        inner_top,
+        inner_width,
+        inner_height,
+        rgba(0xa6c8d2, 26),
+    );
+    vline(
+        scene,
+        left + width / 2,
+        glass_top + 1,
+        sill - glass_top - 1,
+        IRON.edge,
+    );
+    for (dx, dy) in [(0, 2), (1, 1), (2, 0)] {
+        put(
+            scene,
+            right - 6 + dx,
+            inner_top + 1 + dy,
+            rgba(0xffffff, 120),
+        );
+    }
+    for (dx, dy) in [(0, 2), (1, 1), (2, 0)] {
+        put(
+            scene,
+            left + width / 2 + 3 + dx,
+            inner_top + 9 + dy,
+            rgba(0xffffff, 90),
+        );
+    }
+    for handle in [left + width / 2 - 2, left + width / 2 + 1] {
+        put(scene, handle, glass_top + 12, rgb(0xf1d58a));
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1039,19 +1126,35 @@ mod tests {
 
     #[test]
     fn the_backdrop_fills_every_pixel() {
-        let scene = backdrop();
+        let scene = backdrop(&[]);
         assert!(scene.pixels().iter().all(|pixel| pixel.a == 255));
     }
 
     #[test]
     fn the_backdrop_is_the_same_every_time() {
-        assert_eq!(backdrop(), backdrop());
+        assert_eq!(backdrop(&[]), backdrop(&[]));
+    }
+
+    #[test]
+    fn kept_souvenirs_show_in_the_case_and_nothing_else_changes() {
+        let empty = backdrop(&[]);
+        let kept = backdrop(&["picnic_ribbon".to_owned(), "oak_acorn".to_owned()]);
+        let (left, top, right, bottom) = CASE;
+        for y in 0..SCENE_HEIGHT as i32 {
+            for x in 0..SCENE_WIDTH as i32 {
+                let inside = (left..right).contains(&x) && (top..bottom).contains(&y);
+                if !inside {
+                    assert_eq!(empty.get(x, y), kept.get(x, y), "({x}, {y}) changed");
+                }
+            }
+        }
+        assert_ne!(empty, kept);
     }
 
     #[test]
     fn smoke_drifts_unless_motion_is_reduced() {
         let draw = |elapsed, reduce| {
-            let mut scene = backdrop();
+            let mut scene = backdrop(&[]);
             smoke(&mut scene, elapsed, reduce);
             scene
         };

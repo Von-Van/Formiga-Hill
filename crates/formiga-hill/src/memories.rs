@@ -14,7 +14,7 @@ const VERSION: u32 = 1;
 const MAX_BYTES: u64 = 1024 * 1024;
 const FILE: &str = "memories.json";
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ColonyMemories {
     /// Stories finished, as `<package id>/<story id>`.
     #[serde(default)]
@@ -24,6 +24,10 @@ pub struct ColonyMemories {
     pub souvenirs: Vec<String>,
     #[serde(default)]
     pub visits: u32,
+    /// The quickest each traveller has found everyone at hide-and-seek, in seconds, by its
+    /// Desktop id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub quickest_seekers: BTreeMap<String, f32>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -90,6 +94,27 @@ impl Memories {
             }
         }
         self.keep();
+    }
+
+    /// Remembers a game of hide-and-seek in which `seeker` found everyone in `seconds`, and gives
+    /// the Fairground's ticket the first time a game is seen through. Says whether it was that
+    /// seeker's quickest yet.
+    pub fn found_everyone(&mut self, seeker: u64, seconds: f32) -> bool {
+        let colony = self.colony_mut();
+        let best = colony
+            .quickest_seekers
+            .entry(seeker.to_string())
+            .or_insert(f32::MAX);
+        let quickest = seconds < *best;
+        if quickest {
+            *best = seconds;
+        }
+        let ticket = crate::story::souvenirs::FAIR_TICKET;
+        if !colony.souvenirs.iter().any(|kept| kept == ticket) {
+            colony.souvenirs.push(ticket.to_owned());
+        }
+        self.keep();
+        quickest
     }
 
     /// Writes the book to disk beside itself and renames it into place. A failure is reported
@@ -173,6 +198,21 @@ mod tests {
         memories.finished("p/s".into(), &["oak_acorn".into()]);
         memories.finished("p/s".into(), &["oak_acorn".into()]);
         assert_eq!(memories.colony().souvenirs.len(), 1);
+    }
+
+    #[test]
+    fn hide_and_seek_remembers_each_seekers_quickest_and_gives_one_ticket() {
+        let mut memories = Memories::open(None, "c");
+        assert!(memories.found_everyone(7, 40.0));
+        assert!(!memories.found_everyone(7, 55.0));
+        assert!(
+            memories.found_everyone(9, 61.0),
+            "each seeker has its own best"
+        );
+        assert!(memories.found_everyone(7, 21.5));
+        assert_eq!(memories.colony().quickest_seekers["7"], 21.5);
+        assert_eq!(memories.colony().quickest_seekers["9"], 61.0);
+        assert_eq!(memories.colony().souvenirs, vec!["fair_ticket".to_owned()]);
     }
 
     #[test]
