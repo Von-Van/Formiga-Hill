@@ -1,7 +1,7 @@
 //! The finds in a hollow: the finds reached for (Kind::Reach): their icons and their Hilltop
 //! pieces.
 
-use super::earth::{icon_from, lit, lump, moss, paint_rows, shadow, tuft};
+use super::brush::{icon_from, lit, lump, moss, paint_rows, shadow, tuft};
 use super::{ICON, Piece};
 use crate::materials::{GLASS, GLOW, STONE};
 use crate::paint::{Ramp, chance, hline, line, mix, noise, put, rect, rgb, rgba, vline};

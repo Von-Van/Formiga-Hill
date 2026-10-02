@@ -2,6 +2,7 @@
 //! becomes on the Hilltop. Drawn to the same standard as the areas: shaded with ramps, lit from the
 //! upper left, outlined in a darker shade of their own colour, never black.
 
+mod brush;
 mod earth;
 mod hollow;
 mod undergrowth;

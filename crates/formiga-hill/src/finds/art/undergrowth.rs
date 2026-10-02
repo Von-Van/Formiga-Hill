@@ -2,6 +2,7 @@
 //! Growing things mostly, in leaf greens with a berry, a flower or a butterfly for colour, and
 //! two made things the brambles caught: a kite, and an old copper fox.
 
+use super::brush::*;
 use super::{ICON, Piece};
 use crate::paint::{Ramp, blit, chance, ellipse, mix, noise, polygon, put, rgb, rgba};
 use formiga_art::{Canvas, Rgba};
@@ -90,9 +91,6 @@ pub fn piece(id: &str) -> Option<Piece> {
         _ => return None,
     })
 }
-
-/// The soft shade every piece casts on the summit grass.
-const SHADOW: Rgba = rgba(0x2a4a2a, 70);
 
 const LEAF: Ramp = Ramp::new(0x2c5233, 0x3d6e45, 0x518a55, 0x6fa866, 0x93c67e);
 const DEEP_LEAF: Ramp = Ramp::new(0x22422a, 0x30583a, 0x41704a, 0x588c58, 0x7aa86c);
@@ -484,7 +482,7 @@ fn seed_clock(s: &mut Canvas, centre: (i32, i32), blown: bool) {
                     CLOCK.shadow
                 }
             };
-            glaze(s, x, y, color);
+            put(s, x, y, color);
         }
     }
 }
@@ -500,7 +498,7 @@ fn strange_sapling() -> Piece {
         for y in 18 - radius..=18 + radius {
             for x in cx - radius..=cx + radius {
                 if in_ellipse(x, y, (cx, 18), (radius, radius)) {
-                    glaze(&mut s, x, y, rgba(0x9af4e4, alpha));
+                    put(&mut s, x, y, rgba(0x9af4e4, alpha));
                 }
             }
         }
@@ -568,9 +566,9 @@ fn strange_sapling() -> Piece {
     );
     // Motes of its glow, drifting.
     for &(x, y) in &[(5, 12), (23, 15), (8, 29), (21, 6), (25, 27)] {
-        glaze(&mut s, x, y, rgba(0xd8fff4, 220));
+        put(&mut s, x, y, rgba(0xd8fff4, 220));
         for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
-            glaze(&mut s, x + dx, y + dy, rgba(0x8af0e0, 90));
+            put(&mut s, x + dx, y + dy, rgba(0x8af0e0, 90));
         }
     }
     stamp(&mut s, (8, ground - 2), &TUFT, &tuft_inks(), false);
@@ -993,66 +991,6 @@ fn arrow_inks() -> Vec<(u8, Rgba)> {
 // Drawing
 // ---------------------------------------------------------------------------------------------
 
-/// How a rounded thing turns to the light from the upper left: how much its tone follows where
-/// a pixel sits across it, and how much where it sits down it.
-type Light = (f32, f32);
-const ROUND: Light = (0.55, 0.45);
-const UPRIGHT: Light = (0.85, 0.2);
-const LYING: Light = (0.15, 0.85);
-
-/// Shades the solid that `inside` describes as something rounded, lit from the upper left: how
-/// far across and down it a pixel sits stands in for the way the surface there faces. Noise
-/// dithers the bands so they don't step, `grain` in every 256 pixels are a shade darker (and
-/// half as many a shade lighter) for texture, and the outermost pixels take the edge tone.
-fn model(
-    s: &mut Canvas,
-    ramp: Ramp,
-    light: Light,
-    grain: u32,
-    salt: u32,
-    inside: impl Fn(i32, i32) -> bool,
-) {
-    let tones = [ramp.edge, ramp.shadow, ramp.base, ramp.light, ramp.shine];
-    for y in 0..s.height() as i32 {
-        for x in 0..s.width() as i32 {
-            if !inside(x, y) {
-                continue;
-            }
-            let reach = |dx: i32, dy: i32| {
-                let mut n = 0;
-                while n < 64 && inside(x + dx * (n + 1), y + dy * (n + 1)) {
-                    n += 1;
-                }
-                n
-            };
-            let (left, right, up, down) = (reach(-1, 0), reach(1, 0), reach(0, -1), reach(0, 1));
-            if left.min(right).min(up).min(down) == 0 {
-                put(s, x, y, ramp.edge);
-                continue;
-            }
-            let across = (left - right) as f32 / (left + right) as f32;
-            let along = (up - down) as f32 / (up + down) as f32;
-            let jitter = (noise(x, y, salt) & 0xff) as f32 / 255.0 - 0.5;
-            let lit = -light.0 * across - light.1 * along + 0.3 * jitter;
-            let mut level: usize = if lit > 0.75 {
-                4
-            } else if lit > 0.3 {
-                3
-            } else if lit > -0.3 {
-                2
-            } else {
-                1
-            };
-            if chance(x, y, salt.wrapping_add(1), grain) {
-                level = (level - 1).max(1);
-            } else if chance(x, y, salt.wrapping_add(2), grain / 2) {
-                level = (level + 1).min(3);
-            }
-            put(s, x, y, tones[level]);
-        }
-    }
-}
-
 /// A ramp's tone for something facing the light by `lit` (about -1 to 1), dithered.
 fn tone(ramp: Ramp, lit: f32, x: i32, y: i32, salt: u32) -> Rgba {
     let lit = lit + 0.35 * ((noise(x, y, salt) & 0xff) as f32 / 255.0 - 0.5);
@@ -1173,133 +1111,4 @@ fn blade(
 fn darker(color: Rgba) -> Rgba {
     let shade = |channel: u8| (f32::from(channel) * 0.55) as u8;
     Rgba::new(shade(color.r), shade(color.g), shade(color.b), color.a)
-}
-
-/// A twig or branch along `path`, two pixels thick: lit along its upper side, in its own edge
-/// tone along its lower.
-fn bough(s: &mut Canvas, path: &[(i32, i32)], ramp: Ramp) {
-    let points = trace(path);
-    for &(x, y) in &points {
-        put(s, x + 1, y, ramp.edge);
-        put(s, x, y + 1, ramp.edge);
-        put(s, x + 1, y + 1, ramp.edge);
-    }
-    for &(x, y) in &points {
-        let lit = if chance(x, y, 121, 90) {
-            ramp.light
-        } else {
-            ramp.base
-        };
-        put(s, x, y, lit);
-    }
-}
-
-/// Every pixel along a path of straight steps.
-fn trace(path: &[(i32, i32)]) -> Vec<(i32, i32)> {
-    let mut points: Vec<(i32, i32)> = Vec::new();
-    for pair in path.windows(2) {
-        let ((mut x, mut y), (x1, y1)) = (pair[0], pair[1]);
-        let (dx, dy) = ((x1 - x).abs(), -(y1 - y).abs());
-        let (sx, sy) = ((x1 - x).signum(), (y1 - y).signum());
-        let mut error = dx + dy;
-        loop {
-            if points.last() != Some(&(x, y)) {
-                points.push((x, y));
-            }
-            if (x, y) == (x1, y1) {
-                break;
-            }
-            let twice = 2 * error;
-            if twice >= dy {
-                error += dy;
-                x += sx;
-            }
-            if twice <= dx {
-                error += dx;
-                y += sy;
-            }
-        }
-    }
-    points
-}
-
-/// Grass grown up round a piece: a few blades, lit at the tips.
-const TUFT: [&str; 3] = ["l.l.l", ".glg.", ".dgd."];
-
-fn tuft_inks() -> Vec<(u8, Rgba)> {
-    vec![
-        (b'l', rgb(0xa6d48c)),
-        (b'g', rgb(0x5e9050)),
-        (b'd', rgb(0x467440)),
-    ]
-}
-
-/// A ramp's tones named by five letters, darkest first, for `stamp`. A `.` names nothing.
-fn letters(ramp: Ramp, names: &[u8; 5]) -> [(u8, Rgba); 5] {
-    [
-        (names[0], ramp.edge),
-        (names[1], ramp.shadow),
-        (names[2], ramp.base),
-        (names[3], ramp.light),
-        (names[4], ramp.shine),
-    ]
-}
-
-/// Paints rows of letters with their top-left at `at`, each letter a colour from `inks`; a
-/// letter not in `inks` is left clear. `flip` mirrors it left to right.
-fn stamp(s: &mut Canvas, at: (i32, i32), rows: &[&str], inks: &[(u8, Rgba)], flip: bool) {
-    let width = rows.iter().map(|row| row.len()).max().unwrap_or(0) as i32;
-    for (dy, row) in rows.iter().enumerate() {
-        for (dx, letter) in row.bytes().enumerate() {
-            if letter == b'.' {
-                continue;
-            }
-            let Some(&(_, color)) = inks.iter().find(|(name, _)| *name == letter) else {
-                continue;
-            };
-            let dx = if flip {
-                width - 1 - dx as i32
-            } else {
-                dx as i32
-            };
-            glaze(s, at.0 + dx, at.1 + dy as i32, color);
-        }
-    }
-}
-
-/// Paints `color` over `(x, y)` by its alpha. Unlike `put`, a half-clear colour on a clear
-/// pixel keeps its own colour rather than blending towards the clear pixel's black, so glows
-/// and fluff stay bright when the sprite is drawn on the grass.
-fn glaze(s: &mut Canvas, x: i32, y: i32, color: Rgba) {
-    let under = s.get(x, y);
-    if color.a == 0 {
-        return;
-    }
-    if color.a == 255 || under.a == 0 {
-        s.set(x, y, color);
-        return;
-    }
-    let top = f32::from(color.a) / 255.0;
-    let bottom = f32::from(under.a) / 255.0 * (1.0 - top);
-    let alpha = top + bottom;
-    let channel =
-        |t: u8, b: u8| ((f32::from(t) * top + f32::from(b) * bottom) / alpha).round() as u8;
-    s.set(
-        x,
-        y,
-        Rgba::new(
-            channel(color.r, under.r),
-            channel(color.g, under.g),
-            channel(color.b, under.b),
-            (alpha * 255.0).round() as u8,
-        ),
-    );
-}
-
-/// Whether `(x, y)` is inside the ellipse, measured a little generously so that small ones come
-/// out round rather than with a lone pixel sticking out at each end.
-fn in_ellipse(x: i32, y: i32, centre: (i32, i32), size: (i32, i32)) -> bool {
-    let (rx, ry) = (size.0 as f32 + 0.4, size.1 as f32 + 0.4);
-    let (dx, dy) = ((x - centre.0) as f32 / rx, (y - centre.1) as f32 / ry);
-    size.0 > 0 && size.1 > 0 && dx * dx + dy * dy <= 1.0
 }
