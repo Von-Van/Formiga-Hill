@@ -568,10 +568,10 @@ fn parse_beat(
         flags.insert(flag.clone());
         Action::Set { flag: flag.clone() }
     } else if let Some(id) = &raw.souvenir {
-        if !super::souvenirs::exists(id) {
+        if !super::souvenirs::a_story_can_give(id) {
             return Err(format!(
-                "\"{id}\" is not one of Hill's souvenirs ({})",
-                super::souvenirs::ids().join(", ")
+                "\"{id}\" is not one of the souvenirs a story can give ({})",
+                super::souvenirs::for_stories().join(", ")
             ));
         }
         Action::Souvenir { id: id.clone() }

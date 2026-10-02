@@ -7,7 +7,7 @@ mod casting;
 mod director;
 pub mod lines;
 mod package;
-mod script;
+pub(crate) mod script;
 pub mod souvenirs;
 
 pub use director::Director;
@@ -92,7 +92,6 @@ impl Library {
 mod tests {
     use super::*;
     use crate::cast::Cast;
-    use crate::green::Green;
 
     #[test]
     fn every_official_package_loads() {
@@ -129,7 +128,7 @@ mod tests {
         let library = Library::load(&[]);
         for (_, story) in library.stories() {
             for option in 0..4 {
-                let mut green = Green::new(&cast, 0.0);
+                let mut green = crate::green::open(&cast, 0.0);
                 let mut director = Director::new(story.clone(), &cast, 1).unwrap();
                 green.reserve(director.players());
                 let mut now = 0.0;

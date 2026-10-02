@@ -12,7 +12,7 @@ use super::script::{Action, Condition, Feeling, Place, Pose, Story, Who};
 use crate::actor::Step;
 use crate::cast::{Cast, Id};
 use crate::character::{Beat as ActorBeat, Cue};
-use crate::green::Green;
+use crate::playground::Playground;
 use formiga_art::ExpressionKind;
 use formiga_core::{ActionKind, Gesture};
 use formiga_travel::Band;
@@ -110,7 +110,7 @@ impl Director {
     }
 
     /// Plays as far as the story can go at `now`.
-    pub fn run(&mut self, green: &mut Green, cast: &Cast, now: f32) {
+    pub fn run(&mut self, green: &mut Playground, cast: &Cast, now: f32) {
         for _ in 0..MAX_INSTANT_BEATS {
             if self.finished || self.shown.is_some() || !self.choices.is_empty() {
                 return;
@@ -188,7 +188,7 @@ impl Director {
         fill(line.for_kind(kind), |name| self.name_of(cast, name))
     }
 
-    fn perform(&mut self, green: &mut Green, id: Id, steps: Vec<Step>, now: f32) {
+    fn perform(&mut self, green: &mut Playground, id: Id, steps: Vec<Step>, now: f32) {
         green.direct(id, steps, now);
         if self.in_background {
             self.background.push(id);
@@ -219,7 +219,7 @@ impl Director {
         }
     }
 
-    fn play(&mut self, action: &Action, green: &mut Green, cast: &Cast, now: f32) {
+    fn play(&mut self, action: &Action, green: &mut Playground, cast: &Cast, now: f32) {
         match action {
             Action::Walk { who, to } => {
                 for (slot, id) in self.who(*who).into_iter().enumerate() {
@@ -489,7 +489,7 @@ mod tests {
         )
         .unwrap();
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
-        let mut green = Green::new(&cast, 0.0);
+        let mut green = crate::green::open(&cast, 0.0);
         let mut director = Director::new(story, &cast, 1).unwrap();
         let host = director.players()[0];
         green.reserve(director.players());

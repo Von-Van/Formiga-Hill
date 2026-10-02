@@ -6,12 +6,15 @@ mod cast;
 mod character;
 mod cues;
 mod dice;
+mod fairground;
 mod font;
 mod green;
+mod keepsake_art;
 mod kit;
 mod materials;
 mod memories;
 mod paint;
+mod playground;
 mod sheet;
 mod station;
 mod story;
@@ -32,19 +35,25 @@ const USAGE: &str = "\
 Formiga Hill
 
 Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save <FILE>]
-                    [--render-station <PNG> | --render-green <PNG>] [--at <SECONDS>]
+                    [--render-station <PNG> | --render-green <PNG> | …] [--at <SECONDS>]
 
   --sample                 Arrive with Desktop's made-up sample colony (the default)
   --formiga-travel <DIR>   How Desktop starts Hill: the trip it wrote, answered on the way home
   --from-save <FILE>       Development only: board a Desktop colony file, which is only ever read
   --render-station <PNG>   Draw the station to a PNG and exit without opening a window
   --render-green <PNG>     Draw the Village Green to a PNG and exit without opening a window
+  --render-fairground <PNG>
+                           Draw the Fairground to a PNG and exit without opening a window
+  --render-hide-and-seek <PNG>
+                           Draw a game of hide-and-seek at the Fairground, --at seconds into
+                           the search
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
   --render-story <PNG>     Draw a story on the green --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
   --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
-  --at <SECONDS>           Draw that far into the arrival, or into free play on the green
+  --at <SECONDS>           Draw that far into the arrival, or into free play on the green or
+                           at the Fairground
 ";
 
 enum Source {
@@ -57,6 +66,9 @@ enum Source {
 enum Area {
     Station,
     Green,
+    Fairground,
+    /// The Fairground, a game of hide-and-seek under way.
+    HideAndSeek,
     /// Not an area: the review sheet of everyone's reactions.
     Reactions,
     /// The green, a story under way on it.
@@ -90,12 +102,18 @@ fn main() -> Result<()> {
                     Some(seconds) => (station::Journey::Arriving { since: 0.0 }, seconds),
                     None => (station::Journey::Here, 0.0),
                 };
-                station::Station::new(&arrival.cast, journey).compose(now)
+                // The display case shows what this colony has kept, as Hill remembers it.
+                let memories = memories::Memories::open(
+                    memories::Memories::folder().as_deref(),
+                    &arrival.cast.snapshot.colony_id,
+                );
+                station::Station::new(&arrival.cast, journey, &memories.colony().souvenirs)
+                    .compose(now)
             }
             Area::Green => {
                 // Free play, run forward as the window would run it.
                 let until = args.at.unwrap_or(20.0);
-                let mut green = green::Green::new(&arrival.cast, 0.0);
+                let mut green = green::open(&arrival.cast, 0.0);
                 let mut now = 0.0;
                 while now < until {
                     now += 1.0 / 30.0;
@@ -103,6 +121,17 @@ fn main() -> Result<()> {
                 }
                 green.compose(now)
             }
+            Area::Fairground => {
+                let until = args.at.unwrap_or(20.0);
+                let (mut fairground, _) = fairground::open(&arrival.cast, 0.0);
+                let mut now = 0.0;
+                while now < until {
+                    now += 1.0 / 30.0;
+                    fairground.tick(&arrival.cast, now);
+                }
+                fairground.compose(now)
+            }
+            Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Story => {
                 let library = story::Library::load(&args.packages);
@@ -166,6 +195,12 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Station, value("--render-station")?));
             }
             Some("--render-green") => render = Some((Area::Green, value("--render-green")?)),
+            Some("--render-fairground") => {
+                render = Some((Area::Fairground, value("--render-fairground")?));
+            }
+            Some("--render-hide-and-seek") => {
+                render = Some((Area::HideAndSeek, value("--render-hide-and-seek")?));
+            }
             Some("--render-story") => render = Some((Area::Story, value("--render-story")?)),
             Some("--render-reactions") => {
                 render = Some((Area::Reactions, value("--render-reactions")?));
@@ -187,7 +222,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         }
     }
     if at.is_some() && render.is_none() {
-        bail!("--at only goes with --render-station or --render-green");
+        bail!("--at only goes with one of the --render options");
     }
     Ok(Some(Args {
         source: source.unwrap_or(Source::Sample),
@@ -248,7 +283,7 @@ fn story_to_draw(library: &story::Library) -> Result<&story::Story> {
 fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
     // The colony arrives and settles on the green first, as it would before anyone opens a story.
     const SETTLE: f32 = 12.0;
-    let mut green = green::Green::new(cast, 0.0);
+    let mut green = green::open(cast, 0.0);
     let mut now = 0.0;
     while now < SETTLE {
         now += 1.0 / 30.0;
@@ -286,6 +321,30 @@ fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
         );
     }
     Ok(green.compose(now))
+}
+
+/// A game of hide-and-seek `at` seconds into the search, once the colony has settled at the
+/// Fairground and hidden.
+fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
+    const SETTLE: f32 = 12.0;
+    let (mut ground, mut game) = fairground::open(cast, 0.0);
+    let mut now = 0.0;
+    let mut seeking_since = None;
+    while seeking_since.is_none_or(|since| now < since + at) && now < 300.0 {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        game.tick(&mut ground, now);
+        if now >= SETTLE && game.phase() == fairground::Phase::Ready && seeking_since.is_none() {
+            game.start(&mut ground, None, now);
+        }
+        if let fairground::Phase::Seeking { since } = game.phase() {
+            seeking_since.get_or_insert(since);
+        }
+        for event in game.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    ground.compose(now)
 }
 
 /// Checks package folders as Hill would load them, and says what is wrong in each.
