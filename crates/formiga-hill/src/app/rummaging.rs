@@ -15,13 +15,24 @@ use formiga_travel::Band;
 /// How many companions can come along at once.
 pub const PARTY: usize = 2;
 
+/// What the person is going to the Woods to do.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Activity {
+    #[default]
+    Rummage,
+    Fish,
+}
+
 #[derive(Default)]
 pub struct Woods {
-    /// Who the person has chosen to bring; the first leads.
+    /// Who the person has chosen to bring; the first leads, or fishes.
     pub party: Vec<Id>,
-    /// The glade with nobody in it, between outings.
+    pub activity: Activity,
+    /// The glade and the pool with nobody there, between trips.
     pub empty: Option<Playground>,
+    pub pool: Option<Playground>,
     pub outing: Option<(Playground, Rummage)>,
+    pub fishing: Option<(Playground, crate::fishing::angling::Angling)>,
 }
 
 impl HillApp {
@@ -29,6 +40,9 @@ impl HillApp {
     pub(super) fn open_woods(&mut self, now: f32) {
         if self.woods.empty.is_none() {
             self.woods.empty = Some(woods::open(&self.arrival.cast, &[], now));
+        }
+        if self.woods.pool.is_none() {
+            self.woods.pool = Some(crate::fishing::open(&self.arrival.cast, &[], now));
         }
         if self.woods.party.is_empty()
             && let Some(first) = self.arrival.cast.members.first()
@@ -78,6 +92,10 @@ impl HillApp {
     /// Plays the outing on; with reduced motion, `holding` turns the marker.
     pub(super) fn tick_woods(&mut self, now: f32, holding: bool, dt: f32) {
         let cast = &self.arrival.cast;
+        if self.woods.fishing.is_some() {
+            self.tick_fishing(now, holding);
+            return;
+        }
         if let Some(empty) = &mut self.woods.empty
             && self.woods.outing.is_none()
         {
@@ -152,6 +170,15 @@ impl HillApp {
     }
 
     pub(super) fn compose_woods(&mut self, now: f32) -> Canvas {
+        if let Some(scene) = self.compose_pool(now) {
+            return scene;
+        }
+        if self.woods.activity == Activity::Fish
+            && self.woods.outing.is_none()
+            && let Some(pool) = &mut self.woods.pool
+        {
+            return pool.compose(now);
+        }
         match (&mut self.woods.outing, &mut self.woods.empty) {
             (Some((ground, rummage)), _) => {
                 let mut scene = ground.compose(now);
@@ -165,6 +192,10 @@ impl HillApp {
 
     /// A click in the glade: choose a spot, or catch the moment.
     pub(super) fn woods_click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
+        if self.woods.fishing.is_some() {
+            self.fishing_click(pointer, now);
+            return;
+        }
         let Some((ground, rummage)) = &mut self.woods.outing else {
             return;
         };
@@ -186,6 +217,7 @@ impl HillApp {
 
     /// The key for catching, for anyone not using the pointer.
     pub(super) fn woods_strike(&mut self, now: f32) {
+        self.fishing_strike(now);
         if let Some((ground, rummage)) = &mut self.woods.outing
             && matches!(rummage.phase(), Phase::Catching(_))
             && !ground.reduce_motion()
@@ -196,6 +228,9 @@ impl HillApp {
 
     /// What to call the spot under the pointer, and where, while choosing.
     pub(super) fn woods_hover(&self, pointer: Option<(f32, f32)>) -> Option<(String, (f32, f32))> {
+        if self.woods.fishing.is_some() {
+            return self.fishing_hover(pointer);
+        }
         let (_, rummage) = self.woods.outing.as_ref()?;
         if !matches!(rummage.phase(), Phase::Exploring | Phase::Catching(_)) {
             return None;
@@ -213,8 +248,20 @@ impl HillApp {
     pub(super) fn woods_bar(&mut self, ui: &mut egui::Ui, now: f32) {
         let mut set_off = false;
         let mut home = false;
+        if self.woods.fishing.is_some() {
+            self.fishing_bar(ui, now);
+            if ui.button("Journal").clicked() {
+                self.journal = !self.journal;
+            }
+            return;
+        }
         match &self.woods.outing {
             None => {
+                for (activity, label) in [(Activity::Rummage, "Rummage"), (Activity::Fish, "Fish")]
+                {
+                    ui.selectable_value(&mut self.woods.activity, activity, label);
+                }
+                ui.separator();
                 ui.label("Who's coming?");
                 let cast = &self.arrival.cast;
                 let colony = self.memories.colony();
@@ -226,12 +273,15 @@ impl HillApp {
                         .get(&member.id.to_string())
                         .copied()
                         .unwrap_or(0);
-                    let hint = format!(
-                        "Good at {}. {} outing{} so far.",
-                        rummage::best_at(&character).knack(),
-                        outings,
-                        plural(outings as usize)
-                    );
+                    let hint = match self.woods.activity {
+                        Activity::Rummage => format!(
+                            "Good at {}. {} outing{} so far.",
+                            rummage::best_at(&character).knack(),
+                            outings,
+                            plural(outings as usize)
+                        ),
+                        Activity::Fish => angler(&character).to_owned(),
+                    };
                     if ui
                         .selectable_label(chosen, &member.name)
                         .on_hover_text(hint)
@@ -280,11 +330,30 @@ impl HillApp {
             self.journal = !self.journal;
         }
         if set_off {
-            self.set_off(now);
+            match self.woods.activity {
+                Activity::Rummage => self.set_off(now),
+                Activity::Fish => self.set_off_fishing(now),
+            }
         }
         if home && let Some((ground, rummage)) = &mut self.woods.outing {
             rummage.head_home(ground, now);
         }
+    }
+}
+
+/// What sort of angler a companion makes, for the person choosing who fishes (the first chosen).
+fn angler(character: &Character) -> &'static str {
+    let a = character.axes;
+    let patience = 1.0 - a.impulsiveness;
+    let strength = (a.energy + a.feistiness) / 2.0;
+    if character.kind == formiga_core::TemperamentKind::Lazybones {
+        "Likely to nod off with the rod, and the fish seem to like that."
+    } else if patience >= a.playfulness && patience >= strength {
+        "Patient with a rod: a longer moment to strike, and a steady cast."
+    } else if a.playfulness >= strength {
+        "Playful at the water's edge: fish come to its float readily."
+    } else {
+        "Strong on the line: hard to snap."
     }
 }
 

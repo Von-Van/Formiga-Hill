@@ -157,6 +157,7 @@ pub enum Use {
     Rest,
 }
 
+#[derive(Debug)]
 pub struct Find {
     pub id: &'static str,
     pub name: &'static str,

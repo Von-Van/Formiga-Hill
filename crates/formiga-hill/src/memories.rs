@@ -45,6 +45,34 @@ pub struct ColonyMemories {
     /// Outings in a row that turned up nothing new: after a couple, the Woods makes sure.
     #[serde(default)]
     pub drought: u32,
+    /// Every kind of fish the colony has caught at the pool, by id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub fish: BTreeMap<String, FishRecord>,
+    #[serde(default)]
+    pub fishing_trips: u32,
+    /// Trips in a row that caught no new kind of fish.
+    #[serde(default)]
+    pub fish_drought: u32,
+}
+
+/// One kind of fish in the journal.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct FishRecord {
+    /// How many have been landed, and let go again.
+    pub count: u32,
+    /// The longest landed, in centimetres.
+    pub longest: f32,
+    /// Who was fishing when the first was landed, by Desktop id.
+    pub first_by: String,
+}
+
+/// What a fishing trip brought: kinds caught for the first time, kinds caught longer than ever
+/// before, and finds that snagged on the line and are new to the journal.
+#[derive(Debug, Default, PartialEq)]
+pub struct Haul {
+    pub new_kinds: Vec<&'static str>,
+    pub longest_yet: Vec<&'static str>,
+    pub new_finds: Vec<&'static str>,
 }
 
 /// One find in the journal.
@@ -151,20 +179,7 @@ impl Memories {
         for id in party {
             *colony.outings_by.entry(id.to_string()).or_default() += 1;
         }
-        let leader = party.first().map(u64::to_string).unwrap_or_default();
-        let mut new = Vec::new();
-        for id in basket {
-            let Some(find) = crate::finds::find(id) else {
-                continue;
-            };
-            let record = colony.finds.entry(find.id.to_owned()).or_default();
-            if record.count == 0 {
-                record.first_by.clone_from(&leader);
-                new.push(find.id);
-            }
-            record.count += 1;
-            *colony.satchel.entry(find.id.to_owned()).or_default() += 1;
-        }
+        let new = keep_finds(colony, party, basket);
         colony.drought = if new.is_empty() {
             colony.drought + 1
         } else {
@@ -172,6 +187,42 @@ impl Memories {
         };
         self.keep();
         new
+    }
+
+    /// Remembers a fishing trip: the fish landed and their lengths go into the journal (they were
+    /// let go), and anything that snagged into the journal and the satchel.
+    pub fn back_from_fishing(
+        &mut self,
+        party: &[u64],
+        creel: &[(&str, f32)],
+        snagged: &[&str],
+    ) -> Haul {
+        let colony = self.colony_mut();
+        colony.fishing_trips += 1;
+        let angler = party.first().map(u64::to_string).unwrap_or_default();
+        let mut haul = Haul::default();
+        for (id, length) in creel {
+            let Some(fish) = crate::fishing::fish::fish(id) else {
+                continue;
+            };
+            let record = colony.fish.entry(fish.id.to_owned()).or_default();
+            if record.count == 0 {
+                record.first_by.clone_from(&angler);
+                haul.new_kinds.push(fish.id);
+            } else if *length > record.longest && !haul.longest_yet.contains(&fish.id) {
+                haul.longest_yet.push(fish.id);
+            }
+            record.count += 1;
+            record.longest = record.longest.max(*length);
+        }
+        colony.fish_drought = if haul.new_kinds.is_empty() {
+            colony.fish_drought + 1
+        } else {
+            0
+        };
+        haul.new_finds = keep_finds(colony, party, snagged);
+        self.keep();
+        haul
     }
 
     /// Stands a find from the satchel on a Hilltop spot. Whatever stood there goes back into the
@@ -233,6 +284,25 @@ impl Memories {
             eprintln!("formiga-hill: could not keep the colony's memories: {error}");
         }
     }
+}
+
+/// Puts finds into the journal and the satchel. Says which were new.
+fn keep_finds(colony: &mut ColonyMemories, party: &[u64], finds: &[&str]) -> Vec<&'static str> {
+    let leader = party.first().map(u64::to_string).unwrap_or_default();
+    let mut new = Vec::new();
+    for id in finds {
+        let Some(find) = crate::finds::find(id) else {
+            continue;
+        };
+        let record = colony.finds.entry(find.id.to_owned()).or_default();
+        if record.count == 0 {
+            record.first_by.clone_from(&leader);
+            new.push(find.id);
+        }
+        record.count += 1;
+        *colony.satchel.entry(find.id.to_owned()).or_default() += 1;
+    }
+    new
 }
 
 fn read(path: &Path) -> Book {
@@ -332,6 +402,37 @@ mod tests {
         memories.back_from_the_woods(&[9], &["pinecone"]);
         assert_eq!(memories.colony().drought, 1, "nothing new that time");
         assert_eq!(memories.colony().finds["pinecone"].first_by, "7");
+    }
+
+    #[test]
+    fn fish_are_remembered_and_let_go_and_snags_come_home() {
+        let mut memories = Memories::open(None, "c");
+        let haul = memories.back_from_fishing(
+            &[7, 9],
+            &[("perch", 21.0), ("perch", 25.5), ("carp", 40.0)],
+            &["geode"],
+        );
+        assert_eq!(haul.new_kinds, vec!["perch", "carp"]);
+        assert_eq!(
+            haul.longest_yet,
+            vec!["perch"],
+            "the second perch beat the first"
+        );
+        assert_eq!(haul.new_finds, vec!["geode"]);
+        let colony = memories.colony();
+        assert_eq!(colony.fish["perch"].count, 2);
+        assert_eq!(colony.fish["perch"].longest, 25.5);
+        assert_eq!(colony.fish["carp"].first_by, "7");
+        assert_eq!(
+            colony.satchel["geode"], 1,
+            "a snag comes home for the Hilltop"
+        );
+        assert_eq!(colony.fish_drought, 0);
+        assert_eq!(colony.outings, 0, "fishing is not a rummage");
+        let haul = memories.back_from_fishing(&[9], &[("perch", 20.0)], &[]);
+        assert!(haul.new_kinds.is_empty() && haul.longest_yet.is_empty());
+        assert_eq!(memories.colony().fish_drought, 1);
+        assert_eq!(memories.colony().fishing_trips, 2);
     }
 
     #[test]

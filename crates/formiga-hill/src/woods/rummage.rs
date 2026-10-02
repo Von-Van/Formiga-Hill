@@ -905,7 +905,7 @@ fn searching(kind: Kind) -> Beat {
 }
 
 /// Something found! Each takes it its own way, and the rare ones are celebrated.
-fn delighted(character: &Character, tier: Tier) -> Vec<Beat> {
+pub(crate) fn delighted(character: &Character, tier: Tier) -> Vec<Beat> {
     let with = |mut beat: Beat, cue: Cue| {
         beat.cue = Some(cue);
         beat
@@ -957,7 +957,7 @@ fn empty_handed(character: &Character) -> Vec<Beat> {
 }
 
 /// The glade darkening towards dusk as the light runs out.
-fn dim(scene: &mut Canvas, light: f32) {
+pub(crate) fn dim(scene: &mut Canvas, light: f32) {
     let amount = ((DIMMING - light) / DIMMING).clamp(0.0, 1.0) * 0.45;
     if amount <= 0.0 {
         return;

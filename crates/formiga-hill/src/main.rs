@@ -436,17 +436,46 @@ fn woods_moment(cast: &Cast, at: f32) -> Canvas {
     scene
 }
 
-/// A fishing trip at the pool, `at` seconds in. (For now, the pool with the first traveller on
-/// the bank.)
+/// A fishing trip at the pool, `at` seconds in, played by a steady hand: it casts at each part of
+/// the pool in turn, strikes on the bite, reels in only while the fish isn't pulling, and tries
+/// somewhere else when nothing comes.
 fn fishing_moment(cast: &Cast, at: f32) -> Canvas {
+    use fishing::angling::{Angling, Outset, Phase};
     let party: Vec<cast::Id> = cast.ids().take(2).collect();
     let mut pool = fishing::open(cast, &party, 0.0);
+    let outset = Outset {
+        party,
+        drought: 0,
+        seed: 7,
+    };
+    let mut trip = Angling::new(&mut pool, outset, |_| false, 0.0);
     let mut now = 0.0;
+    let mut aim = 0;
     while now < at {
         now += 1.0 / 30.0;
+        match trip.phase() {
+            Phase::Ready => {
+                // Around the pool's haunts in turn, a little way off each.
+                let haunts = fishing::Haunt::ALL;
+                let ((x, y), r) = haunts[aim % haunts.len()].area();
+                aim += 1;
+                trip.cast(&mut pool, (x + r * 0.5, y), now);
+            }
+            Phase::Waiting { .. } if trip.biting() => trip.strike(&mut pool, now),
+            // Nothing coming: reel in and try somewhere else.
+            Phase::Waiting { since, .. } if now - since > 10.0 => trip.strike(&mut pool, now),
+            Phase::Fighting(fight) => trip.hold(!fight.pulling(now) && fight.strain < 0.6),
+            _ => {}
+        }
         pool.tick(cast, now);
+        trip.tick(&mut pool, now);
+        for event in trip.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
     }
-    pool.compose(now)
+    let mut scene = pool.compose(now);
+    trip.draw(&mut scene, now);
+    scene
 }
 
 /// Every fish, held up as it is when landed, with its icon in the corner: a row each.

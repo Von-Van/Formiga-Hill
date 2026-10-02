@@ -9,6 +9,7 @@ use crate::character::Character;
 use crate::dice::Dice;
 use crate::finds::{Leaning, NOVELTY, Tier, drawn_to};
 
+#[derive(Debug)]
 pub struct Fish {
     pub id: &'static str,
     pub name: &'static str,

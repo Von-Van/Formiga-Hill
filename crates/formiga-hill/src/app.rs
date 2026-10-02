@@ -2,6 +2,7 @@
 //! colony in them, and the way home.
 
 mod arranging;
+mod fishing_trip;
 mod rummaging;
 
 use crate::cast::{Cast, Id};
@@ -292,6 +293,9 @@ impl HillApp {
         // Leaving the Woods brings the basket home; leaving the Hilltop puts down what was held.
         if self.woods.outing.is_some() {
             self.finish_outing(now);
+        }
+        if self.woods.fishing.is_some() {
+            self.finish_fishing(now);
         }
         self.placing = None;
         // Walking away calls a game off.
