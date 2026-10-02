@@ -22,7 +22,8 @@ Phase 0.1, the travel prototype, is under way.
 | Done | The station, painted in detail: the house, canopy, nameboard, garden, platform and line; the colony on the platform, drawn by `formiga-art` from the snapshot, accessories and all; names, and a tooltip with temperament, traits, habits, family and closest friend |
 | Done | The train: it pulls in with everyone at a window, they hop down one by one, and it steams away; "Take the train home" runs it in reverse. Cuts instead of motion with reduced motion; a click or Space skips the arrival |
 | Elsewhere | Desktop's side is built on Desktop's `work/hill-enablement` branch: the tray item, the train on the desktop, launching Hill, recall and recovery |
-| Next | The Village Green: free play with petting, snacks and toys, behaviour read from each traveller's temperament, habits and bonds |
+| Done | The Village Green, painted to the station's standard: free play read from each traveller's temperament, habits, pace and bonds. Wandering, the blanket, naps in the oak's shade, visiting friends, playing with playmates, minis trailing parents, rivals keeping apart. A pat, a snack or a toy is answered in each one's own way, warming to the person over the visit |
+| Next | A short authored story and a repeatable minigame (the rest of the vertical slice in [DESIGN.md §11](docs/DESIGN.md#11-mvp--vertical-slice)) |
 | Later | Packaging Hill so Desktop can find it installed ([TRAVEL.md](docs/TRAVEL.md#not-done-yet)) |
 | Then | 0.2 character proof, 0.3 story runtime and packages ([DESIGN.md §12](docs/DESIGN.md#12-recommended-development-phases)) |
 
@@ -37,10 +38,13 @@ cargo run -p formiga-hill -- --formiga-travel <trip directory>
 cargo run -p formiga-hill -- --from-save ~/path/to/colony.json
 cargo run -p formiga-hill -- --render-station station.png
 cargo run -p formiga-hill -- --render-station arriving.png --at 3.6
+cargo run -p formiga-hill -- --render-green green.png --at 25
+cargo run -p formiga-hill -- --render-reactions reactions.png
 ```
 
-`--render-station` draws the scene without a window: settled, or `--at` that many seconds into
-the arrival.
+The render options draw without a window: the station settled, or `--at` seconds into the
+arrival; the green `--at` seconds into free play; and a review sheet of every traveller answering
+a pat, a snack and a toy.
 
 For a real trip, run Desktop with `FORMIGA_HILL_PATH` pointing at Hill's binary and choose "Go to
 Formiga Hill…". `--from-save` reads a colony file, never writes to it, and projects it exactly
@@ -55,7 +59,14 @@ crates/
     src/cast.rs       the travellers, ready to draw, and how they get on
     src/paint.rs      painting tools for scenery: ramps, bevels, polygons, texture
     src/font.rs       5×7 lettering for signs painted into a scene
+    src/materials.rs  the palette: every material as a ramp of tones
+    src/kit.rs        pieces areas are built from: walls, roofs, windows, stonework, bushes
     src/station/      the station: scenery, the train, and the timeline of its comings and goings
+    src/green/        the Village Green: scenery and free play
+    src/character.rs  who each traveller is, turned into what it does
+    src/actor.rs      a traveller performing on a stage: steps, beats, cached frames, gaze
+    src/cues.rs       hearts, notes and other signs over a creature's head
+    src/sheet.rs      review sheets
 docs/
 ```
 

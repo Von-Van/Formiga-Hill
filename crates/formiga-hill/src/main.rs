@@ -1,9 +1,17 @@
 //! Formiga Hill: somewhere the colony goes to spend time together.
 
+mod actor;
 mod app;
 mod cast;
+mod character;
+mod cues;
+mod dice;
 mod font;
+mod green;
+mod kit;
+mod materials;
 mod paint;
+mod sheet;
 mod station;
 mod trip;
 
@@ -22,13 +30,15 @@ const USAGE: &str = "\
 Formiga Hill
 
 Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save <FILE>]
-                    [--render-station <PNG> [--at <SECONDS>]]
+                    [--render-station <PNG> | --render-green <PNG>] [--at <SECONDS>]
 
   --sample                 Arrive with Desktop's made-up sample colony (the default)
   --formiga-travel <DIR>   How Desktop starts Hill: the trip it wrote, answered on the way home
   --from-save <FILE>       Development only: board a Desktop colony file, which is only ever read
   --render-station <PNG>   Draw the station to a PNG and exit without opening a window
-  --at <SECONDS>           With --render-station: draw that far into the arrival instead
+  --render-green <PNG>     Draw the Village Green to a PNG and exit without opening a window
+  --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
+  --at <SECONDS>           Draw that far into the arrival, or into free play on the green
 ";
 
 enum Source {
@@ -37,9 +47,17 @@ enum Source {
     Save(PathBuf),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Area {
+    Station,
+    Green,
+    /// Not an area: the review sheet of everyone's reactions.
+    Reactions,
+}
+
 struct Args {
     source: Source,
-    render: Option<PathBuf>,
+    render: Option<(Area, PathBuf)>,
     at: Option<f32>,
 }
 
@@ -50,14 +68,30 @@ fn main() -> Result<()> {
     };
     let arrival = arrive(args.source)?;
 
-    if let Some(path) = args.render {
-        let (journey, now) = match args.at {
-            Some(seconds) => (station::Journey::Arriving { since: 0.0 }, seconds),
-            None => (station::Journey::Here, 0.0),
+    if let Some((area, path)) = args.render {
+        let canvas = match area {
+            Area::Station => {
+                let (journey, now) = match args.at {
+                    Some(seconds) => (station::Journey::Arriving { since: 0.0 }, seconds),
+                    None => (station::Journey::Here, 0.0),
+                };
+                station::Station::new(&arrival.cast, journey).compose(now)
+            }
+            Area::Green => {
+                // Free play, run forward as the window would run it.
+                let until = args.at.unwrap_or(20.0);
+                let mut green = green::Green::new(&arrival.cast, 0.0);
+                let mut now = 0.0;
+                while now < until {
+                    now += 1.0 / 30.0;
+                    green.tick(&arrival.cast, now);
+                }
+                green.compose(now)
+            }
+            Area::Reactions => sheet::reactions(&arrival.cast),
         };
-        let station = station::Station::new(&arrival.cast, journey);
-        write_png(&path, &station.compose(now), 3)?;
-        println!("Drew the station to {}", path.display());
+        write_png(&path, &canvas, 3)?;
+        println!("Drew the {area:?} to {}", path.display());
         return Ok(());
     }
 
@@ -100,7 +134,13 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             Some("--sample") => set_source(Source::Sample)?,
             Some(LAUNCH_ARGUMENT) => set_source(Source::Trip(value(LAUNCH_ARGUMENT)?))?,
             Some("--from-save") => set_source(Source::Save(value("--from-save")?))?,
-            Some("--render-station") => render = Some(value("--render-station")?),
+            Some("--render-station") => {
+                render = Some((Area::Station, value("--render-station")?));
+            }
+            Some("--render-green") => render = Some((Area::Green, value("--render-green")?)),
+            Some("--render-reactions") => {
+                render = Some((Area::Reactions, value("--render-reactions")?));
+            }
             Some("--at") => {
                 let seconds = value("--at")?;
                 at = Some(
@@ -116,7 +156,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         }
     }
     if at.is_some() && render.is_none() {
-        bail!("--at only goes with --render-station");
+        bail!("--at only goes with --render-station or --render-green");
     }
     Ok(Some(Args {
         source: source.unwrap_or(Source::Sample),
@@ -201,7 +241,7 @@ mod tests {
         .unwrap()
         .unwrap();
         assert!(matches!(args.source, Source::Trip(ref path) if path == Path::new("/trips/ab")));
-        assert_eq!(args.render.as_deref(), Some(Path::new("out.png")));
+        assert_eq!(args.render, Some((Area::Station, PathBuf::from("out.png"))));
     }
 
     #[test]

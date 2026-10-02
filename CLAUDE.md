@@ -48,6 +48,8 @@ side of it.
   why, plain names, tests named as sentences (`a_receipt_cannot_settle_another_trip`).
 - The gate, which CI runs on macOS and Windows:
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-- `cargo run -p formiga-hill -- --render-station station.png` draws the station without a
-  window (`--at <seconds>` for a moment of the arrival); look at it, cropped and enlarged, after
-  changing anything visual.
+- `--render-station`, `--render-green` (each with `--at <seconds>`) and `--render-reactions`
+  draw without a window; look at them, cropped and enlarged, after changing anything visual or
+  any behaviour in `character.rs`.
+- Behaviour is never written for a particular creature: it is read from the snapshot (axes,
+  kind, pace, habits, bonds, family) in `character.rs`, so every colony plays out differently.

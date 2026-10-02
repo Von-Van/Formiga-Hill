@@ -90,6 +90,23 @@ impl Cast {
             .map(|(other, _)| other)
     }
 
+    /// Someone among `candidates` it plays with.
+    pub fn playmate(&self, id: Id, candidates: impl IntoIterator<Item = Id>) -> Option<Id> {
+        candidates
+            .into_iter()
+            .filter(|&other| other != id)
+            .filter_map(|other| self.bond(id, other).map(|bond| (other, bond)))
+            .filter(|(_, bond)| bond.playfulness >= Band::Medium && bond.friction <= bond.warmth)
+            .max_by_key(|(other, bond)| (bond.playfulness, bond.warmth, std::cmp::Reverse(*other)))
+            .map(|(other, _)| other)
+    }
+
+    /// Whether a pair rubs each other up the wrong way enough to keep apart.
+    pub fn at_odds(&self, a: Id, b: Id) -> bool {
+        self.bond(a, b)
+            .is_some_and(|bond| bond.friction >= Band::Medium && bond.friction > bond.warmth)
+    }
+
     pub fn bond(&self, a: Id, b: Id) -> Option<Bond> {
         let (low, high) = if a < b { (a, b) } else { (b, a) };
         self.snapshot
