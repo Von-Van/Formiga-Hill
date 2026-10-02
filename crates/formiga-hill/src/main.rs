@@ -135,11 +135,11 @@ fn main() -> Result<()> {
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Story => {
                 let library = story::Library::load(&args.packages);
-                let (_, chosen) = library
-                    .stories()
-                    .last()
-                    .context("there is no story to play")?;
-                story_moment(&arrival.cast, chosen, args.at.unwrap_or(12.0))?
+                story_moment(
+                    &arrival.cast,
+                    story_to_draw(&library)?,
+                    args.at.unwrap_or(12.0),
+                )?
             }
         };
         write_png(&path, &canvas, 3)?;
@@ -262,6 +262,20 @@ fn arrive(source: Source) -> Result<Arrival> {
             }
         }
     })
+}
+
+/// The last story loaded, which is the author's own when they name a package. A package that
+/// would not load is reported, rather than drawing one of Hill's own stories in its place.
+fn story_to_draw(library: &story::Library) -> Result<&story::Story> {
+    if !library.problems.is_empty() {
+        let problems: Vec<String> = library.problems.iter().map(ToString::to_string).collect();
+        bail!("the story would not load:\n{}", problems.join("\n"));
+    }
+    library
+        .stories()
+        .last()
+        .map(|(_, story)| story)
+        .context("there is no story to play")
 }
 
 /// A story `at` seconds in, with each line read after two and a half seconds and the first choice
@@ -419,6 +433,14 @@ mod tests {
         assert_eq!(args.at, Some(2.5));
         assert!(parse(&["--at", "2.5"]).is_err());
         assert!(parse(&["--render-station", "out.png", "--at", "soon"]).is_err());
+    }
+
+    #[test]
+    fn a_package_that_would_not_load_is_reported_rather_than_drawn_around() {
+        let library = story::Library::load(&[PathBuf::from("/no/such/package.formiga-hill")]);
+        let problem = story_to_draw(&library).unwrap_err().to_string();
+        assert!(problem.contains("package.formiga-hill"), "{problem}");
+        assert!(story_to_draw(&story::Library::load(&[])).is_ok());
     }
 
     #[test]

@@ -1,8 +1,9 @@
 //! Plays a story on the green with the colony as its cast.
 //!
 //! The director works through a scene's beats in order. A beat starts once everyone busy with the
-//! beats before it has finished, unless it is marked `meanwhile`; a line waits for the person to
-//! read it; a choice waits for them to choose. Beats about someone who did not come, and lines
+//! beats before it has finished, unless it is marked `meanwhile`, and never while anyone it is
+//! about is still busy with a `meanwhile` beat; a line waits for the person to read it; a choice
+//! waits for them to choose. Beats about someone who did not come, and lines
 //! naming them, are passed over, so a story plays with whoever is there.
 
 use super::casting::cast_roles;
@@ -122,21 +123,22 @@ impl Director {
                 self.finished = true;
                 return;
             };
-            // A beat follows the ones before it, and whatever is still going on in the background
-            // that involves anyone it is about.
-            if !beat.meanwhile {
-                let involved = self.involved(&beat.action);
-                let waiting = self.busy.iter().any(|id| green.busy(*id))
-                    || self
-                        .background
-                        .iter()
-                        .any(|id| involved.contains(id) && green.busy(*id));
-                if waiting {
-                    return;
-                }
-                self.busy.clear();
-                self.background.retain(|id| green.busy(*id));
+            // A beat follows the ones before it unless it is `meanwhile`. Either way it waits for
+            // whatever is still going on in the background that involves anyone it is about, which
+            // starting it would cut short.
+            let involved = self.involved(&beat.action);
+            let waiting = (!beat.meanwhile && self.busy.iter().any(|id| green.busy(*id)))
+                || self
+                    .background
+                    .iter()
+                    .any(|id| involved.contains(id) && green.busy(*id));
+            if waiting {
+                return;
             }
+            if !beat.meanwhile {
+                self.busy.clear();
+            }
+            self.background.retain(|id| green.busy(*id));
             self.in_background = beat.meanwhile;
             self.beat += 1;
             if beat
@@ -456,4 +458,52 @@ fn strike(pose: Pose) -> ActorBeat {
         Pose::Balance => (Gesture::Balance, ExpressionKind::Determined, 1.6),
     };
     ActorBeat::new(gesture, face, seconds)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::story::lines::Lines;
+    use crate::story::script::parse_story;
+
+    #[test]
+    fn a_meanwhile_beat_waits_for_anyone_still_busy_with_the_one_before() {
+        let story = parse_story(
+            r#"
+            [story]
+            id = "test"
+            title = "title"
+            area = "green"
+            start = "one"
+            [roles.host]
+            select = ["any"]
+            [[scenes]]
+            id = "one"
+            beats = [
+              { walk = "host", to = "left", meanwhile = true },
+              { react = "host", feeling = "joy", meanwhile = true },
+            ]
+            "#,
+            &Lines::parse(r#"title = "Test""#).unwrap(),
+            1,
+        )
+        .unwrap();
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let mut green = crate::green::open(&cast, 0.0);
+        let mut director = Director::new(story, &cast, 1).unwrap();
+        let host = director.players()[0];
+        green.reserve(director.players());
+        let mut now = 0.0;
+        while !director.finished() && now < 60.0 {
+            now += 1.0 / 30.0;
+            green.tick(&cast, now);
+            director.run(&mut green, &cast, now);
+        }
+        let (x, _) = green.head(host, now).unwrap();
+        let left = green.spot("left", 0).0;
+        assert!(
+            (x - left).abs() < 12.0,
+            "the walk to {left} was cut short at {x}"
+        );
+    }
 }
