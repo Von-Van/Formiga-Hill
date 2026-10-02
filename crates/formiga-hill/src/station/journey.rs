@@ -41,6 +41,8 @@ pub enum Place {
     Platform { lift: f32 },
     /// Aboard, at this window.
     Window(usize),
+    /// Aboard, but with no window of its own: only a train of more than six has these.
+    Unseen,
     /// Gone home.
     Away,
 }
@@ -83,9 +85,14 @@ impl Journey {
     }
 }
 
-/// The window each traveller takes: spread along the train however many are travelling.
-pub fn window_for(index: usize, travelers: usize) -> usize {
-    index * WINDOWS / travelers.max(1)
+/// The window each traveller takes: spread along the train however many are travelling, and
+/// none for anyone beyond the sixth.
+pub fn window_for(index: usize, travelers: usize) -> Option<usize> {
+    if travelers <= WINDOWS {
+        Some(index * WINDOWS / travelers.max(1))
+    } else {
+        (index < WINDOWS).then_some(index)
+    }
 }
 
 fn duration(travelers: usize, reduce_motion: bool) -> f32 {
@@ -109,7 +116,7 @@ enum Direction {
 }
 
 fn timeline(t: f32, travelers: usize, reduce_motion: bool, direction: Direction) -> Stage {
-    let aboard = |index| Place::Window(window_for(index, travelers));
+    let aboard = |index| window_for(index, travelers).map_or(Place::Unseen, Place::Window);
     let ashore = Place::Platform { lift: 0.0 };
     let after = match direction {
         Direction::Off => ashore,
@@ -308,11 +315,20 @@ mod tests {
     #[test]
     fn every_traveller_gets_a_window_of_their_own() {
         for travelers in 1..=WINDOWS {
-            let windows: Vec<_> = (0..travelers).map(|i| window_for(i, travelers)).collect();
+            let windows: Vec<_> = (0..travelers)
+                .map(|i| window_for(i, travelers).unwrap())
+                .collect();
             let mut unique = windows.clone();
             unique.dedup();
             assert_eq!(unique, windows, "{travelers} travellers share a window");
             assert!(windows.iter().all(|window| *window < WINDOWS));
         }
+    }
+
+    #[test]
+    fn a_crowd_fills_the_windows_and_the_rest_ride_unseen() {
+        let windows: Vec<_> = (0..12).map(|i| window_for(i, 12)).collect();
+        assert!(windows[..WINDOWS].iter().all(Option::is_some));
+        assert!(windows[WINDOWS..].iter().all(Option::is_none));
     }
 }

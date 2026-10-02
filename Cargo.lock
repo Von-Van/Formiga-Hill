@@ -1170,7 +1170,7 @@ dependencies = [
 [[package]]
 name = "formiga-art"
 version = "0.66.1"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.1#f79cf43d9b3add873c51bcf66d0b211b4cd41cc4"
+source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#dc2a2bd864a18c5006e013c3b5483cc65b0139b9"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1183,7 +1183,7 @@ dependencies = [
 [[package]]
 name = "formiga-core"
 version = "0.66.1"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.1#f79cf43d9b3add873c51bcf66d0b211b4cd41cc4"
+source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#dc2a2bd864a18c5006e013c3b5483cc65b0139b9"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1211,7 +1211,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.1.0"
+version = "0.66.1"
+source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#dc2a2bd864a18c5006e013c3b5483cc65b0139b9"
 dependencies = [
  "formiga-art",
  "formiga-core",
