@@ -29,6 +29,30 @@ impl Member {
             TravelRole::Mini { parent_id } => Some(parent_id.0),
         }
     }
+
+    pub fn kind(&self) -> formiga_core::TemperamentKind {
+        self.traveler.character.temperament.into()
+    }
+
+    pub fn axes(&self) -> formiga_core::Axes {
+        self.traveler.character.axes.into()
+    }
+
+    pub fn has_habit(&self, habit: formiga_core::Habit) -> bool {
+        self.traveler
+            .habits
+            .iter()
+            .any(|own| formiga_core::Habit::from(*own) == habit)
+    }
+
+    /// Whether Desktop's notebook names this trait for it, whatever the capitals.
+    pub fn has_trait(&self, label: &str) -> bool {
+        self.traveler
+            .character
+            .traits
+            .iter()
+            .any(|own| own.eq_ignore_ascii_case(label))
+    }
 }
 
 /// How one pair gets on, under Hill's names for Desktop's bands.

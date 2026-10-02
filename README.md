@@ -11,6 +11,7 @@ Hill owns only the destination.
 
 - [docs/DESIGN.md](docs/DESIGN.md): the design handoff this project started from.
 - [docs/TRAVEL.md](docs/TRAVEL.md): how Hill keeps its side of Desktop's travel contract.
+- [docs/PACKAGES.md](docs/PACKAGES.md): writing a story for Hill, no code needed.
 
 ## Where it is
 
@@ -23,7 +24,10 @@ Phase 0.1, the travel prototype, is under way.
 | Done | The train: it pulls in with everyone at a window, they hop down one by one, and it steams away; "Take the train home" runs it in reverse. Cuts instead of motion with reduced motion; a click or Space skips the arrival |
 | Elsewhere | Desktop's side is built on Desktop's `work/hill-enablement` branch: the tray item, the train on the desktop, launching Hill, recall and recovery |
 | Done | The Village Green, painted to the station's standard: free play read from each traveller's temperament, habits, pace and bonds. Wandering, the blanket, naps in the oak's shade, visiting friends, playing with playmates, minis trailing parents, rivals keeping apart. A pat, a snack or a toy is answered in each one's own way, warming to the person over the visit |
-| Next | A short authored story and a repeatable minigame (the rest of the vertical slice in [DESIGN.md §11](docs/DESIGN.md#11-mvp--vertical-slice)) |
+| Done | Stories as declarative content packages ([PACKAGES.md](docs/PACKAGES.md)): a strict, sandboxed loader; cast selectors with fallbacks; a beat vocabulary of walking, reactions, poses, lines, choices, branches and flags; lines that vary by temperament; a director that stages it on the green with a speech bubble over whoever is talking |
+| Done | *The First Picnic*, Hill's first story: three scenes, a choice and a branch, shipped as a package in exactly the community format |
+| Done | Hill's own memories of each colony: stories finished, souvenirs kept, visits |
+| Next | A repeatable minigame; a mods folder and a package list for community stories ([DESIGN.md §12](docs/DESIGN.md#12-recommended-development-phases)) |
 | Later | Packaging Hill so Desktop can find it installed ([TRAVEL.md](docs/TRAVEL.md#not-done-yet)) |
 | Then | 0.2 character proof, 0.3 story runtime and packages ([DESIGN.md §12](docs/DESIGN.md#12-recommended-development-phases)) |
 
@@ -40,6 +44,9 @@ cargo run -p formiga-hill -- --render-station station.png
 cargo run -p formiga-hill -- --render-station arriving.png --at 3.6
 cargo run -p formiga-hill -- --render-green green.png --at 25
 cargo run -p formiga-hill -- --render-reactions reactions.png
+cargo run -p formiga-hill -- --render-story story.png --at 20
+cargo run -p formiga-hill -- --check-package path/to/my-story.formiga-hill
+cargo run -p formiga-hill -- --package path/to/my-story.formiga-hill
 ```
 
 The render options draw without a window: the station settled, or `--at` seconds into the
@@ -67,6 +74,9 @@ crates/
     src/actor.rs      a traveller performing on a stage: steps, beats, cached frames, gaze
     src/cues.rs       hearts, notes and other signs over a creature's head
     src/sheet.rs      review sheets
+    src/story/        content packages: loading, casting, the script, the director
+    src/memories.rs   what Hill remembers of each colony
+  content/            Hill's own story packages, in the community format
 docs/
 ```
 

@@ -69,6 +69,8 @@ pub enum Cue {
     Huff,
     Sparkle,
     Sleep,
+    /// A speech bubble while its line is on show.
+    Speech,
 }
 
 /// Something the person at the Hill holds out.

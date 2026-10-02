@@ -10,7 +10,7 @@ mod scenery;
 
 use crate::actor::{Actor, Step, Whereabouts};
 use crate::cast::{Cast, Id};
-use crate::character::{Company, Idea, Offer};
+use crate::character::{Character, Company, Cue, Idea, Offer};
 use crate::cues::draw_cue;
 use crate::dice::Dice;
 use crate::paint::blit;
@@ -46,6 +46,10 @@ pub struct Green {
     clock: f32,
     pointer: Option<(f32, f32)>,
     reduce_motion: bool,
+    /// Those with a part in a story, whom free play leaves alone.
+    reserved: Vec<Id>,
+    /// Whoever's line is on show, with a speech bubble over their head.
+    speaker: Option<Id>,
 }
 
 impl Green {
@@ -90,6 +94,71 @@ impl Green {
             clock: now,
             pointer: None,
             reduce_motion,
+            reserved: Vec::new(),
+            speaker: None,
+        }
+    }
+
+    /// Takes these travellers out of free play for a story.
+    pub fn reserve(&mut self, ids: Vec<Id>) {
+        self.reserved = ids;
+    }
+
+    /// Gives everyone back to free play.
+    pub fn release(&mut self) {
+        self.reserved.clear();
+        self.speaker = None;
+    }
+
+    pub fn set_speaker(&mut self, speaker: Option<Id>) {
+        self.speaker = speaker;
+    }
+
+    /// Has a traveller start on `steps`, dropping whatever it was doing.
+    pub fn direct(&mut self, id: Id, steps: Vec<Step>, now: f32) {
+        if let Some(index) = self.index_of(id) {
+            self.actors[index].begin(now, steps);
+        }
+    }
+
+    /// Whether a traveller still has something to finish.
+    pub fn busy(&self, id: Id) -> bool {
+        self.index_of(id)
+            .is_some_and(|index| !self.actors[index].is_idle())
+    }
+
+    pub fn character(&self, id: Id) -> Option<&Character> {
+        self.index_of(id).map(|index| &self.actors[index].character)
+    }
+
+    /// A named spot on the green, with room for several: the `slot`th to arrive stands a little
+    /// to one side of the one before.
+    pub fn spot(&self, place: &str, slot: usize) -> (f32, f32) {
+        let (x, y) = match place {
+            "blanket" => (257.0, 181.0),
+            "well" => (222.0, 154.0),
+            "oak" => (88.0, 160.0),
+            "swing" => (120.0, 156.0),
+            "chest" => (334.0, 156.0),
+            "left" => (70.0, 182.0),
+            "right" => (318.0, 182.0),
+            "front" => (192.0, 198.0),
+            "back" => (192.0, 154.0),
+            _ => (192.0, 176.0),
+        };
+        const SPREAD: [f32; 7] = [0.0, -22.0, 22.0, -44.0, 44.0, -66.0, 66.0];
+        (
+            (x + SPREAD[slot % SPREAD.len()]).clamp(WALK_LEFT, WALK_RIGHT),
+            (y + (slot / SPREAD.len()) as f32 * 10.0 + (slot % 2) as f32 * 3.0)
+                .clamp(WALK_TOP, WALK_BOTTOM),
+        )
+    }
+
+    /// Where `mover` would stand beside `target`.
+    pub fn beside_of(&self, mover: Id, target: Id) -> (f32, f32) {
+        match self.index_of(mover) {
+            Some(index) => self.beside(index, target),
+            None => self.spot("centre", 0),
         }
     }
 
@@ -114,7 +183,7 @@ impl Green {
             actor.advance(now, dt, &everyone);
         }
         for index in 0..self.actors.len() {
-            if self.actors[index].is_idle() {
+            if self.actors[index].is_idle() && !self.reserved.contains(&self.actors[index].id) {
                 self.plan(index, cast, now);
             }
         }
@@ -176,10 +245,19 @@ impl Green {
         }
         for &index in &order {
             let actor = &mut self.actors[index];
-            let Some(cue) = actor.current_beat().and_then(|beat| beat.cue) else {
+            let speaking = self.speaker == Some(actor.id);
+            let Some(cue) = actor
+                .current_beat()
+                .and_then(|beat| beat.cue)
+                .or(speaking.then_some(Cue::Speech))
+            else {
                 continue;
             };
-            let age = actor.step_elapsed(now);
+            let age = if speaking {
+                now
+            } else {
+                actor.step_elapsed(now)
+            };
             let (left, top, right, _) = actor.bounds(now);
             draw_cue(
                 &mut scene,
@@ -211,7 +289,7 @@ impl Green {
         let free: Vec<Id> = self
             .actors
             .iter()
-            .filter(|actor| actor.id != id && actor.is_free())
+            .filter(|actor| actor.id != id && actor.is_free() && !self.reserved.contains(&actor.id))
             .map(|actor| actor.id)
             .collect();
         let parent = self.actors[index]
@@ -253,7 +331,7 @@ impl Green {
             _ => Vec::new(),
         };
         if self.reduce_motion {
-            steps.retain(|step| !matches!(step, Step::Walk { .. }));
+            steps.retain(|step| !matches!(step, Step::Walk { .. } | Step::Stride { .. }));
         }
         steps.extend(beats.into_iter().map(Step::Beat));
         self.actors[index].begin(now, steps);

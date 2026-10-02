@@ -39,8 +39,12 @@ side of it.
   shade of their own colour (never black, so the near-black-outlined creatures read first), and
   surfaces textured from `paint::noise`. Background, then props and texture: an area should look
   composed and lived-in, not flat. Keep everyone's standing spots clear of clutter.
-- Community content will be declarative and sandboxed: no native code, no arbitrary file,
-  network, or process access. Official content should use the same package format.
+- Community content is declarative and sandboxed ([docs/PACKAGES.md](docs/PACKAGES.md)): no
+  native code, no file, network, or process access. Official stories live in `content/` as
+  packages in exactly that format and load through the same code. A new beat, selector, place or
+  condition goes in the script parser, the director and PACKAGES.md together.
+- Text in a package is the author's: it stays in localisation files, is checked before it is
+  shown, and never reaches Desktop. Rewards are only from Hill's own souvenir catalogue.
 
 ## Conventions
 

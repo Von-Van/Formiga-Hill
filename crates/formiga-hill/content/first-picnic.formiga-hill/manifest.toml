@@ -1,0 +1,13 @@
+# Hill's first story, written exactly as any package author would write one.
+package_id = "com.formiga.hill.first-picnic"
+title = "The First Picnic"
+author = "Formiga"
+version = "1.0.0"
+hill_api = 1
+content_types = ["story"]
+entry_points = ["content/first-picnic.toml"]
+default_locale = "en"
+
+[requirements]
+min_cast = 2
+areas = ["green"]
