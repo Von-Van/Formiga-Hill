@@ -10,10 +10,10 @@ mod journey;
 mod scenery;
 mod train;
 
+use crate::cast::{Cast, Id, Member};
 use crate::paint::{blit, ellipse, rgba};
 use formiga_art::{AnimationSpec, Canvas, CreatureRenderer, FRAME_SIZE};
 use formiga_core::ActionKind;
-use formiga_travel::{TravelSnapshot, Traveler};
 use journey::Place;
 use train::{Passenger, Train};
 
@@ -37,7 +37,7 @@ pub struct Station {
 const JOURNEY_FRAMES_PER_SECOND: f32 = 30.0;
 
 pub struct StationTraveler {
-    pub id: formiga_core::CreatureId,
+    pub id: Id,
     pub name: String,
     /// The top-left corner of its frame in the scene.
     pub origin: (i32, i32),
@@ -62,11 +62,11 @@ impl StationTraveler {
 }
 
 impl Station {
-    pub fn new(snapshot: &TravelSnapshot, journey: Journey) -> Self {
-        let reduce_motion = snapshot.presentation.reduce_motion;
-        let count = snapshot.travelers.len() as i32;
-        let travelers = snapshot
-            .travelers
+    pub fn new(cast: &Cast, journey: Journey) -> Self {
+        let reduce_motion = cast.reduce_motion();
+        let count = cast.members.len() as i32;
+        let mut travelers: Vec<StationTraveler> = cast
+            .members
             .iter()
             .enumerate()
             .map(|(index, traveler)| {
@@ -78,9 +78,17 @@ impl Station {
                 };
                 // Gathered round: the left half looks right and the right half looks left.
                 let facing_right = index * 2 < count;
-                StationTraveler::new(traveler, center_x, facing_right, reduce_motion)
+                // A crowd larger than a colony of today stands in two staggered rows.
+                let stand_y = if count > 6 && index % 2 == 1 {
+                    STAND_Y - 6
+                } else {
+                    STAND_Y
+                };
+                StationTraveler::new(traveler, center_x, stand_y, facing_right, reduce_motion)
             })
             .collect();
+        // Those further back are drawn first.
+        travelers.sort_by_key(|traveler| traveler.bounds.3);
         Self {
             backdrop: scenery::backdrop(),
             train: Train::new(),
@@ -191,7 +199,7 @@ impl Station {
                     frame,
                     face: traveler.face,
                 }),
-                Place::Away => {}
+                Place::Away | Place::Unseen => {}
             }
         }
 
@@ -230,14 +238,20 @@ impl Station {
 }
 
 impl StationTraveler {
-    fn new(traveler: &Traveler, center_x: i32, facing_right: bool, reduce_motion: bool) -> Self {
+    fn new(
+        traveler: &Member,
+        center_x: i32,
+        stand_y: i32,
+        facing_right: bool,
+        reduce_motion: bool,
+    ) -> Self {
         let spec = AnimationSpec::for_action(ActionKind::Idle);
-        let dress = traveler.accessory.map(|worn| worn.art());
+        let dress = traveler.dress;
         let frame_count = if reduce_motion { 1 } else { spec.frames };
         let frames: Vec<Canvas> = (0..frame_count)
             .map(|frame| {
                 CreatureRenderer::render_dressed_frame(
-                    &traveler.appearance,
+                    traveler.genome(),
                     dress,
                     ActionKind::Idle,
                     frame,
@@ -249,7 +263,7 @@ impl StationTraveler {
         // Where its face is: the renderer draws frames facing right and mirrors the rest.
         let size = FRAME_SIZE as i32;
         let anchor = CreatureRenderer::render_dressed_body_frame(
-            &traveler.appearance,
+            traveler.genome(),
             dress,
             ActionKind::Idle,
             0,
@@ -267,7 +281,7 @@ impl StationTraveler {
             .alpha_bounds()
             .map(|(a, b, c, d)| (a as i32, b as i32, c as i32, d as i32))
             .unwrap_or((0, 0, size - 1, size - 1));
-        let origin = (center_x - size / 2, STAND_Y - max_y);
+        let origin = (center_x - size / 2, stand_y - max_y);
         Self {
             id: traveler.id,
             name: traveler.name.clone(),
@@ -303,12 +317,31 @@ fn shadow(scene: &mut Canvas, center_x: i32, foot_y: i32, half_width: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use formiga_travel::{TravelSnapshot, TravelerId};
+
+    fn sample() -> Cast {
+        Cast::new(formiga_travel::sample::snapshot()).unwrap()
+    }
+
+    /// The sample, with copies of its first traveller added until there are `count`.
+    fn crowd(count: usize) -> Cast {
+        let mut snapshot: TravelSnapshot = formiga_travel::sample::snapshot();
+        snapshot.travelers.truncate(count);
+        let first = snapshot.travelers[0].clone();
+        while snapshot.travelers.len() < count {
+            let mut extra = first.clone();
+            extra.id = TravelerId(first.id.0 + snapshot.travelers.len() as u64);
+            extra.role = formiga_travel::TravelRole::Adult;
+            snapshot.travelers.push(extra);
+        }
+        Cast::new(snapshot).unwrap()
+    }
 
     #[test]
     fn every_traveller_is_drawn_standing_on_the_platform() {
-        let snapshot = formiga_travel::sample::snapshot();
-        let station = Station::new(&snapshot, Journey::Here);
-        assert_eq!(station.travelers().len(), snapshot.travelers.len());
+        let cast = sample();
+        let station = Station::new(&cast, Journey::Here);
+        assert_eq!(station.travelers().len(), cast.members.len());
         for traveler in station.travelers() {
             assert_eq!(
                 traveler.bounds.3, STAND_Y,
@@ -321,13 +354,7 @@ mod tests {
 
     #[test]
     fn travellers_do_not_overlap_on_a_full_platform() {
-        let mut snapshot = formiga_travel::sample::snapshot();
-        while snapshot.travelers.len() < formiga_travel::MAX_TRAVELERS {
-            let mut extra = snapshot.travelers[0].clone();
-            extra.id += snapshot.travelers.len() as u64;
-            snapshot.travelers.push(extra);
-        }
-        let station = Station::new(&snapshot, Journey::Here);
+        let station = Station::new(&crowd(6), Journey::Here);
         for pair in station.travelers().windows(2) {
             let gap = pair[1].origin.0 - pair[0].origin.0;
             assert!(gap >= 40, "only {gap} pixels between neighbours");
@@ -336,7 +363,7 @@ mod tests {
 
     #[test]
     fn composing_draws_the_travellers_over_the_scenery() {
-        let station = Station::new(&formiga_travel::sample::snapshot(), Journey::Here);
+        let station = Station::new(&sample(), Journey::Here);
         let mut empty = scenery::backdrop();
         scenery::smoke(&mut empty, 0.0, false);
         let scene = station.compose(0.0);
@@ -355,20 +382,20 @@ mod tests {
     fn reduced_motion_holds_one_resting_frame() {
         let mut snapshot = formiga_travel::sample::snapshot();
         snapshot.presentation.reduce_motion = true;
-        let station = Station::new(&snapshot, Journey::Here);
+        let station = Station::new(&Cast::new(snapshot).unwrap(), Journey::Here);
         assert_eq!(station.frame_key(0.0), station.frame_key(7.3));
     }
 
     #[test]
     fn an_arrival_brings_the_train_in_and_settles_on_its_own() {
-        let snapshot = formiga_travel::sample::snapshot();
-        let mut station = Station::new(&snapshot, Journey::Arriving { since: 0.0 });
+        let cast = sample();
+        let mut station = Station::new(&cast, Journey::Arriving { since: 0.0 });
         assert!(station.in_motion(1.0));
         assert!(
             station.traveler_at(100.0, 150.0).is_none(),
             "no tooltips mid-arrival"
         );
-        let settled = Station::new(&snapshot, Journey::Here);
+        let settled = Station::new(&cast, Journey::Here);
         assert_ne!(
             station.compose(3.5),
             settled.compose(3.5),
@@ -381,8 +408,7 @@ mod tests {
 
     #[test]
     fn going_home_ends_with_everyone_gone() {
-        let snapshot = formiga_travel::sample::snapshot();
-        let mut station = Station::new(&snapshot, Journey::Here);
+        let mut station = Station::new(&sample(), Journey::Here);
         station.set_off_home(5.0);
         assert!(!station.gone_home(6.0));
         station.set_off_home(7.0);
@@ -404,17 +430,14 @@ mod tests {
 
     #[test]
     fn skipping_an_arrival_puts_everyone_on_the_platform() {
-        let mut station = Station::new(
-            &formiga_travel::sample::snapshot(),
-            Journey::Arriving { since: 0.0 },
-        );
+        let mut station = Station::new(&sample(), Journey::Arriving { since: 0.0 });
         station.skip_arrival();
         assert!(station.is_settled());
     }
 
     #[test]
     fn hit_testing_finds_whoever_is_under_the_pointer() {
-        let station = Station::new(&formiga_travel::sample::snapshot(), Journey::Here);
+        let station = Station::new(&sample(), Journey::Here);
         let traveler = &station.travelers()[1];
         let (left, top, right, bottom) = traveler.bounds;
         let middle = ((left + right) as f32 / 2.0, (top + bottom) as f32 / 2.0);

@@ -4,10 +4,14 @@
 //! Everything here is painted once into the backdrop, except the chimney smoke, which drifts.
 
 use crate::font::{GLYPH_HEIGHT, draw_text_shadowed, text_width};
+use crate::kit::{
+    Courses, bush, flower_box, plaster, ridge_tiles, roof, stonework, timber, window,
+};
+use crate::materials::*;
 use crate::paint::{
     Ramp, bevel, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb, rgba, vline,
 };
-use formiga_art::{Canvas, Rgba};
+use formiga_art::Canvas;
 
 use super::{SCENE_HEIGHT, SCENE_WIDTH};
 
@@ -26,53 +30,6 @@ const HORIZON: i32 = 132;
 
 /// Where the chimney breathes from, for the smoke.
 const CHIMNEY_TOP: (i32, i32) = (101, 52);
-
-// Materials. Shadows lean cool and purple, highlights warm, so nothing goes muddy in the shade.
-const PLASTER: Ramp = Ramp::new(0xa48d73, 0xd8c6a4, 0xece0c2, 0xf6eed8, 0xfffaf0);
-const TIMBER: Ramp = Ramp::new(0x34241f, 0x523629, 0x6c4a37, 0x876045, 0xa57b58);
-const TILE: Ramp = Ramp::new(0x612a2b, 0x8c3d39, 0xb05445, 0xc96c53, 0xe08c69);
-const STONE: Ramp = Ramp::new(0x605a5d, 0x857d7c, 0xa69d94, 0xc2baae, 0xdcd5c8);
-const BRICK: Ramp = Ramp::new(0x5a2a28, 0x7c3a33, 0x98503f, 0xb0674e, 0xc98463);
-const PLANK: Ramp = Ramp::new(0x6f4f37, 0x9b734d, 0xbb9061, 0xd0a874, 0xe2c08c);
-const IRON: Ramp = Ramp::new(0x1c2a28, 0x2b423c, 0x3b5a50, 0x52796a, 0x70998a);
-const TRIM: Ramp = Ramp::new(0x9c958a, 0xcdc6b8, 0xe9e3d6, 0xf6f2ea, 0xffffff);
-const LEAF: Ramp = Ramp::new(0x2c5233, 0x3d6e45, 0x518a55, 0x6fa866, 0x93c67e);
-const SLEEPER: Ramp = Ramp::new(0x3a2a22, 0x553e30, 0x6a4f3d, 0x80634d, 0x957a61);
-const RAIL: Ramp = Ramp::new(0x3f4249, 0x5d626b, 0x80858e, 0xb2b7bf, 0xe3e7ec);
-const LEATHER: Ramp = Ramp::new(0x3e2419, 0x5e3624, 0x7b4a31, 0x96603f, 0xb27b52);
-const DOOR: Ramp = Ramp::new(0x1e322d, 0x2f4a42, 0x3f6155, 0x557c6c, 0x6f9884);
-
-const SKY_TOP: Rgba = rgb(0xb9ddec);
-const SKY_LOW: Rgba = rgb(0xf6e8cf);
-const CLOUD: Rgba = rgb(0xfdfbf5);
-const FAR_HILL: Rgba = rgb(0xa9cfa4);
-const HILL: Rgba = rgb(0x86bb7c);
-const HILL_SHADE: Rgba = rgb(0x72a569);
-const PATH: Rgba = rgb(0xe6d3a4);
-const GRASS: Rgba = rgb(0x7db36c);
-const GRASS_DARK: Rgba = rgb(0x639858);
-const GRASS_LIGHT: Rgba = rgb(0x97c784);
-const TRUNK: Rgba = rgb(0x7a5a3a);
-const LEAVES: Rgba = rgb(0x5d9a5a);
-const GLASS: [Rgba; 4] = [rgb(0x4f6f80), rgb(0x7499a8), rgb(0xa6c8d2), rgb(0xe9f6f7)];
-const GLOW: [Rgba; 3] = [rgb(0xf0b45a), rgb(0xffd77a), rgb(0xfff0bd)];
-const ENAMEL: Rgba = rgb(0x2f5d50);
-const ENAMEL_DEEP: Rgba = rgb(0x1f4238);
-const CREAM: Rgba = rgb(0xf3e9cf);
-const BLOSSOMS: [Rgba; 5] = [
-    rgb(0xe0605a),
-    rgb(0xf19bb0),
-    rgb(0xf5d25e),
-    rgb(0xfbf6ee),
-    rgb(0xb79be0),
-];
-const BALLAST: [Rgba; 5] = [
-    rgb(0x6b625d),
-    rgb(0x857b74),
-    rgb(0x9c928a),
-    rgb(0xb3aaa0),
-    rgb(0x95806c),
-];
 
 /// The fixed part of the scene.
 pub fn backdrop() -> Canvas {
@@ -194,36 +151,6 @@ fn garden(scene: &mut Canvas) {
         bush(scene, x, 136, r, index as u32);
     }
     fence(scene);
-}
-
-fn bush(scene: &mut Canvas, cx: i32, cy: i32, radius: i32, salt: u32) {
-    ellipse(scene, cx, cy + 1, radius, radius - 1, LEAF.edge);
-    ellipse(scene, cx, cy, radius - 1, radius - 2, LEAF.shadow);
-    ellipse(scene, cx - 1, cy - 1, radius - 2, radius - 3, LEAF.base);
-    // Leaf clusters, lit from the upper left.
-    for y in cy - radius..=cy + radius {
-        for x in cx - radius..=cx + radius {
-            let (dx, dy) = (x - cx, y - cy);
-            if dx * dx + dy * dy > (radius - 2) * (radius - 2) {
-                continue;
-            }
-            if dx + dy < -radius / 2 && chance(x, y, 40 + salt, 110) {
-                put(scene, x, y, LEAF.light);
-            } else if dx + dy < -radius && chance(x, y, 41 + salt, 60) {
-                put(scene, x, y, LEAF.shine);
-            } else if dx + dy > radius / 2 && chance(x, y, 42 + salt, 90) {
-                put(scene, x, y, LEAF.shadow);
-            }
-        }
-    }
-    if salt % 3 != 1 {
-        let blossom = BLOSSOMS[(salt as usize * 2 + 1) % BLOSSOMS.len()];
-        for petal in 0..4 {
-            let x = cx - radius / 2 + (noise(petal, cy, salt) % radius.max(1) as u32) as i32;
-            let y = cy - radius / 2 + (noise(cx, petal, salt) % (radius as u32).max(1)) as i32;
-            put(scene, x, y, blossom);
-        }
-    }
 }
 
 /// White pickets right of the house, with a gate where the path starts up the Hill.
@@ -367,48 +294,6 @@ fn weathering(scene: &mut Canvas) {
             vline(scene, x, TRACK_TOP + 1, tall, LEAF.base);
             put(scene, x, TRACK_TOP, LEAF.light);
             put(scene, x + 1, TRACK_TOP + 1, LEAF.shadow);
-        }
-    }
-}
-
-/// How a wall is laid: how tall each course of stone is, and how long each stone.
-#[derive(Clone, Copy)]
-struct Courses {
-    tall: i32,
-    long: i32,
-}
-
-/// Courses of dressed stone with mortar between, each stone a slightly different grey, filling
-/// `(left, top, width, height)`.
-fn stonework(scene: &mut Canvas, area: (i32, i32, i32, i32), courses: Courses, salt: u32) {
-    let (left, top, width, height) = area;
-    let (course, block) = (courses.tall, courses.long);
-    for y in top..top + height {
-        let row = (y - top) / course;
-        let within = (y - top) % course;
-        for x in left..left + width {
-            let shifted = x + if row % 2 == 1 { block / 2 } else { 0 };
-            let stone = shifted.div_euclid(block);
-            let across = shifted.rem_euclid(block);
-            let color = if within == course - 1 || across == 0 {
-                STONE.edge
-            } else {
-                let base = match noise(stone, row, salt) % 4 {
-                    0 => mix(STONE.base, STONE.shadow, 0.5),
-                    1 => mix(STONE.base, STONE.light, 0.3),
-                    _ => STONE.base,
-                };
-                if within == 0 || across == 1 {
-                    mix(base, STONE.light, 0.6)
-                } else if within == course - 2 || across == block - 1 {
-                    mix(base, STONE.shadow, 0.6)
-                } else if chance(x, y, salt + 1, 18) {
-                    STONE.shadow
-                } else {
-                    base
-                }
-            };
-            scene.set(x, y, color);
         }
     }
 }
@@ -621,83 +506,6 @@ fn station_house(scene: &mut Canvas) {
     );
 }
 
-fn plaster(scene: &mut Canvas, x: i32, y: i32, width: i32, height: i32) {
-    for py in y..y + height {
-        for px in x..x + width {
-            // Soft blotches at two-pixel grain read as limewash rather than as noise.
-            let grain = noise(px / 2, py / 2, 71) % 100;
-            let color = match grain {
-                0..=6 => PLASTER.light,
-                7..=11 => mix(PLASTER.base, PLASTER.shadow, 0.5),
-                _ => PLASTER.base,
-            };
-            scene.set(px, py, color);
-        }
-    }
-}
-
-fn timber(scene: &mut Canvas, x: i32, y: i32, width: i32, height: i32, upright: bool) {
-    rect(scene, x, y, width, height, TIMBER.base);
-    if upright {
-        vline(scene, x, y, height, TIMBER.edge);
-        vline(scene, x + 1, y, height, TIMBER.light);
-        vline(scene, x + width - 1, y, height, TIMBER.shadow);
-        for py in y..y + height {
-            if chance(x, py, 72, 40) {
-                put(scene, x + 2, py, TIMBER.shadow);
-            }
-        }
-    } else {
-        hline(scene, x, y, width, TIMBER.light);
-        hline(scene, x, y + height - 1, width, TIMBER.edge);
-        for px in x..x + width {
-            if chance(px, y, 73, 30) {
-                put(scene, px, y + 1, TIMBER.shadow);
-            }
-        }
-    }
-}
-
-/// A tiled roof inside `outline`, courses running down from `top` to `bottom`.
-fn roof(scene: &mut Canvas, outline: &[(i32, i32)], top: i32, bottom: i32) {
-    polygon(scene, outline, |x, y| {
-        let row = (y - top) / 4;
-        let within = (y - top) % 4;
-        let shifted = x + if row % 2 == 1 { 3 } else { 0 };
-        let tile = shifted.div_euclid(6);
-        let across = shifted.rem_euclid(6);
-        // Lower courses fall a little into shade, as a roof curves away from the sky.
-        let depth = (y - top) as f32 / (bottom - top).max(1) as f32;
-        let base = match noise(tile, row, 81) % 6 {
-            0 => TILE.light,
-            1 => mix(TILE.base, TILE.shadow, 0.5),
-            _ => TILE.base,
-        };
-        let base = mix(base, TILE.shadow, depth * 0.35);
-        Some(match within {
-            0 => TILE.edge,
-            1 if across == 1 => TILE.shine,
-            1 => mix(base, TILE.light, 0.5),
-            3 if across == 0 || across == 5 => TILE.shadow,
-            _ if across == 0 => mix(base, TILE.shadow, 0.6),
-            _ => base,
-        })
-    });
-    for pair in outline.windows(2) {
-        line(scene, pair[0], pair[1], TILE.edge);
-    }
-}
-
-fn ridge_tiles(scene: &mut Canvas, left: i32, right: i32, y: i32) {
-    rect(scene, left, y - 2, right - left, 3, TILE.base);
-    hline(scene, left, y - 3, right - left, TILE.edge);
-    hline(scene, left, y - 2, right - left, TILE.light);
-    for x in (left..right).step_by(6) {
-        vline(scene, x, y - 2, 3, TILE.shadow);
-        put(scene, x + 1, y - 2, TILE.shine);
-    }
-}
-
 fn chimney(scene: &mut Canvas) {
     let (left, top, width, bottom): (i32, i32, i32, i32) = (95, 58, 12, 80);
     for y in top..bottom {
@@ -781,60 +589,6 @@ fn dormer(scene: &mut Canvas, centre: i32) {
     line(scene, (cx, cy), (cx - 2, cy - 1), TIMBER.edge);
     line(scene, (cx, cy), (cx + 2, cy - 2), TIMBER.edge);
     put(scene, cx, cy, rgb(0x8c3d39));
-}
-
-fn window(scene: &mut Canvas, x: i32, y: i32, width: i32, height: i32, columns: i32) {
-    bevel(scene, x, y, width, height, TRIM);
-    let (inner_x, inner_y, inner_w, inner_h) = (x + 2, y + 2, width - 4, height - 4);
-    for py in inner_y..inner_y + inner_h {
-        // The sky, reflected: lightest at the top.
-        let t = (py - inner_y) as f32 / inner_h as f32;
-        let pane = if t < 0.25 {
-            GLASS[2]
-        } else if t < 0.6 {
-            GLASS[1]
-        } else {
-            mix(GLASS[1], GLASS[0], (t - 0.6) * 2.0)
-        };
-        hline(scene, inner_x, py, inner_w, pane);
-    }
-    hline(scene, inner_x, inner_y, inner_w, GLASS[0]);
-    // Glazing bars.
-    let mid_y = inner_y + inner_h / 2;
-    hline(scene, inner_x, mid_y, inner_w, TRIM.base);
-    hline(scene, inner_x, mid_y + 1, inner_w, TRIM.shadow);
-    for column in 1..columns {
-        let bar = inner_x + inner_w * column / columns;
-        vline(scene, bar, inner_y, inner_h, TRIM.base);
-    }
-    // A glint across each pane.
-    for column in 0..columns {
-        let pane_x = inner_x + inner_w * column / columns + 2;
-        for (dx, dy) in [(0, 3), (1, 2), (2, 1), (3, 0)] {
-            put(scene, pane_x + dx, inner_y + 1 + dy, GLASS[3]);
-        }
-        put(scene, pane_x + 1, inner_y + 4, rgba(0xe9f6f7, 140));
-    }
-    // The sill.
-    bevel(scene, x - 2, y + height - 1, width + 4, 3, TRIM);
-}
-
-fn flower_box(scene: &mut Canvas, x: i32, y: i32, width: i32) {
-    for leaf in 0..width {
-        let tall = 2 + (noise(leaf, y, 101) % 3) as i32;
-        vline(scene, x + leaf, y - tall, tall, LEAF.base);
-        put(scene, x + leaf, y - tall, LEAF.light);
-    }
-    for index in 0..7 {
-        let fx = x + 2 + index * 3 + (noise(index, y, 102) % 2) as i32;
-        let fy = y - 3 - (noise(index, y, 103) % 2) as i32;
-        let blossom = BLOSSOMS[(index as usize * 3) % 4];
-        put(scene, fx, fy, blossom);
-        put(scene, fx + 1, fy, blossom);
-        put(scene, fx, fy + 1, mix(blossom, LEAF.shadow, 0.4));
-    }
-    bevel(scene, x, y, width, 5, TIMBER);
-    hline(scene, x + 1, y + 2, width - 2, TIMBER.shadow);
 }
 
 fn door(scene: &mut Canvas, x: i32, y: i32) {

@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "crates/formiga-travel",
     "crates/formiga-hill",
 ]
 resolver = "2"
@@ -13,20 +12,16 @@ authors = ["Formiga contributors"]
 publish = false
 
 [workspace.dependencies]
-# Formiga Desktop's shared crates, pinned to a Desktop release tag. Move both together; see
-# "Working against a Desktop checkout" in README.md for building against local Desktop changes.
-formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.66.1" }
-formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.66.1" }
-formiga-travel = { path = "crates/formiga-travel" }
+# Formiga Desktop's shared crates, all three from the same Desktop source so their types agree.
+# For now that is Desktop's hill-enablement branch, pinned to a commit by Cargo.lock; once Desktop
+# releases its Hill work, switch all three to that release's tag together.
+formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", branch = "work/hill-enablement" }
+formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", branch = "work/hill-enablement" }
+formiga-travel = { git = "https://github.com/Von-Van/Formiga-Desktop", branch = "work/hill-enablement" }
 
 anyhow = "1.0.104"
 eframe = "0.36.2"
-getrandom = "0.4.3"
 png = "0.18.1"
-serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-sha2 = "0.10.9"
-thiserror = "2.0.20"
 time = { version = "0.3.55", features = ["formatting", "local-offset", "macros", "parsing", "serde"] }
 
 [profile.release]

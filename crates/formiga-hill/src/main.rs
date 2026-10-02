@@ -1,14 +1,25 @@
 //! Formiga Hill: somewhere the colony goes to spend time together.
 
+mod actor;
 mod app;
+mod cast;
+mod character;
+mod cues;
+mod dice;
 mod font;
+mod green;
+mod kit;
+mod materials;
 mod paint;
+mod sheet;
 mod station;
+mod trip;
 
 use anyhow::{Context, Result, bail};
-use app::{Arrival, HillApp};
+use app::{Arrival, HillApp, Visit};
+use cast::Cast;
 use formiga_art::Canvas;
-use formiga_travel::{ExportOptions, SessionId, TravelFiles, export_snapshot, read_snapshot};
+use formiga_travel::{LAUNCH_ARGUMENT, SessionId, project_colony};
 use std::ffi::OsString;
 use std::fs::File;
 use std::io::BufWriter;
@@ -18,25 +29,35 @@ use time::OffsetDateTime;
 const USAGE: &str = "\
 Formiga Hill
 
-Usage: formiga-hill [--sample | --snapshot <FILE> | --from-save <FILE>]
-                    [--render-station <PNG> [--at <SECONDS>]]
+Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save <FILE>]
+                    [--render-station <PNG> | --render-green <PNG>] [--at <SECONDS>]
 
-  --sample                 Arrive with a made-up colony (the default)
-  --snapshot <FILE>        Arrive on a trip Desktop started, and write its receipt on the way home
+  --sample                 Arrive with Desktop's made-up sample colony (the default)
+  --formiga-travel <DIR>   How Desktop starts Hill: the trip it wrote, answered on the way home
   --from-save <FILE>       Development only: board a Desktop colony file, which is only ever read
   --render-station <PNG>   Draw the station to a PNG and exit without opening a window
-  --at <SECONDS>           With --render-station: draw that far into the arrival instead
+  --render-green <PNG>     Draw the Village Green to a PNG and exit without opening a window
+  --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
+  --at <SECONDS>           Draw that far into the arrival, or into free play on the green
 ";
 
 enum Source {
     Sample,
-    Snapshot(PathBuf),
+    Trip(PathBuf),
     Save(PathBuf),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Area {
+    Station,
+    Green,
+    /// Not an area: the review sheet of everyone's reactions.
+    Reactions,
 }
 
 struct Args {
     source: Source,
-    render: Option<PathBuf>,
+    render: Option<(Area, PathBuf)>,
     at: Option<f32>,
 }
 
@@ -47,14 +68,30 @@ fn main() -> Result<()> {
     };
     let arrival = arrive(args.source)?;
 
-    if let Some(path) = args.render {
-        let (journey, now) = match args.at {
-            Some(seconds) => (station::Journey::Arriving { since: 0.0 }, seconds),
-            None => (station::Journey::Here, 0.0),
+    if let Some((area, path)) = args.render {
+        let canvas = match area {
+            Area::Station => {
+                let (journey, now) = match args.at {
+                    Some(seconds) => (station::Journey::Arriving { since: 0.0 }, seconds),
+                    None => (station::Journey::Here, 0.0),
+                };
+                station::Station::new(&arrival.cast, journey).compose(now)
+            }
+            Area::Green => {
+                // Free play, run forward as the window would run it.
+                let until = args.at.unwrap_or(20.0);
+                let mut green = green::Green::new(&arrival.cast, 0.0);
+                let mut now = 0.0;
+                while now < until {
+                    now += 1.0 / 30.0;
+                    green.tick(&arrival.cast, now);
+                }
+                green.compose(now)
+            }
+            Area::Reactions => sheet::reactions(&arrival.cast),
         };
-        let station = station::Station::new(arrival.snapshot(), journey);
-        write_png(&path, &station.compose(now), 3)?;
-        println!("Drew the station to {}", path.display());
+        write_png(&path, &canvas, 3)?;
+        println!("Drew the {area:?} to {}", path.display());
         return Ok(());
     }
 
@@ -83,7 +120,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut at = None;
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
-            bail!("choose one of --sample, --snapshot, or --from-save");
+            bail!("choose one of --sample, {LAUNCH_ARGUMENT}, or --from-save");
         }
         Ok(())
     };
@@ -95,9 +132,15 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         };
         match arg.to_str() {
             Some("--sample") => set_source(Source::Sample)?,
-            Some("--snapshot") => set_source(Source::Snapshot(value("--snapshot")?))?,
+            Some(LAUNCH_ARGUMENT) => set_source(Source::Trip(value(LAUNCH_ARGUMENT)?))?,
             Some("--from-save") => set_source(Source::Save(value("--from-save")?))?,
-            Some("--render-station") => render = Some(value("--render-station")?),
+            Some("--render-station") => {
+                render = Some((Area::Station, value("--render-station")?));
+            }
+            Some("--render-green") => render = Some((Area::Green, value("--render-green")?)),
+            Some("--render-reactions") => {
+                render = Some((Area::Reactions, value("--render-reactions")?));
+            }
             Some("--at") => {
                 let seconds = value("--at")?;
                 at = Some(
@@ -113,7 +156,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         }
     }
     if at.is_some() && render.is_none() {
-        bail!("--at only goes with --render-station");
+        bail!("--at only goes with --render-station or --render-green");
     }
     Ok(Some(Args {
         source: source.unwrap_or(Source::Sample),
@@ -124,31 +167,30 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
 
 fn arrive(source: Source) -> Result<Arrival> {
     Ok(match source {
-        Source::Sample => Arrival::Visit {
-            snapshot: formiga_travel::sample::snapshot(),
-            label: "sample colony".to_owned(),
+        Source::Sample => Arrival {
+            cast: Cast::new(formiga_travel::sample::snapshot())?,
+            visit: Visit::Rehearsal("Desktop's sample colony".to_owned()),
         },
-        Source::Snapshot(path) => {
-            let snapshot = read_snapshot(&path)?;
-            let receipt = TravelFiles::beside(&path, snapshot.session_id).receipt;
-            Arrival::Trip { snapshot, receipt }
+        Source::Trip(dir) => {
+            let (trip, cast) = trip::arrive(&dir)?;
+            Arrival {
+                cast,
+                visit: Visit::Trip(trip),
+            }
         }
         Source::Save(path) => {
-            // Read-only: this stands in for Desktop's exporter until Desktop has one.
+            // Read-only, and projected exactly as Desktop projects a colony for a real trip.
             let save = formiga_core::SaveStore::read_snapshot(&path)
                 .with_context(|| format!("could not read the colony file {}", path.display()))?;
-            let snapshot = export_snapshot(
+            let snapshot = project_colony(
                 &save,
-                ExportOptions {
-                    session_id: SessionId::random().context("no randomness for a session id")?,
-                    created_at_utc: OffsetDateTime::now_utc(),
-                    desktop_version: format!("colony file, save v{}", save.save_version),
-                },
-            );
-            snapshot.validate()?;
-            Arrival::Visit {
-                snapshot,
-                label: "from a colony file".to_owned(),
+                SessionId::generate().context("no randomness for a session id")?,
+                OffsetDateTime::now_utc(),
+                "a colony file",
+            )?;
+            Arrival {
+                cast: Cast::new(snapshot)?,
+                visit: Visit::Rehearsal("from a colony file".to_owned()),
             }
         }
     })
@@ -190,13 +232,16 @@ mod tests {
 
     #[test]
     fn a_trip_and_a_render_can_be_combined() {
-        let args = parse(&["--snapshot", "trip.json", "--render-station", "out.png"])
-            .unwrap()
-            .unwrap();
-        assert!(
-            matches!(args.source, Source::Snapshot(ref path) if path == Path::new("trip.json"))
-        );
-        assert_eq!(args.render.as_deref(), Some(Path::new("out.png")));
+        let args = parse(&[
+            "--formiga-travel",
+            "/trips/ab",
+            "--render-station",
+            "out.png",
+        ])
+        .unwrap()
+        .unwrap();
+        assert!(matches!(args.source, Source::Trip(ref path) if path == Path::new("/trips/ab")));
+        assert_eq!(args.render, Some((Area::Station, PathBuf::from("out.png"))));
     }
 
     #[test]
@@ -211,8 +256,8 @@ mod tests {
 
     #[test]
     fn two_sources_or_a_missing_path_are_refused() {
-        assert!(parse(&["--sample", "--snapshot", "trip.json"]).is_err());
-        assert!(parse(&["--snapshot"]).is_err());
+        assert!(parse(&["--sample", "--formiga-travel", "/trips/ab"]).is_err());
+        assert!(parse(&["--formiga-travel"]).is_err());
         assert!(parse(&["--wat"]).is_err());
         assert!(parse(&["--help"]).unwrap().is_none());
     }

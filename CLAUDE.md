@@ -8,27 +8,25 @@ side of it.
 ## Relationship to Formiga Desktop
 
 - Desktop lives at `../Formiga Desktop` (GitHub `Von-Van/Formiga-Desktop`, public). Hill is
-  private. `formiga-core` and `formiga-art` come from Desktop as git dependencies pinned to a
-  release tag in the root `Cargo.toml`; never copy their source into this repository.
+  private. `formiga-core`, `formiga-art` and `formiga-travel` all come from Desktop, from one
+  source in the root `Cargo.toml` so their types agree; never copy their source into this
+  repository.
+- The travel contract is Desktop's: its `formiga-travel` crate is the authority, and
+  [docs/TRAVEL.md](docs/TRAVEL.md) is Hill's side of it. A change to the contract is asked of
+  Desktop's session ("Formiga Hill integration spec"), not made here.
 - Desktop is authoritative for the colony. Hill never reads or writes Desktop's `colony.json` at
   runtime. The only exception is the `--from-save` development mode, which reads (never writes) a
-  save to stand in for Desktop's exporter until Desktop has one.
+  save and projects it as Desktop would.
 - Do not edit the Desktop checkout from a Hill session. It is a separate project with its own
   work in progress; propose Desktop-side changes instead.
-- `formiga-travel` must eventually move into the public Desktop workspace (or its own public
-  repository), because Desktop cannot depend on a private crate. Keep it free of anything
-  Hill-specific so that move stays mechanical.
 
 ## The travel contract
 
-- Everything that crosses between the apps goes through `formiga-travel` and is validated on the
-  way in. Nothing machine-specific crosses: no seeds, positions, monitors, paths, journal, or
-  settings beyond presentation.
-- Readers ignore unknown fields. Adding an optional field needs nothing else; a change an older
-  reader would misread raises `minimum_reader_version` and `FORMAT_VERSION` and adds a new frozen
-  fixture. Never edit or regenerate a committed fixture.
-- The receipt carries requests only. Nothing Hill writes may change a companion's identity,
-  temperament, habits, family, bonds, membership, or Desktop's settings.
+- Hill answers a trip once with an acknowledgement and once with a receipt, written only through
+  `trip.rs`. It asks only for return effects the snapshot's capabilities offer, and never sends
+  prose. A recall, or the trip's snapshot disappearing, ends the visit with nothing written.
+- Nothing Hill writes may change a companion's identity, temperament, habits, family, bonds,
+  membership, or Desktop's settings. Desktop brings the colony home unchanged whatever Hill does.
 
 ## Design rules that apply to every change
 
@@ -50,6 +48,8 @@ side of it.
   why, plain names, tests named as sentences (`a_receipt_cannot_settle_another_trip`).
 - The gate, which CI runs on macOS and Windows:
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
-- `cargo run -p formiga-hill -- --render-station station.png` draws the station without a
-  window (`--at <seconds>` for a moment of the arrival); look at it, cropped and enlarged, after
-  changing anything visual.
+- `--render-station`, `--render-green` (each with `--at <seconds>`) and `--render-reactions`
+  draw without a window; look at them, cropped and enlarged, after changing anything visual or
+  any behaviour in `character.rs`.
+- Behaviour is never written for a particular creature: it is read from the snapshot (axes,
+  kind, pace, habits, bonds, family) in `character.rs`, so every colony plays out differently.
