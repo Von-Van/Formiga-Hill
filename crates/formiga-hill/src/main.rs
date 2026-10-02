@@ -8,6 +8,7 @@ mod cues;
 mod dice;
 mod fairground;
 mod finds;
+mod fishing;
 mod font;
 mod green;
 mod hilltop;
@@ -53,6 +54,8 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-woods <PNG>     Draw a rummage in the Woods, --at seconds into it
   --render-hilltop <PNG>   Draw the Hilltop with a sample of finds placed on it
   --render-finds <PNG>     Draw every find's icon and Hilltop piece on one sheet, for review
+  --render-fishing <PNG>   Draw a fishing trip at the pool, --at seconds into it
+  --render-fish <PNG>      Draw every fish as it is held up, and its icon, for review
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
   --render-story <PNG>     Draw a story on the green --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
@@ -79,6 +82,10 @@ enum Area {
     Hilltop,
     /// Not an area: the review sheet of every find.
     Finds,
+    /// The pool in the Woods, a fishing trip under way.
+    Fishing,
+    /// Not an area: the review sheet of every fish.
+    Fish,
     /// Not an area: the review sheet of everyone's reactions.
     Reactions,
     /// The green, a story under way on it.
@@ -157,6 +164,8 @@ fn main() -> Result<()> {
                 hilltop.compose(now)
             }
             Area::Finds => finds_sheet(),
+            Area::Fishing => fishing_moment(&arrival.cast, args.at.unwrap_or(12.0)),
+            Area::Fish => fish_sheet(),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Story => {
                 let library = story::Library::load(&args.packages);
@@ -231,6 +240,10 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Hilltop, value("--render-hilltop")?));
             }
             Some("--render-finds") => render = Some((Area::Finds, value("--render-finds")?)),
+            Some("--render-fishing") => {
+                render = Some((Area::Fishing, value("--render-fishing")?));
+            }
+            Some("--render-fish") => render = Some((Area::Fish, value("--render-fish")?)),
             Some("--render-story") => render = Some((Area::Story, value("--render-story")?)),
             Some("--render-reactions") => {
                 render = Some((Area::Reactions, value("--render-reactions")?));
@@ -421,6 +434,35 @@ fn woods_moment(cast: &Cast, at: f32) -> Canvas {
     let mut scene = glade.compose(now);
     outing.draw(&mut scene, now);
     scene
+}
+
+/// A fishing trip at the pool, `at` seconds in. (For now, the pool with the first traveller on
+/// the bank.)
+fn fishing_moment(cast: &Cast, at: f32) -> Canvas {
+    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let mut pool = fishing::open(cast, &party, 0.0);
+    let mut now = 0.0;
+    while now < at {
+        now += 1.0 / 30.0;
+        pool.tick(cast, now);
+    }
+    pool.compose(now)
+}
+
+/// Every fish, held up as it is when landed, with its icon in the corner: a row each.
+fn fish_sheet() -> Canvas {
+    const ROW: i32 = 40;
+    let mut sheet = Canvas::new(384, (ROW * fishing::fish::CATALOGUE.len() as i32) as u32);
+    for (row, fish) in fishing::fish::CATALOGUE.iter().enumerate() {
+        let top = row as i32 * ROW;
+        let shade = if row % 2 == 0 { 0xdcecf0 } else { 0xcfe2e8 };
+        sheet.fill_rect(0, top, 384, ROW, paint::rgb(shade));
+        paint::blit(&mut sheet, &fishing::art::icon(fish.id), 4, top + 4);
+        let catch = fishing::art::catch(fish.id);
+        let at = (24, top + (ROW - catch.height() as i32) / 2);
+        paint::blit(&mut sheet, &catch, at.0, at.1);
+    }
+    sheet
 }
 
 /// A spread of finds over the Hilltop, with some spots left open, for seeing it lived in.
