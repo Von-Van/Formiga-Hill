@@ -1055,7 +1055,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1190,8 +1190,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.66.3"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?branch=work%2Fhill-enablement#b91ad9943e25a33039ad51e0f74909caeaa9e8bf"
+version = "0.66.4"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.4#58407ac9345e06728dc5294245e97ade638ffcea"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1203,8 +1203,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.66.3"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?branch=work%2Fhill-enablement#b91ad9943e25a33039ad51e0f74909caeaa9e8bf"
+version = "0.66.4"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.4#58407ac9345e06728dc5294245e97ade638ffcea"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1236,8 +1236,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.66.3"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?branch=work%2Fhill-enablement#b91ad9943e25a33039ad51e0f74909caeaa9e8bf"
+version = "0.66.4"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.4#58407ac9345e06728dc5294245e97ade638ffcea"
 dependencies = [
  "formiga-art",
  "formiga-core",
@@ -2865,7 +2865,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3211,7 +3211,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix 1.1.5",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3465,7 +3465,7 @@ checksum = "f2f6fb2847f6742cd76af783a2a2c49e9375d0a111c7bef6f71cd9e738c72d6e"
 dependencies = [
  "memoffset",
  "tempfile",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -4001,7 +4001,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

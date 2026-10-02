@@ -33,7 +33,7 @@ owns only the destination.
 | Done | Desktop's travel contract, from Hill's side: acknowledgement, recall, receipt (`trip.rs`), and the colony made ready to draw (`cast.rs`) |
 | Done | The station, painted in detail: the house, canopy, nameboard, garden, platform and line; the colony on the platform, drawn by `formiga-art` from the snapshot, accessories and all; names, and a tooltip with temperament, traits, habits, family and closest friend |
 | Done | The train: it pulls in with everyone at a window, they hop down one by one, and it steams away; "Take the train home" runs it in reverse. Cuts instead of motion with reduced motion; a click or Space skips the arrival |
-| Elsewhere | Desktop's side is built on Desktop's `work/hill-enablement` branch: the tray item, the train on the desktop, launching Hill, recall and recovery |
+| Elsewhere | Desktop's side is released in Formiga Desktop 0.66.4: the tray item, the train on the desktop, launching Hill, recall and recovery |
 | Done | The Village Green, painted to the station's standard: free play read from each traveller's temperament, habits, pace and bonds. Wandering, the blanket, naps in the oak's shade, visiting friends, playing with playmates, minis trailing parents, rivals keeping apart. A pat, a snack or a toy is answered in each one's own way, warming to the person over the visit |
 | Done | Stories as declarative content packages ([PACKAGES.md](docs/PACKAGES.md)): a strict, sandboxed loader; cast selectors with fallbacks; a beat vocabulary of walking, reactions, poses, lines, choices, branches and flags; lines that vary by temperament; a director that stages it on the green with a speech bubble over whoever is talking |
 | Done | *The First Picnic*, Hill's first story: three scenes, a choice and a branch, shipped as a package in exactly the community format |
@@ -101,10 +101,8 @@ The design's `formiga-hill-runtime` (cast resolution, scenes, packages, the Hill
 ## Formiga Desktop's crates
 
 `formiga-core`, `formiga-art` and `formiga-travel` all come from Formiga Desktop, from one source
-so their types agree. Until Desktop releases its Hill work, that source is the
-`work/hill-enablement` branch on GitHub, pinned to a commit by `Cargo.lock`
-(`cargo update -p formiga-travel -p formiga-core -p formiga-art` moves all three). Once Desktop
-releases, point all three at that release's tag.
+so their types agree: a release tag on GitHub, now `v0.66.4`. To move to a newer release, change
+the tag on all three in the root `Cargo.toml` together.
 
 ### Working against a Desktop checkout
 

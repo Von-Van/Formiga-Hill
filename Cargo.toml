@@ -12,12 +12,11 @@ authors = ["Formiga contributors"]
 publish = false
 
 [workspace.dependencies]
-# Formiga Desktop's shared crates, all three from the same Desktop source so their types agree.
-# For now that is Desktop's hill-enablement branch, pinned to a commit by Cargo.lock; once Desktop
-# releases its Hill work, switch all three to that release's tag together.
-formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", branch = "work/hill-enablement" }
-formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", branch = "work/hill-enablement" }
-formiga-travel = { git = "https://github.com/Von-Van/Formiga-Desktop", branch = "work/hill-enablement" }
+# Formiga Desktop's shared crates, all three from the same Desktop release so their types agree.
+# Move all three to a new release's tag together.
+formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.66.4" }
+formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.66.4" }
+formiga-travel = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.66.4" }
 
 anyhow = "1.0.104"
 directories = "5.0.1"
