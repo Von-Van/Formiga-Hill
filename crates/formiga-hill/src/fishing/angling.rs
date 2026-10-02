@@ -466,7 +466,7 @@ impl Angling {
                     };
                 }
             }
-            Phase::Waiting { float, since } => self.wait(ground, float, since, now),
+            Phase::Waiting { float, since } => self.wait(ground, float, since, dt, now),
             Phase::Fighting(fight) => self.fight(ground, fight, dt, now),
             Phase::Landed { since, .. } | Phase::Snagged { since, .. } => {
                 if now - since >= ADMIRE_SECS {
@@ -560,7 +560,7 @@ impl Angling {
         })
     }
 
-    fn wait(&mut self, ground: &mut Playground, float: (f32, f32), since: f32, now: f32) {
+    fn wait(&mut self, ground: &mut Playground, float: (f32, f32), since: f32, dt: f32, now: f32) {
         // Something snagged, a moment after the cast.
         if let Some(find) = self.snag {
             if now - since > 1.0 {
@@ -590,10 +590,16 @@ impl Angling {
             }
         }
         match self.at_float() {
+            // The light has gone and nothing is at the float: the line comes in, and it is time
+            // to go home. Anything already on its way to the float is let finish first.
+            None if self.light <= 0.0 => {
+                self.let_go();
+                self.leave(ground, now);
+            }
             None => {
-                // Anyone near enough may come over to look, the readier the lure.
+                // Anyone near enough may come over to look, the readier the lure: so many times a
+                // second, however often the pool is drawn.
                 let lure = self.lure * if self.dozing { 1.3 } else { 1.0 };
-                let dt = 1.0 / 30.0;
                 let mut came = None;
                 for (index, swimmer) in self.swimmers.iter().enumerate() {
                     if swimmer.surfaced
@@ -1322,5 +1328,63 @@ mod tests {
             assert_eq!(Angling::haunt_at(x, y), Some(haunt));
         }
         assert_eq!(Angling::haunt_at(SEAT.0, SEAT.1), None);
+    }
+
+    #[test]
+    fn when_the_light_goes_with_nothing_at_the_float_everyone_heads_home() {
+        let cast = sample();
+        let (mut ground, mut angling) = trip(&cast, vec![cast.members[0].id]);
+        run(&mut ground, &mut angling, &cast, 0.0, 6.0);
+        assert_eq!(angling.phase(), Phase::Ready);
+        angling.cast(&mut ground, (200.0, 112.0), 6.0);
+        assert!(matches!(angling.phase(), Phase::Casting { .. }));
+        // Nothing will come to it, and the light is all but gone.
+        for swimmer in &mut angling.swimmers {
+            swimmer.spooked_until = 1000.0;
+        }
+        angling.snag = None;
+        angling.light = 1.0;
+        let events = run(&mut ground, &mut angling, &cast, 6.0, 20.0);
+        assert!(
+            matches!(angling.phase(), Phase::Leaving { .. } | Phase::Over),
+            "{:?}",
+            angling.phase()
+        );
+        assert!(events.contains(&Event::Leaving));
+    }
+
+    #[test]
+    fn fish_come_to_the_float_as_readily_however_often_the_pool_is_drawn() {
+        let cast = sample();
+        let (mut ground, mut angling) = trip(&cast, vec![cast.members[0].id]);
+        run(&mut ground, &mut angling, &cast, 0.0, 6.0);
+        let float = angling.swimmers[0].pos;
+        // The average wait for something to come over, the float beside one fish and the rest
+        // keeping away, ticking `dt` seconds at a time.
+        let mut mean_wait = |dt: f32| {
+            let trials = 300;
+            let mut total = 0.0;
+            for seed in 0..trials {
+                angling.dice = Dice::new(seed);
+                for (index, swimmer) in angling.swimmers.iter_mut().enumerate() {
+                    swimmer.state = Swim::Cruising;
+                    swimmer.surfaced = index == 0;
+                    swimmer.spooked_until = 0.0;
+                }
+                angling.swimmers[0].pos = float;
+                let mut now = 0.0;
+                while angling.at_float().is_none() && now < 120.0 {
+                    now += dt;
+                    angling.wait(&mut ground, float, now, dt, now);
+                }
+                total += now;
+            }
+            total / trials as f32
+        };
+        let (smooth, slow) = (mean_wait(1.0 / 120.0), mean_wait(1.0 / 20.0));
+        assert!(
+            (0.75..1.33).contains(&(smooth / slow)),
+            "{smooth:.2}s at 120 frames a second, {slow:.2}s at 20"
+        );
     }
 }
