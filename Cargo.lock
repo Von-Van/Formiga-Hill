@@ -1169,8 +1169,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.66.1"
-source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#0f5604e9f80b051f272058b9f038e0352b6c7a47"
+version = "0.66.3"
+source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#b91ad9943e25a33039ad51e0f74909caeaa9e8bf"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1182,8 +1182,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.66.1"
-source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#0f5604e9f80b051f272058b9f038e0352b6c7a47"
+version = "0.66.3"
+source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#b91ad9943e25a33039ad51e0f74909caeaa9e8bf"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1211,8 +1211,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.66.1"
-source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#0f5604e9f80b051f272058b9f038e0352b6c7a47"
+version = "0.66.3"
+source = "git+file:///Users/jakemauldin/Documents/GitHub/Formiga%20Desktop?branch=work%2Fhill-enablement#b91ad9943e25a33039ad51e0f74909caeaa9e8bf"
 dependencies = [
  "formiga-art",
  "formiga-core",
