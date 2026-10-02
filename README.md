@@ -19,10 +19,10 @@ Phase 0.1, the travel prototype, is under way.
 | | |
 | --- | --- |
 | Done | `formiga-travel`: snapshot and receipt v1, validation, bounded atomic I/O, Desktop-side exporter, frozen v1 fixture |
-| Done | The station: the colony standing on the platform, drawn by `formiga-art` from the snapshot, accessories and all; names, and a tooltip with temperament, traits, habits, family and closest friend |
+| Done | The station, painted in detail: the house, canopy, nameboard, garden, platform and line; the colony on the platform, drawn by `formiga-art` from the snapshot, accessories and all; names, and a tooltip with temperament, traits, habits, family and closest friend |
+| Done | The train: it pulls in with everyone at a window, they hop down one by one, and it steams away; "Take the train home" runs it in reverse. Cuts instead of motion with reduced motion; a click or Space skips the arrival |
 | Done | `--snapshot` trips write a validated receipt on the way home |
-| Next | Desktop's side: "Go to Formiga Hill…", the train, launching Hill, reading the receipt, recovering an away colony |
-| Next | The train arriving and leaving at the station |
+| Next | Desktop's side: "Go to Formiga Hill…", the train on the desktop, launching Hill, reading the receipt, recovering an away colony |
 | Then | 0.2 character proof, 0.3 story runtime and packages ([DESIGN.md §12](docs/DESIGN.md#12-recommended-development-phases)) |
 
 ## Running it
@@ -35,7 +35,11 @@ cargo run -p formiga-hill                     # the sample colony
 cargo run -p formiga-hill -- --snapshot trip.snapshot.json
 cargo run -p formiga-hill -- --from-save ~/path/to/colony.json
 cargo run -p formiga-hill -- --render-station station.png
+cargo run -p formiga-hill -- --render-station arriving.png --at 3.6
 ```
+
+`--render-station` draws the scene without a window: settled, or `--at` that many seconds into
+the arrival.
 
 `--from-save` stands in for Desktop's exporter until Desktop has one. It reads a colony file and
 never writes to it, but it can only read saves this build's `formiga-core` understands (save v24
@@ -46,7 +50,10 @@ and earlier, from Desktop 0.66.1). For anything newer, bump the Desktop tag, or 
 ```text
 crates/
   formiga-travel/   the Desktop ↔ Hill contract: shared, versioned, validated
-  formiga-hill/     the app: the station scene and the window
+  formiga-hill/     the app
+    src/paint.rs      painting tools for scenery: ramps, bevels, polygons, texture
+    src/font.rs       5×7 lettering for signs painted into a scene
+    src/station/      the station: scenery, the train, and the timeline of its comings and goings
 docs/
 ```
 

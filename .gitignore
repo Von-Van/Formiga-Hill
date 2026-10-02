@@ -2,6 +2,6 @@
 /dist/
 /.DS_Store
 *.log
-/station.png
+/*.png
 # Local [patch] overrides pointing at a Desktop checkout; see README.md.
 /.cargo/config.toml

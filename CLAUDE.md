@@ -36,6 +36,11 @@ side of it.
   appearance; never regenerate one.
 - Soft play, not maintenance: no neglect penalties, streaks, hunger debt, or login pressure.
 - Reduced motion gets an authored alternative (a held pose, a cut), not merely a slower animation.
+- Areas are drawn with more fidelity and detail than Desktop's overlays: Formiga's pixel scale,
+  but every material shaded with a ramp, light from the upper left, edges outlined in a darker
+  shade of their own colour (never black, so the near-black-outlined creatures read first), and
+  surfaces textured from `paint::noise`. Background, then props and texture: an area should look
+  composed and lived-in, not flat. Keep everyone's standing spots clear of clutter.
 - Community content will be declarative and sandboxed: no native code, no arbitrary file,
   network, or process access. Official content should use the same package format.
 
@@ -46,4 +51,5 @@ side of it.
 - The gate, which CI runs on macOS and Windows:
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 - `cargo run -p formiga-hill -- --render-station station.png` draws the station without a
-  window; look at it after changing anything visual.
+  window (`--at <seconds>` for a moment of the arrival); look at it, cropped and enlarged, after
+  changing anything visual.

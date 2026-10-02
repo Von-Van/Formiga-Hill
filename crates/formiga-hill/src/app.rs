@@ -1,6 +1,6 @@
 //! The Hill window: the station, the colony standing on it, and the way home.
 
-use crate::station::{SCENE_HEIGHT, SCENE_WIDTH, SIGN_CENTER, STAND_Y, Station};
+use crate::station::{Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
 use eframe::egui;
 use formiga_core::CreatureId;
 use formiga_travel::{
@@ -44,6 +44,7 @@ pub struct HillApp {
 
 const INK: egui::Color32 = egui::Color32::from_rgb(0x4a, 0x36, 0x26);
 const LETTERBOX: egui::Color32 = egui::Color32::from_rgb(0x2f, 0x3b, 0x2c);
+const TAG: egui::Color32 = egui::Color32::from_rgba_unmultiplied_const(0xf6, 0xee, 0xd8, 0xe0);
 
 impl HillApp {
     pub fn new(cc: &eframe::CreationContext<'_>, arrival: Arrival) -> Self {
@@ -55,7 +56,8 @@ impl HillApp {
         });
         cc.egui_ctx
             .set_zoom_factor(f32::from(presentation.text_scale_percent.clamp(100, 150)) / 100.0);
-        let station = Station::new(arrival.snapshot());
+        // Every visit begins with the train pulling in.
+        let station = Station::new(arrival.snapshot(), Journey::Arriving { since: 0.0 });
         Self {
             arrival,
             station,
@@ -90,11 +92,15 @@ impl HillApp {
         }
     }
 
-    fn refresh_scene(&mut self, ctx: &egui::Context) -> egui::TextureId {
-        let elapsed = self.started.elapsed().as_secs_f32();
-        let frames = self.station.frame_key(elapsed);
+    /// Seconds since the window opened: the clock the whole visit runs on.
+    fn now(&self) -> f32 {
+        self.started.elapsed().as_secs_f32()
+    }
+
+    fn refresh_scene(&mut self, ctx: &egui::Context, now: f32) -> egui::TextureId {
+        let frames = self.station.frame_key(now);
         if self.texture.is_none() || frames != self.shown_frames {
-            let canvas = self.station.compose(elapsed);
+            let canvas = self.station.compose(now);
             let image = egui::ColorImage::from_rgba_unmultiplied(
                 [SCENE_WIDTH as usize, SCENE_HEIGHT as usize],
                 &canvas.rgba_bytes(),
@@ -117,20 +123,29 @@ impl HillApp {
 impl eframe::App for HillApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        let texture = self.refresh_scene(&ctx);
+        let now = self.now();
+        self.station.update(now);
+        if self.station.gone_home(now) && !self.departed {
+            self.depart();
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        if ctx.input(|input| {
+            input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Escape)
+        }) {
+            self.station.skip_arrival();
+        }
+        let texture = self.refresh_scene(&ctx, now);
 
         egui::Panel::bottom("platform").show(ui, |ui| {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 ui.label(arrivals_line(&self.arrival));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let leave = match self.arrival {
-                        Arrival::Trip { .. } => "Take the train home",
-                        Arrival::Visit { .. } => "Close",
-                    };
-                    if ui.button(leave).clicked() {
-                        self.depart();
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    let leaving = matches!(self.station.journey(), Journey::Leaving { .. });
+                    let button = egui::Button::new("Take the train home");
+                    if ui.add_enabled(!leaving, button).clicked() {
+                        self.station.skip_arrival();
+                        self.station.set_off_home(now);
                     }
                 });
             });
@@ -142,29 +157,35 @@ impl eframe::App for HillApp {
             .show(ui, |ui| {
                 let available = ui.available_rect_before_wrap();
                 let rect = scene_rect(available, ctx.pixels_per_point());
-                let response = ui.allocate_rect(rect, egui::Sense::hover());
+                let response = ui.allocate_rect(rect, egui::Sense::click());
+                if response.clicked() {
+                    // A click on the scene skips the arrival.
+                    self.station.skip_arrival();
+                }
                 let painter = ui.painter_at(rect);
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                 painter.image(texture, rect, uv, egui::Color32::WHITE);
 
                 let point = rect.width() / SCENE_WIDTH as f32;
                 let to_screen = |x: f32, y: f32| rect.min + egui::vec2(x, y) * point;
-                painter.text(
-                    to_screen(SIGN_CENTER.0 as f32, SIGN_CENTER.1 as f32 + 0.5),
-                    egui::Align2::CENTER_CENTER,
-                    "Formiga Hill",
-                    egui::FontId::proportional((11.0 * point).max(10.0)),
-                    INK,
-                );
-                for traveler in self.station.travelers() {
+                // Name tags on little cream labels, so they read over boards and stone alike,
+                // once everyone is standing still to wear them.
+                let font = egui::FontId::proportional((5.5 * point).clamp(10.0, 20.0));
+                let tagged = if self.station.is_settled() {
+                    self.station.travelers()
+                } else {
+                    &[]
+                };
+                for traveler in tagged {
                     let (left, _, right, _) = traveler.bounds;
-                    painter.text(
-                        to_screen((left + right + 1) as f32 / 2.0, STAND_Y as f32 + 9.0),
-                        egui::Align2::CENTER_TOP,
-                        &traveler.name,
-                        egui::FontId::proportional((6.5 * point).clamp(10.0, 22.0)),
-                        INK,
+                    let anchor = to_screen((left + right + 1) as f32 / 2.0, STAND_Y as f32 + 7.0);
+                    let galley = painter.layout_no_wrap(traveler.name.clone(), font.clone(), INK);
+                    let tag = egui::Rect::from_center_size(
+                        anchor + egui::vec2(0.0, galley.size().y / 2.0 + 2.0),
+                        galley.size() + egui::vec2(point * 4.0, point * 1.0),
                     );
+                    painter.rect_filled(tag, point * 2.0, TAG);
+                    painter.galley(tag.center() - galley.size() / 2.0, galley, INK);
                 }
 
                 let hovered = response.hover_pos().and_then(|pos| {
@@ -185,7 +206,9 @@ impl eframe::App for HillApp {
                 }
             });
 
-        if !self.arrival.snapshot().presentation.reduce_motion {
+        if self.station.in_motion(now) {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        } else if !self.arrival.snapshot().presentation.reduce_motion {
             ctx.request_repaint_after(Duration::from_millis(100));
         }
     }

@@ -1,6 +1,8 @@
 //! Formiga Hill: somewhere the colony goes to spend time together.
 
 mod app;
+mod font;
+mod paint;
 mod station;
 
 use anyhow::{Context, Result, bail};
@@ -16,12 +18,14 @@ use time::OffsetDateTime;
 const USAGE: &str = "\
 Formiga Hill
 
-Usage: formiga-hill [--sample | --snapshot <FILE> | --from-save <FILE>] [--render-station <PNG>]
+Usage: formiga-hill [--sample | --snapshot <FILE> | --from-save <FILE>]
+                    [--render-station <PNG> [--at <SECONDS>]]
 
   --sample                 Arrive with a made-up colony (the default)
   --snapshot <FILE>        Arrive on a trip Desktop started, and write its receipt on the way home
   --from-save <FILE>       Development only: board a Desktop colony file, which is only ever read
   --render-station <PNG>   Draw the station to a PNG and exit without opening a window
+  --at <SECONDS>           With --render-station: draw that far into the arrival instead
 ";
 
 enum Source {
@@ -33,6 +37,7 @@ enum Source {
 struct Args {
     source: Source,
     render: Option<PathBuf>,
+    at: Option<f32>,
 }
 
 fn main() -> Result<()> {
@@ -43,8 +48,12 @@ fn main() -> Result<()> {
     let arrival = arrive(args.source)?;
 
     if let Some(path) = args.render {
-        let station = station::Station::new(arrival.snapshot());
-        write_png(&path, &station.compose(0.0), 3)?;
+        let (journey, now) = match args.at {
+            Some(seconds) => (station::Journey::Arriving { since: 0.0 }, seconds),
+            None => (station::Journey::Here, 0.0),
+        };
+        let station = station::Station::new(arrival.snapshot(), journey);
+        write_png(&path, &station.compose(now), 3)?;
         println!("Drew the station to {}", path.display());
         return Ok(());
     }
@@ -71,6 +80,7 @@ fn main() -> Result<()> {
 fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> {
     let mut source = None;
     let mut render = None;
+    let mut at = None;
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
             bail!("choose one of --sample, --snapshot, or --from-save");
@@ -81,20 +91,34 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         let mut value = |flag: &str| {
             args.next()
                 .map(PathBuf::from)
-                .with_context(|| format!("{flag} needs a path"))
+                .with_context(|| format!("{flag} needs a value"))
         };
         match arg.to_str() {
             Some("--sample") => set_source(Source::Sample)?,
             Some("--snapshot") => set_source(Source::Snapshot(value("--snapshot")?))?,
             Some("--from-save") => set_source(Source::Save(value("--from-save")?))?,
             Some("--render-station") => render = Some(value("--render-station")?),
+            Some("--at") => {
+                let seconds = value("--at")?;
+                at = Some(
+                    seconds
+                        .to_str()
+                        .and_then(|text| text.parse::<f32>().ok())
+                        .filter(|seconds| seconds.is_finite() && *seconds >= 0.0)
+                        .with_context(|| format!("--at needs seconds, not {seconds:?}"))?,
+                );
+            }
             Some("-h" | "--help") => return Ok(None),
             _ => bail!("unexpected argument {arg:?}\n\n{USAGE}"),
         }
     }
+    if at.is_some() && render.is_none() {
+        bail!("--at only goes with --render-station");
+    }
     Ok(Some(Args {
         source: source.unwrap_or(Source::Sample),
         render,
+        at,
     }))
 }
 
@@ -173,6 +197,16 @@ mod tests {
             matches!(args.source, Source::Snapshot(ref path) if path == Path::new("trip.json"))
         );
         assert_eq!(args.render.as_deref(), Some(Path::new("out.png")));
+    }
+
+    #[test]
+    fn a_render_can_be_taken_partway_through_the_arrival() {
+        let args = parse(&["--render-station", "out.png", "--at", "2.5"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(args.at, Some(2.5));
+        assert!(parse(&["--at", "2.5"]).is_err());
+        assert!(parse(&["--render-station", "out.png", "--at", "soon"]).is_err());
     }
 
     #[test]
