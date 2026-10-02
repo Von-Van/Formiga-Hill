@@ -377,15 +377,23 @@ fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
     ground.compose(now)
 }
 
-/// An outing to the Woods with the first two travellers, `at` seconds in, played by a steady
-/// hand: it searches the spots in turn and catches each moment as the marker crosses the gold.
+/// An outing to the Woods, `at` seconds in, played by a steady hand: it searches the spots in
+/// turn and catches each moment as the marker crosses the gold. A parent and its little one go if
+/// the colony has them, so the spots only some company opens show; otherwise the first two.
 fn woods_moment(cast: &Cast, at: f32) -> Canvas {
-    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let family = cast
+        .members
+        .iter()
+        .find_map(|member| member.parent().map(|parent| vec![parent, member.id]));
+    let party: Vec<cast::Id> = family.unwrap_or_else(|| cast.ids().take(2).collect());
+    let close_pair = cast
+        .bond(party[0], party[party.len() - 1])
+        .is_some_and(|bond| bond.warmth >= formiga_travel::Band::High);
     let mut glade = woods::open(cast, &party, 0.0);
     let outset = woods::rummage::Outset {
         party,
         drought: 0,
-        close_pair: false,
+        close_pair,
         influence: woods::influence(&sample_arrangement()),
         seed: 5,
     };
@@ -397,7 +405,7 @@ fn woods_moment(cast: &Cast, at: f32) -> Canvas {
         glade.tick(cast, now);
         outing.tick(&mut glade, now);
         match outing.phase() {
-            woods::rummage::Phase::Exploring if next < woods::SPOTS.len() => {
+            woods::rummage::Phase::Exploring if next < outing.spot_count() => {
                 outing.choose(&mut glade, next, now);
                 next += 1;
             }

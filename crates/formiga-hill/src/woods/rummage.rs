@@ -15,13 +15,13 @@
 //! for less light; two together catch things more easily, and a close pair more easily still. And
 //! what is out there leans towards who came (see `finds`).
 
-use super::{Influence, SPOTS, Spot};
+use super::{EXTRAS, Influence, Opener, SPOTS, Spot};
 use crate::actor::Step;
 use crate::cast::Id;
 use crate::character::{Beat, Character, Cue};
 use crate::dice::Dice;
 use crate::finds::{self, Find, Kind, Tier, art};
-use crate::paint::{blit, mix, put, rect, rgb, rgba};
+use crate::paint::{blit, ellipse, mix, noise, put, rect, rgb, rgba};
 use crate::playground::{Playground, distance};
 use formiga_art::{Canvas, ExpressionKind, Rgba};
 use formiga_core::{ActionKind, Gesture, TemperamentKind};
@@ -121,11 +121,28 @@ pub enum Ending {
 /// Something that happened, for the person to be told.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Event {
-    Noticed { who: Id, spot: usize },
-    Got { find: &'static str, spot: usize },
-    Slipped { spot: usize },
-    Nothing { spot: usize },
-    AlreadyLooked { spot: usize },
+    /// Someone in the party opened up a spot only they could.
+    Opened {
+        who: Id,
+        spot: usize,
+    },
+    Noticed {
+        who: Id,
+        spot: usize,
+    },
+    Got {
+        find: &'static str,
+        spot: usize,
+    },
+    Slipped {
+        spot: usize,
+    },
+    Nothing {
+        spot: usize,
+    },
+    AlreadyLooked {
+        spot: usize,
+    },
     Leaving(Ending),
 }
 
@@ -150,6 +167,11 @@ pub struct Outset {
 
 pub struct Rummage {
     party: Vec<Id>,
+    /// The glade's spots, and any extra ones this party opened, each with who opened it.
+    spots: Vec<Spot>,
+    opened: Vec<(usize, Opener, Id)>,
+    /// Who is searching the spot being searched: whoever opened it, or the first who came.
+    leader: Option<Id>,
     /// The light the outing started with.
     full: f32,
     /// Below this much light, rare things start to show themselves.
@@ -218,14 +240,48 @@ impl Rummage {
         let refs: Vec<&Character> = characters.iter().collect();
         let mut dice = Dice::new(seed);
         let kinds: Vec<Kind> = SPOTS.iter().map(|spot| spot.kind).collect();
-        let caches = finds::stock(
+        let mut caches = finds::stock(
             &kinds,
             &refs,
-            found_before,
+            &found_before,
             drought,
             &influence.richer,
             &mut dice,
         );
+        // The extra spots this company opens: always something there, and under the boulder the
+        // better of two.
+        let mut spots = SPOTS.to_vec();
+        let mut opened = Vec::new();
+        let mut events = Vec::new();
+        for extra in EXTRAS {
+            let Some(who) = opener(&party, &characters, extra.opener, close_pair) else {
+                continue;
+            };
+            let mut roll = || {
+                finds::stock(
+                    &[extra.spot.kind],
+                    &refs,
+                    &found_before,
+                    0,
+                    &[1.0; 4],
+                    &mut dice,
+                )[0]
+            };
+            let mut cache = roll();
+            if extra.opener == Opener::ClosePair {
+                let other = roll();
+                if other.map(|f| f.tier) > cache.map(|f| f.tier) {
+                    cache = other;
+                }
+            }
+            opened.push((spots.len(), extra.opener, who));
+            events.push(Event::Opened {
+                who,
+                spot: spots.len(),
+            });
+            spots.push(extra.spot);
+            caches.push(cache);
+        }
         let mut knack_by_kind = [1.0; 4];
         for kind in Kind::ALL {
             knack_by_kind[kind.index()] = characters
@@ -240,22 +296,25 @@ impl Rummage {
         };
         // The slowest sets the pace.
         let liveliness = characters.iter().map(|c| c.axes.energy).fold(1.0, f32::min);
-        let mut signs = vec![Sign::default(); SPOTS.len()];
+        let mut signs = vec![Sign::default(); spots.len()];
         for sign in &mut signs {
             sign.next = now + 2.0 + dice.range(0.0, 3.0);
         }
         let full = LIGHT + influence.light;
         Self {
             party,
+            searched: vec![false; spots.len()],
+            spots,
+            opened,
+            leader: None,
             full,
             dusk: DUSK + influence.earlier,
-            searched: vec![false; SPOTS.len()],
             caches,
             signs,
             light: full,
             basket: Vec::new(),
             phase: Phase::Arriving { since: now },
-            events: Vec::new(),
+            events,
             dice,
             reduce_motion: ground.reduce_motion(),
             from: (-24.0, 192.0),
@@ -271,6 +330,23 @@ impl Rummage {
 
     pub fn party(&self) -> &[Id] {
         &self.party
+    }
+
+    /// One of this outing's spots: the glade's, or an extra one this party opened.
+    pub fn spot(&self, index: usize) -> Option<&Spot> {
+        self.spots.get(index)
+    }
+
+    pub fn spot_count(&self) -> usize {
+        self.spots.len()
+    }
+
+    /// Who opened up an extra spot, if it is one.
+    pub fn opener_of(&self, spot: usize) -> Option<Opener> {
+        self.opened
+            .iter()
+            .find(|(at, _, _)| *at == spot)
+            .map(|(_, opener, _)| *opener)
     }
 
     /// How much of the light is left, from 0 to 1.
@@ -305,14 +381,14 @@ impl Rummage {
 
     /// The light walking from where the party last searched to `spot` would cost.
     pub fn walk_cost(&self, spot: usize) -> f32 {
-        SPOTS
+        self.spots
             .get(spot)
             .map_or(0.0, |spot| distance(self.from, spot.stand) * self.walk_cost)
     }
 
     /// The spot under a point in the scene, if any.
-    pub fn spot_at(x: f32, y: f32) -> Option<usize> {
-        SPOTS
+    pub fn spot_at(&self, x: f32, y: f32) -> Option<usize> {
+        self.spots
             .iter()
             .enumerate()
             .map(|(index, spot)| {
@@ -327,7 +403,7 @@ impl Rummage {
     /// The person chose a spot: the party goes over to search it.
     pub fn choose(&mut self, ground: &mut Playground, spot: usize, now: f32) {
         let ready = matches!(self.phase, Phase::Exploring | Phase::Catching(_));
-        let Some(place) = SPOTS.get(spot) else {
+        let Some(place) = self.spots.get(spot).copied() else {
             return;
         };
         if !ready {
@@ -341,7 +417,19 @@ impl Rummage {
         self.from = place.stand;
         ground.reserve(self.party.clone());
         let face = place.sign.0 + 0.5;
-        for (index, id) in self.party.iter().enumerate() {
+        // Whoever opened an extra spot searches it; otherwise the first who came.
+        let leader = self
+            .opened
+            .iter()
+            .find(|(at, _, _)| *at == spot)
+            .map(|(_, _, who)| *who)
+            .or_else(|| self.party.first().copied());
+        self.leader = leader;
+        let order: Vec<Id> = leader
+            .into_iter()
+            .chain(self.party.iter().copied().filter(|id| Some(*id) != leader))
+            .collect();
+        for (index, id) in order.iter().enumerate() {
             let to = if index == 0 {
                 place.stand
             } else {
@@ -398,7 +486,7 @@ impl Rummage {
             catch.since = now;
             catch.held_angle = 0.0;
             self.events.push(Event::Slipped { spot: catch.spot });
-            if let Some(leader) = self.party.first() {
+            if let Some(leader) = self.leader.as_ref() {
                 let mut oops = Beat::new(Gesture::Gasp, ExpressionKind::Startled, 0.4);
                 oops.cue = Some(Cue::Exclaim);
                 let steps = vec![Step::Beat(oops), Step::Beat(searching(find.kind))];
@@ -463,7 +551,7 @@ impl Rummage {
 
     pub fn tick(&mut self, ground: &mut Playground, now: f32) {
         self.update_signs(ground, now);
-        let leader = self.party.first().copied();
+        let leader = self.leader.or_else(|| self.party.first().copied());
         let busy = |ground: &Playground| leader.is_some_and(|id| ground.busy(id));
         match self.phase {
             Phase::Arriving { since } => {
@@ -480,11 +568,11 @@ impl Rummage {
                 if busy(ground) {
                     return;
                 }
-                let kind = SPOTS[spot].kind;
+                let kind = self.spots[spot].kind;
                 if let Some(leader) = leader {
                     ground.direct(leader, vec![Step::Beat(searching(kind))], now);
                 }
-                for helper in self.party.iter().skip(1) {
+                for helper in self.party.iter().filter(|id| Some(**id) != leader) {
                     let watch = Beat::new(Gesture::Watch, ExpressionKind::Curious, 600.0);
                     ground.direct(*helper, vec![Step::Beat(watch)], now);
                 }
@@ -560,7 +648,7 @@ impl Rummage {
     /// with nothing else to do may notice one and point it out.
     fn update_signs(&mut self, ground: &mut Playground, now: f32) {
         let exploring = matches!(self.phase, Phase::Exploring);
-        for (index, spot) in SPOTS.iter().enumerate() {
+        for (index, spot) in self.spots.clone().iter().enumerate() {
             let Some(find) = self.caches[index] else {
                 continue;
             };
@@ -607,8 +695,11 @@ impl Rummage {
 
     /// The glade darkening as the light goes, the signs, the ring, a find held up, the basket.
     pub fn draw(&self, scene: &mut Canvas, now: f32) {
+        for (index, opener, _) in &self.opened {
+            draw_extra(scene, &self.spots[*index], *opener, self.searched[*index]);
+        }
         dim(scene, self.light);
-        for (index, spot) in SPOTS.iter().enumerate() {
+        for (index, spot) in self.spots.iter().enumerate() {
             let sign = self.signs[index];
             if now < sign.until
                 && !self.searched[index]
@@ -623,7 +714,7 @@ impl Rummage {
                 draw_ring(
                     scene,
                     &catch,
-                    SPOTS[catch.spot].sign,
+                    self.spots[catch.spot].sign,
                     now,
                     self.reduce_motion,
                 );
@@ -635,7 +726,7 @@ impl Rummage {
                     } else {
                         ((now - since) / 0.4).min(1.0) * 8.0
                     };
-                    let (x, y) = SPOTS[spot].sign;
+                    let (x, y) = self.spots[spot].sign;
                     let icon = art::icon(find.id);
                     let (left, top) = (x as i32 - 4, (y - 6.0 - rise) as i32);
                     // A little card behind it, so it reads against anything.
@@ -674,6 +765,117 @@ impl Rummage {
             (self.light / self.full).clamp(0.0, 1.0),
         );
         scene.fill_rect(left + 2, top + SLOT + 2, bar, 2, gold);
+    }
+}
+
+/// Who in the party opens up an extra spot, if anyone: the most curious explorer, the first
+/// little one, or the first of a close pair.
+fn opener(party: &[Id], characters: &[Character], opener: Opener, close_pair: bool) -> Option<Id> {
+    let with = |test: &dyn Fn(&Character) -> bool| {
+        party
+            .iter()
+            .zip(characters)
+            .filter(|(_, c)| test(c))
+            .max_by(|a, b| a.1.axes.curiosity.total_cmp(&b.1.axes.curiosity))
+            .map(|(id, _)| *id)
+    };
+    match opener {
+        Opener::Explorer => {
+            with(&|c| c.kind == TemperamentKind::Explorer || c.axes.curiosity >= 0.8)
+        }
+        Opener::LittleOne => with(&|c| c.parent.is_some()),
+        Opener::ClosePair => close_pair.then(|| party.first().copied()).flatten(),
+    }
+}
+
+/// The place an extra spot opens on: a sett's spoil heap, a dark crack in the roots, a boulder
+/// furred with moss (rolled aside once searched).
+fn draw_extra(scene: &mut Canvas, spot: &Spot, opener: Opener, searched: bool) {
+    let (x, y) = (spot.sign.0 as i32, spot.sign.1 as i32);
+    let soil = [rgb(0x3a2a1e), rgb(0x5a4030), rgb(0x76563e), rgb(0x92704e)];
+    match opener {
+        Opener::Explorer => {
+            // A heap of fresh spoil with the sett's mouth dark in its face.
+            for (dy, half) in [(-4, 5), (-3, 8), (-2, 10), (-1, 12), (0, 13), (1, 13)] {
+                for dx in -half..=half {
+                    let lit = if dx < -half / 3 {
+                        3
+                    } else if dx < half / 2 {
+                        2
+                    } else {
+                        1
+                    };
+                    let grain = noise(x + dx + 400, y + dy, 811).is_multiple_of(7);
+                    let tone = if grain {
+                        soil[(lit + 1).min(3)]
+                    } else {
+                        soil[lit]
+                    };
+                    put(scene, x + dx, y + dy, tone);
+                }
+                put(scene, x - half, y + dy, soil[0]);
+                put(scene, x + half, y + dy, soil[0]);
+            }
+            for (dy, half) in [(-2, 2), (-1, 3), (0, 3), (1, 3)] {
+                for dx in -half..=half {
+                    put(scene, x + dx, y + dy, rgb(0x16100c));
+                }
+            }
+            put(scene, x - 3, y - 2, soil[3]);
+        }
+        Opener::LittleOne => {
+            // A narrow crack between two roots, just wide enough for small paws.
+            for dy in -4i32..=3 {
+                let half = if dy.abs() < 3 { 1 } else { 0 };
+                for dx in -half..=half {
+                    put(scene, x + dx, y + dy, rgb(0x120e0a));
+                }
+                put(scene, x - half - 1, y + dy, rgb(0x6a5040));
+                put(scene, x + half + 1, y + dy, rgb(0x3a2a20));
+            }
+        }
+        Opener::ClosePair => {
+            let stone = [rgb(0x4a4648), rgb(0x6a6466), rgb(0x8a8484), rgb(0xaaa4a0)];
+            let moss = [rgb(0x3e5a2c), rgb(0x587a3a), rgb(0x76984c)];
+            if searched {
+                // Rolled aside, its damp underside showing, a bare patch where it lay.
+                ellipse(scene, x, y + 1, 9, 3, rgba(0x3a2a1e, 200));
+                ellipse(scene, x + 14, y - 3, 7, 6, stone[1]);
+                ellipse(scene, x + 13, y - 4, 5, 4, stone[2]);
+                return;
+            }
+            ellipse(scene, x + 2, y + 2, 12, 3, rgba(0x203020, 90));
+            for dy in -9..=2 {
+                for dx in -11..=11 {
+                    let (u, v) = (dx as f32 / 11.0, (dy as f32 + 3.5) / 6.5);
+                    if u * u + v * v > 1.0 {
+                        continue;
+                    }
+                    let edge = u * u + v * v > 0.8;
+                    let lit = -u * 0.6 - v * 0.5;
+                    let mut tone = if edge {
+                        stone[0]
+                    } else if lit > 0.35 {
+                        stone[3]
+                    } else if lit > -0.2 {
+                        stone[2]
+                    } else {
+                        stone[1]
+                    };
+                    // Moss over the top, thickest where the light falls.
+                    if v < -0.25 && !edge && !noise(x + dx, y + dy, 812).is_multiple_of(3) {
+                        tone = moss[if lit > 0.3 {
+                            2
+                        } else if lit > -0.1 {
+                            1
+                        } else {
+                            0
+                        }];
+                    }
+                    put(scene, x + dx, y + dy, tone);
+                }
+            }
+        }
     }
 }
 
@@ -1015,10 +1217,11 @@ mod tests {
         let mut spot = 0;
         while !matches!(rummage.phase, Phase::Leaving { .. } | Phase::Over) && now < 600.0 {
             if rummage.phase == Phase::Exploring {
-                while rummage.searched(spot % SPOTS.len()) {
+                while rummage.searched(spot % rummage.spot_count()) {
                     spot += 1;
                 }
-                rummage.choose(&mut ground, spot % SPOTS.len(), now);
+                let count = rummage.spot_count();
+                rummage.choose(&mut ground, spot % count, now);
             }
             if let Phase::Catching(catch) = rummage.phase {
                 let when = when_at(&catch, catch.centre + PI, now);
@@ -1038,8 +1241,8 @@ mod tests {
     fn the_rarest_signs_wait_for_dusk() {
         let cast = sample();
         let (mut ground, mut rummage) = outing(&cast, vec![cast.members[0].id]);
-        let rare =
-            (0..SPOTS.len()).find(|i| rummage.caches[*i].is_some_and(|f| f.tier >= Tier::Rare));
+        let rare = (0..rummage.spot_count())
+            .find(|i| rummage.caches[*i].is_some_and(|f| f.tier >= Tier::Rare));
         let Some(rare) = rare else {
             return;
         };
@@ -1048,6 +1251,90 @@ mod tests {
         rummage.light = rummage.dusk - 1.0;
         run(&mut ground, &mut rummage, &cast, 60.0, 90.0);
         assert!(rummage.signs[rare].until > 60.0);
+    }
+
+    fn setting_off(cast: &Cast, party: Vec<Id>, close_pair: bool) -> (Playground, Rummage) {
+        let mut ground = woods::open(cast, &party, 0.0);
+        let outset = Outset {
+            party,
+            drought: 0,
+            close_pair,
+            influence: Influence::default(),
+            seed: 3,
+        };
+        let rummage = Rummage::new(&mut ground, outset, |_| false, 0.0);
+        (ground, rummage)
+    }
+
+    fn opened(rummage: &Rummage) -> Vec<Opener> {
+        (SPOTS.len()..rummage.spot_count())
+            .filter_map(|spot| rummage.opener_of(spot))
+            .collect()
+    }
+
+    #[test]
+    fn who_comes_along_opens_extra_spots_and_they_always_hold_something() {
+        let cast = sample();
+        let characters: Vec<Character> = cast.members.iter().map(Character::of).collect();
+        let Some(little) = cast
+            .members
+            .iter()
+            .position(|member| member.parent().is_some())
+        else {
+            return;
+        };
+        let (_, mut rummage) = setting_off(&cast, vec![cast.members[little].id], false);
+        assert!(opened(&rummage).contains(&Opener::LittleOne));
+        assert!(
+            rummage
+                .take_events()
+                .iter()
+                .any(|event| matches!(event, Event::Opened { .. }))
+        );
+        for spot in SPOTS.len()..rummage.spot_count() {
+            assert!(
+                rummage.caches[spot].is_some(),
+                "an extra spot came up empty"
+            );
+        }
+        // Somebody grown, not an explorer and not very curious, opens nothing on their own.
+        let plain = characters.iter().position(|c| {
+            c.parent.is_none() && c.kind != TemperamentKind::Explorer && c.axes.curiosity < 0.8
+        });
+        if let Some(plain) = plain {
+            let (_, rummage) = setting_off(&cast, vec![cast.members[plain].id], false);
+            assert!(opened(&rummage).is_empty());
+            assert_eq!(rummage.spot_count(), SPOTS.len());
+        }
+        let pair = vec![cast.members[0].id, cast.members[1].id];
+        let (_, rummage) = setting_off(&cast, pair, true);
+        assert!(opened(&rummage).contains(&Opener::ClosePair));
+    }
+
+    #[test]
+    fn whoever_opened_a_spot_is_the_one_who_searches_it() {
+        let cast = sample();
+        let Some(little) = cast.members.iter().find(|member| member.parent().is_some()) else {
+            return;
+        };
+        let grown = cast
+            .members
+            .iter()
+            .find(|member| member.parent().is_none())
+            .unwrap();
+        let (mut ground, mut rummage) = setting_off(&cast, vec![grown.id, little.id], false);
+        run(&mut ground, &mut rummage, &cast, 0.0, 6.0);
+        let crevice = (SPOTS.len()..rummage.spot_count())
+            .find(|spot| rummage.opener_of(*spot) == Some(Opener::LittleOne))
+            .unwrap();
+        rummage.choose(&mut ground, crevice, 6.0);
+        run(&mut ground, &mut rummage, &cast, 6.0, 16.0);
+        assert_eq!(rummage.leader, Some(little.id));
+        let at = ground.position(little.id).unwrap();
+        assert!(
+            distance(at, rummage.spots[crevice].stand) < 2.0,
+            "the little one is at {at:?}"
+        );
     }
 
     #[test]

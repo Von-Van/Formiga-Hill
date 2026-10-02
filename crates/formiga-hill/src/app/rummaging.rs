@@ -7,7 +7,7 @@ use crate::character::Character;
 use crate::finds;
 use crate::playground::Playground;
 use crate::woods::rummage::{self, BASKET, Ending, Event, Outset, Phase, Rummage};
-use crate::woods::{self, SPOTS};
+use crate::woods::{self, Opener};
 use eframe::egui;
 use formiga_art::Canvas;
 use formiga_travel::Band;
@@ -93,19 +93,30 @@ impl HillApp {
             cast.member(id)
                 .map_or("Someone", |member| member.name.as_str())
         };
-        for event in rummage.take_events() {
+        let events = rummage.take_events();
+        let place = |spot: usize| rummage.spot(spot).map_or("somewhere", |spot| spot.name);
+        for event in events {
             let line = match event {
+                Event::Opened { who, spot } => match rummage.opener_of(spot) {
+                    Some(Opener::Explorer) => {
+                        format!("{} has found a way to {}!", name(who), place(spot))
+                    }
+                    Some(Opener::LittleOne) => {
+                        format!("{} is small enough for {}!", name(who), place(spot))
+                    }
+                    _ => format!("Together, these two could shift {}!", place(spot)),
+                },
                 Event::Noticed { who, spot } => {
-                    format!("{} spotted something by {}.", name(who), SPOTS[spot].name)
+                    format!("{} spotted something by {}.", name(who), place(spot))
                 }
                 Event::Got { find, .. } => {
                     let find = finds::find(find).map_or("something", |find| find.name);
                     format!("Got it! {find}.")
                 }
                 Event::Slipped { .. } => "It slipped away deeper. Try again!".to_owned(),
-                Event::Nothing { spot } => format!("Nothing at {}.", SPOTS[spot].name),
+                Event::Nothing { spot } => format!("Nothing at {}.", place(spot)),
                 Event::AlreadyLooked { spot } => {
-                    format!("You've looked at {} already.", SPOTS[spot].name)
+                    format!("You've looked at {} already.", place(spot))
                 }
                 Event::Leaving(Ending::Dusk) => "The light's going. Time to head home.".to_owned(),
                 Event::Leaving(Ending::Full) => "The basket's full! Home we go.".to_owned(),
@@ -157,7 +168,7 @@ impl HillApp {
         let Some((ground, rummage)) = &mut self.woods.outing else {
             return;
         };
-        let spot = pointer.and_then(|(x, y)| Rummage::spot_at(x, y));
+        let spot = pointer.and_then(|(x, y)| rummage.spot_at(x, y));
         match rummage.phase() {
             Phase::Catching(catch) if spot.is_none_or(|spot| spot == catch.spot) => {
                 if !ground.reduce_motion() {
@@ -189,8 +200,8 @@ impl HillApp {
         if !matches!(rummage.phase(), Phase::Exploring | Phase::Catching(_)) {
             return None;
         }
-        let spot = pointer.and_then(|(x, y)| Rummage::spot_at(x, y))?;
-        let place = SPOTS[spot];
+        let spot = pointer.and_then(|(x, y)| rummage.spot_at(x, y))?;
+        let place = *rummage.spot(spot)?;
         let label = if rummage.searched(spot) {
             format!("{} (looked)", place.name)
         } else {

@@ -97,6 +97,55 @@ pub const SPOTS: [Spot; 12] = [
     },
 ];
 
+/// Who can open up an extra spot: a place the glade only shows to certain company.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Opener {
+    /// An explorer, or anyone very curious, spots a badger's sett.
+    Explorer,
+    /// Only a little one fits into the crevice in the oak's roots.
+    LittleOne,
+    /// It takes two close friends to heave the mossy boulder over.
+    ClosePair,
+}
+
+/// A spot only some company opens up. It is an extra chance, never the only way to anything:
+/// whatever turns up there turns up at the ordinary spots too.
+#[derive(Clone, Copy, Debug)]
+pub struct Extra {
+    pub spot: Spot,
+    pub opener: Opener,
+}
+
+pub const EXTRAS: [Extra; 3] = [
+    Extra {
+        spot: Spot {
+            name: "the badger sett",
+            kind: Kind::Dig,
+            sign: (352.0, 194.0),
+            stand: (338.0, 204.0),
+        },
+        opener: Opener::Explorer,
+    },
+    Extra {
+        spot: Spot {
+            name: "the crevice in the roots",
+            kind: Kind::Reach,
+            sign: (336.0, 180.0),
+            stand: (324.0, 188.0),
+        },
+        opener: Opener::LittleOne,
+    },
+    Extra {
+        spot: Spot {
+            name: "the mossy boulder",
+            kind: Kind::Dig,
+            sign: (82.0, 188.0),
+            stand: (82.0, 200.0),
+        },
+        opener: Opener::ClosePair,
+    },
+];
+
 /// Where anyone can walk: the near bank of the stream down to the front, less the log and the oak.
 pub const GROUND: Patch = (12.0, 134.0, 372.0, 206.0);
 /// The fallen log and the old oak's trunk, which nobody walks through.
@@ -245,7 +294,7 @@ mod tests {
 
     #[test]
     fn every_spot_can_be_reached_and_each_kind_has_three() {
-        for spot in SPOTS {
+        for spot in SPOTS.iter().chain(EXTRAS.iter().map(|extra| &extra.spot)) {
             assert!(
                 walkable(spot.stand.0, spot.stand.1),
                 "nobody can stand at {}",
