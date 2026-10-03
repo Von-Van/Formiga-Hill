@@ -817,12 +817,18 @@ mod tests {
     fn the_packaging_says_what_desktop_looks_for() {
         use formiga_travel::discovery::*;
         let packaging = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging");
-        let plist = std::fs::read_to_string(packaging.join("macos/Info.plist")).unwrap();
+        // Read as Git checks them out, which on Windows is with carriage returns.
+        let read = |file: &str| {
+            std::fs::read_to_string(packaging.join(file))
+                .unwrap()
+                .replace("\r\n", "\n")
+        };
+        let plist = read("macos/Info.plist");
         assert!(plist.contains(&format!(
             "<key>CFBundleIdentifier</key><string>{MACOS_BUNDLE_ID}</string>"
         )));
         assert!(plist.contains(&format!("<key>{MACOS_TRAVEL_VERSION_KEY}</key><integer>")));
-        let installer = std::fs::read_to_string(packaging.join("windows/FormigaHill.wxs")).unwrap();
+        let installer = read("windows/FormigaHill.wxs");
         for value in [
             WINDOWS_PATH_VALUE,
             WINDOWS_VERSION_VALUE,
