@@ -4,6 +4,7 @@ mod actor;
 mod app;
 mod cast;
 mod character;
+mod clearing;
 mod cues;
 mod dice;
 mod fairground;
@@ -56,6 +57,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-finds <PNG>     Draw every find's icon and Hilltop piece on one sheet, for review
   --render-fishing <PNG>   Draw a fishing trip at the pool, --at seconds into it
   --render-fish <PNG>      Draw every fish as it is held up, and its icon, for review
+  --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
   --render-story <PNG>     Draw a story on the green --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
@@ -86,6 +88,8 @@ enum Area {
     Fishing,
     /// Not an area: the review sheet of every fish.
     Fish,
+    /// The clearing that isn't on any map, the Sovereign met.
+    Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
     Reactions,
     /// The green, a story under way on it.
@@ -166,6 +170,7 @@ fn main() -> Result<()> {
             Area::Finds => finds_sheet(),
             Area::Fishing => fishing_moment(&arrival.cast, args.at.unwrap_or(12.0)),
             Area::Fish => fish_sheet(),
+            Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Story => {
                 let library = story::Library::load(&args.packages);
@@ -244,6 +249,9 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Fishing, value("--render-fishing")?));
             }
             Some("--render-fish") => render = Some((Area::Fish, value("--render-fish")?)),
+            Some("--render-sovereign") => {
+                render = Some((Area::Sovereign, value("--render-sovereign")?));
+            }
             Some("--render-story") => render = Some((Area::Story, value("--render-story")?)),
             Some("--render-reactions") => {
                 render = Some((Area::Reactions, value("--render-reactions")?));
@@ -408,6 +416,7 @@ fn woods_moment(cast: &Cast, at: f32) -> Canvas {
         drought: 0,
         close_pair,
         influence: woods::influence(&sample_arrangement()),
+        beckons: false,
         seed: 5,
     };
     let mut outing = woods::rummage::Rummage::new(&mut glade, outset, |_| false, 0.0);
@@ -479,6 +488,47 @@ fn fishing_moment(cast: &Cast, at: f32) -> Canvas {
     scene
 }
 
+/// The Sovereign met by the first two travellers, `at` seconds in: each line read after two and a
+/// half seconds, and the attacks on offer chosen in turn.
+fn sovereign_moment(cast: &Cast, at: f32) -> Canvas {
+    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let mut ground = clearing::open(cast, &party, 0.0);
+    let mut sovereign = clearing::sovereign::Sovereign::new(&mut ground, cast, &party, true, 0.0);
+    let mut now = 0.0;
+    let mut line_since = None;
+    let mut turn = 0;
+    while now < at {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        sovereign.tick(&mut ground, cast, now);
+        if sovereign.stage.line.is_some() {
+            let since = *line_since.get_or_insert(now);
+            if now - since > 2.5 && now + 1.0 / 30.0 < at {
+                sovereign.stage.read_on();
+                line_since = None;
+            }
+        } else {
+            line_since = None;
+        }
+        let offered = sovereign.choices().len();
+        if offered > 0 {
+            println!(
+                "{now:6.1}s  chose {}",
+                sovereign.choices()[turn % offered].name
+            );
+            sovereign.choose(turn % offered);
+            turn += 1;
+        }
+        for event in sovereign.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    if let Some((speaker, line)) = &sovereign.stage.line {
+        println!("On show: {speaker:?}: {line}");
+    }
+    clearing::compose(&mut ground, &sovereign, now)
+}
+
 /// Every fish, held up as it is when landed, with its icon in the corner: a row each.
 fn fish_sheet() -> Canvas {
     const ROW: i32 = 40;
@@ -522,10 +572,20 @@ fn sample_arrangement() -> hilltop::Arrangement {
 fn finds_sheet() -> Canvas {
     const CELL: (i32, i32) = (56, 70);
     let columns = 7;
-    let mut sheet = Canvas::new((CELL.0 * columns) as u32, (CELL.1 * 4) as u32);
-    for (row, kind) in finds::Kind::ALL.into_iter().enumerate() {
-        let of_kind = finds::CATALOGUE.iter().filter(|find| find.kind == kind);
-        for (column, find) in of_kind.enumerate() {
+    let mut sheet = Canvas::new((CELL.0 * columns) as u32, (CELL.1 * 5) as u32);
+    // A row for each kind, and a last row for the relics.
+    let rows: Vec<Vec<&finds::Find>> = finds::Kind::ALL
+        .into_iter()
+        .map(|kind| {
+            finds::CATALOGUE
+                .iter()
+                .filter(|find| find.kind == kind)
+                .collect()
+        })
+        .chain(std::iter::once(finds::RELICS.iter().collect()))
+        .collect();
+    for (row, of_kind) in rows.into_iter().enumerate() {
+        for (column, find) in of_kind.into_iter().enumerate() {
             let (left, top) = (column as i32 * CELL.0, row as i32 * CELL.1);
             for y in 0..CELL.1 {
                 let t = y as f32 / CELL.1 as f32;

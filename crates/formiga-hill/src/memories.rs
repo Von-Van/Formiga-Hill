@@ -53,6 +53,13 @@ pub struct ColonyMemories {
     /// Trips in a row that caught no new kind of fish.
     #[serde(default)]
     pub fish_drought: u32,
+    /// How many times the colony has seen off the Cursor Sovereign.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub sovereign_bested: u32,
+}
+
+fn is_zero(count: &u32) -> bool {
+    *count == 0
 }
 
 /// One kind of fish in the journal.
@@ -223,6 +230,20 @@ impl Memories {
         haul.new_finds = keep_finds(colony, party, snagged);
         self.keep();
         haul
+    }
+
+    /// Remembers the Cursor Sovereign seen off by `party`. The first time, its arrow comes home for
+    /// the Hilltop; after that it is only a story worth telling again. Says whether it was the
+    /// first time.
+    pub fn bested_the_sovereign(&mut self, party: &[u64]) -> bool {
+        let colony = self.colony_mut();
+        colony.sovereign_bested += 1;
+        let first = colony.sovereign_bested == 1;
+        if first {
+            keep_finds(colony, party, &["sovereign_arrow"]);
+        }
+        self.keep();
+        first
     }
 
     /// Stands a find from the satchel on a Hilltop spot. Whatever stood there goes back into the
@@ -433,6 +454,21 @@ mod tests {
         assert!(haul.new_kinds.is_empty() && haul.longest_yet.is_empty());
         assert_eq!(memories.colony().fish_drought, 1);
         assert_eq!(memories.colony().fishing_trips, 2);
+    }
+
+    #[test]
+    fn the_sovereign_leaves_its_arrow_only_once() {
+        let mut memories = Memories::open(None, "c");
+        assert!(memories.bested_the_sovereign(&[7, 9]));
+        assert_eq!(memories.colony().satchel["sovereign_arrow"], 1);
+        assert_eq!(memories.colony().finds["sovereign_arrow"].first_by, "7");
+        assert!(!memories.bested_the_sovereign(&[9]));
+        assert_eq!(
+            memories.colony().satchel["sovereign_arrow"],
+            1,
+            "one arrow, ever"
+        );
+        assert_eq!(memories.colony().sovereign_bested, 2);
     }
 
     #[test]

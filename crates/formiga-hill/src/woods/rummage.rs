@@ -78,6 +78,8 @@ pub enum Phase {
     },
     /// Everyone has gone home; the basket is ready to be kept.
     Over,
+    /// They followed the glint, and are somewhere else now.
+    Beckoned,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -144,6 +146,10 @@ pub enum Event {
         spot: usize,
     },
     Leaving(Ending),
+    /// Something out of place has appeared between the trees.
+    Glint,
+    /// They followed it.
+    Beckoned,
 }
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -162,10 +168,25 @@ pub struct Outset {
     pub close_pair: bool,
     /// What the Hilltop lends the Woods.
     pub influence: Influence,
+    /// Whether, late in the day, something out of place may show itself.
+    pub beckons: bool,
     pub seed: u64,
 }
 
+/// Where the glint shows, far off between the trees across the stream, and where to stand to look.
+const GLINT: Spot = Spot {
+    name: "something glinting between the trees",
+    kind: Kind::Reach,
+    sign: (262.0, 98.0),
+    stand: (258.0, 140.0),
+};
+/// How late in the day it shows: below this share of the light.
+const GLINT_LIGHT: f32 = 0.2;
+
 pub struct Rummage {
+    /// Whether the glint may show, and where among the spots it is once it has.
+    beckons: bool,
+    glint: Option<usize>,
     party: Vec<Id>,
     /// The glade's spots, and any extra ones this party opened, each with who opened it.
     spots: Vec<Spot>,
@@ -231,6 +252,7 @@ impl Rummage {
             drought,
             close_pair,
             influence,
+            beckons,
             seed,
         } = outset;
         let characters: Vec<Character> = party
@@ -314,6 +336,8 @@ impl Rummage {
             knack: knack_by_kind,
             help,
             walk_cost: WALK_COST / (0.8 + 0.4 * liveliness),
+            beckons,
+            glint: None,
         }
     }
 
@@ -539,6 +563,18 @@ impl Rummage {
 
     pub fn tick(&mut self, ground: &mut Playground, now: f32) {
         self.update_signs(ground, now);
+        if self.beckons
+            && self.glint.is_none()
+            && self.light < self.full * GLINT_LIGHT
+            && matches!(self.phase, Phase::Exploring)
+        {
+            self.glint = Some(self.spots.len());
+            self.spots.push(GLINT);
+            self.caches.push(None);
+            self.searched.push(false);
+            self.signs.push(Sign::default());
+            self.events.push(Event::Glint);
+        }
         let leader = self.leader.or_else(|| self.party.first().copied());
         let busy = |ground: &Playground| leader.is_some_and(|id| ground.busy(id));
         match self.phase {
@@ -554,6 +590,11 @@ impl Rummage {
             }
             Phase::Going { spot } => {
                 if busy(ground) {
+                    return;
+                }
+                if self.glint == Some(spot) {
+                    self.events.push(Event::Beckoned);
+                    self.phase = Phase::Beckoned;
                     return;
                 }
                 let kind = self.spots[spot].kind;
@@ -616,7 +657,7 @@ impl Rummage {
                     self.phase = Phase::Over;
                 }
             }
-            Phase::Over => {}
+            Phase::Over | Phase::Beckoned => {}
         }
     }
 
@@ -687,6 +728,9 @@ impl Rummage {
             draw_extra(scene, &self.spots[*index], *opener, self.searched[*index]);
         }
         dim(scene, self.light);
+        if let Some(index) = self.glint {
+            draw_glint(scene, self.spots[index].sign, now, self.reduce_motion);
+        }
         for (index, spot) in self.spots.iter().enumerate() {
             let sign = self.signs[index];
             if now < sign.until
@@ -870,6 +914,34 @@ fn draw_extra(scene: &mut Canvas, spot: &Spot, opener: Opener, searched: bool) {
                     put(scene, x + dx, y + dy, tone);
                 }
             }
+        }
+    }
+}
+
+/// The glint: a small white pointer, outlined in black, where nothing like it should be, pulsing.
+fn draw_glint(scene: &mut Canvas, at: (f32, f32), now: f32, reduce_motion: bool) {
+    const ARROW: [&str; 8] = [
+        "#....", "##...", "#o#..", "#oo#.", "#ooo#", "#o##.", "##.#.", "#..#.",
+    ];
+    let pulse = if reduce_motion {
+        1.0
+    } else {
+        0.6 + 0.4 * (now * 3.0).sin()
+    };
+    let (x, y) = (at.0 as i32 - 2, at.1 as i32 - 4);
+    for (dy, row) in ARROW.iter().enumerate() {
+        for (dx, cell) in row.bytes().enumerate() {
+            let color = match cell {
+                b'#' => rgba(0x0c0a10, (255.0 * pulse) as u8),
+                b'o' => rgba(0xffffff, (255.0 * pulse) as u8),
+                _ => continue,
+            };
+            put(scene, x + dx as i32, y + dy as i32, color);
+        }
+    }
+    if !reduce_motion && (now * 2.0).fract() < 0.3 {
+        for (dx, dy) in [(-3, -2), (6, 1), (2, -5)] {
+            put(scene, x + dx, y + dy, rgba(0xfff4c0, 200));
         }
     }
 }
@@ -1095,6 +1167,7 @@ mod tests {
             drought: 0,
             close_pair: false,
             influence: Influence::default(),
+            beckons: false,
             seed: 11,
         };
         let rummage = Rummage::new(&mut ground, outset, |_| false, 0.0);
@@ -1255,6 +1328,7 @@ mod tests {
             drought: 0,
             close_pair,
             influence: Influence::default(),
+            beckons: false,
             seed: 3,
         };
         let rummage = Rummage::new(&mut ground, outset, |_| false, 0.0);
@@ -1322,6 +1396,7 @@ mod tests {
                     drought: 0,
                     close_pair,
                     influence: Influence::default(),
+                    beckons: false,
                     seed,
                 };
                 let rummage = Rummage::new(&mut ground, outset, |_| false, 0.0);
@@ -1375,6 +1450,32 @@ mod tests {
             distance(at, rummage.spots[crevice].stand) < 2.0,
             "the little one is at {at:?}"
         );
+    }
+
+    #[test]
+    fn late_in_the_day_something_may_glint_and_beckon() {
+        let cast = sample();
+        let party = vec![cast.members[0].id];
+        let mut ground = woods::open(&cast, &party, 0.0);
+        let outset = Outset {
+            party,
+            drought: 0,
+            close_pair: false,
+            influence: Influence::default(),
+            beckons: true,
+            seed: 4,
+        };
+        let mut rummage = Rummage::new(&mut ground, outset, |_| false, 0.0);
+        run(&mut ground, &mut rummage, &cast, 0.0, 6.0);
+        assert!(rummage.glint.is_none(), "it showed in daylight");
+        rummage.light = rummage.full * 0.1;
+        let events = run(&mut ground, &mut rummage, &cast, 6.0, 7.0);
+        assert!(events.contains(&Event::Glint));
+        let glint = rummage.glint.unwrap();
+        rummage.choose(&mut ground, glint, 7.0);
+        let events = run(&mut ground, &mut rummage, &cast, 7.0, 20.0);
+        assert!(events.contains(&Event::Beckoned), "{events:?}");
+        assert_eq!(rummage.phase(), Phase::Beckoned);
     }
 
     #[test]

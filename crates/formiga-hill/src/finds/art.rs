@@ -5,6 +5,7 @@
 mod brush;
 mod earth;
 mod hollow;
+mod relic;
 mod undergrowth;
 mod water;
 
@@ -30,6 +31,7 @@ pub fn icon(id: &str) -> Canvas {
         return Canvas::new(ICON, ICON);
     };
     let drawn = match find.kind {
+        _ if super::is_relic(id) => relic::icon(id),
         Kind::Dig => earth::icon(id),
         Kind::Reach => hollow::icon(id),
         Kind::Scoop => water::icon(id),
@@ -44,6 +46,7 @@ pub fn piece(id: &str) -> Piece {
         return placeholder_piece(Kind::Dig);
     };
     let drawn = match find.kind {
+        _ if super::is_relic(id) => relic::piece(id),
         Kind::Dig => earth::piece(id),
         Kind::Reach => hollow::piece(id),
         Kind::Scoop => water::piece(id),
@@ -94,7 +97,7 @@ mod tests {
 
     #[test]
     fn every_find_has_an_icon_and_a_piece_that_fits_any_spot() {
-        for find in &CATALOGUE {
+        for find in CATALOGUE.iter().chain(crate::finds::RELICS.iter()) {
             let icon = icon(find.id);
             assert_eq!((icon.width(), icon.height()), (ICON, ICON), "{}", find.id);
             let drawn = icon.pixels().iter().filter(|pixel| pixel.a > 0).count();

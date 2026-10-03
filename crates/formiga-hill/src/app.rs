@@ -2,6 +2,7 @@
 //! colony in them, and the way home.
 
 mod arranging;
+mod encounter;
 mod fishing_trip;
 mod rummaging;
 
@@ -46,6 +47,8 @@ enum Area {
     Fairground,
     Woods,
     Hilltop,
+    /// The clearing that isn't on any map. Not on the "Go to" menu.
+    Clearing,
 }
 
 /// Every area, as the "Go to" menu lists them.
@@ -70,6 +73,8 @@ pub struct HillApp {
     woods: rummaging::Woods,
     /// The summit, made the first time anyone goes up.
     hilltop: Option<Playground>,
+    /// The clearing and what is waiting there, while it lasts.
+    clearing: Option<(Playground, crate::clearing::sovereign::Sovereign)>,
     /// What the person is about to stand somewhere on the Hilltop.
     placing: Option<Placing>,
     /// Where each piece on the Hilltop is drawn, for pointing at them.
@@ -142,6 +147,7 @@ impl HillApp {
             it: None,
             woods: rummaging::Woods::default(),
             hilltop: None,
+            clearing: None,
             placing: None,
             piece_bounds: Vec::new(),
             journal: false,
@@ -314,6 +320,7 @@ impl HillApp {
             (Area::Fairground, _, Some((ground, _))) => ground.compose(now),
             (Area::Woods, _, _) => self.compose_woods(now),
             (Area::Hilltop, _, _) => self.compose_hilltop(now),
+            (Area::Clearing, _, _) => self.compose_clearing(now),
             _ => self.station.compose(now),
         }
     }
@@ -464,6 +471,7 @@ impl HillApp {
                     self.go_menu(ui, now);
                 });
             }
+            Area::Clearing => self.clearing_bar(ui, now),
             Area::Hilltop => {
                 self.hilltop_bar(ui);
                 if let Some((notice, _)) = &self.notice {
@@ -710,6 +718,22 @@ impl eframe::App for HillApp {
                     if self.area == Area::Woods && input.key_pressed(egui::Key::Space) {
                         self.woods_strike(now);
                     }
+                    if self.area == Area::Clearing {
+                        if onwards {
+                            self.clearing_read_on();
+                        }
+                        let numbers = [
+                            egui::Key::Num1,
+                            egui::Key::Num2,
+                            egui::Key::Num3,
+                            egui::Key::Num4,
+                        ];
+                        for (index, key) in numbers.into_iter().enumerate() {
+                            if input.key_pressed(key) {
+                                self.clearing_choose(index);
+                            }
+                        }
+                    }
                     if input.key_pressed(egui::Key::Escape) {
                         self.placing = None;
                     }
@@ -755,6 +779,9 @@ impl eframe::App for HillApp {
         }
         if let (Area::Hilltop, Some(ground)) = (self.area, &mut self.hilltop) {
             ground.tick(&self.arrival.cast, now);
+        }
+        if self.area == Area::Clearing {
+            self.tick_clearing(now);
         }
         self.last_frame = now;
         self.run_story(now);
@@ -807,6 +834,13 @@ impl eframe::App for HillApp {
                             self.woods_click(pointer, now);
                         }
                         hovered.filter(|_| spot.is_none())
+                    }
+                    (Area::Clearing, _, _) => {
+                        // A click on the scene reads on.
+                        if response.clicked() {
+                            self.clearing_read_on();
+                        }
+                        None
                     }
                     (Area::Hilltop, _, _) => {
                         let mut hovered = None;

@@ -286,6 +286,35 @@ impl Playground {
         }
     }
 
+    /// Someone else of the colony comes along partway, by the layout's way in, to `to`.
+    pub fn join(&mut self, cast: &Cast, id: Id, to: (f32, f32), now: f32) {
+        if self.index_of(id).is_some() {
+            return;
+        }
+        let Some(member) = cast.member(id) else {
+            return;
+        };
+        let start = if self.reduce_motion {
+            to
+        } else {
+            let behind = self.actors.len() as f32;
+            (
+                self.layout.entrance.0 + self.layout.entrance_step.0 * behind,
+                self.layout.entrance.1 + self.layout.entrance_step.1 * (behind % 2.0),
+            )
+        };
+        let mut actor = Actor::new(member, start, to.0 > start.0, self.reduce_motion);
+        actor.begin(now, [Step::Stride { to }]);
+        self.actors.push(actor);
+        self.reserved.push(id);
+    }
+
+    /// What a traveller looks like right now, on its own canvas: for a close-up.
+    pub fn picture(&mut self, id: Id, now: f32) -> Option<Canvas> {
+        let index = self.index_of(id)?;
+        Some(self.actors[index].picture(now))
+    }
+
     /// Puts a traveller somewhere at once, without walking there.
     pub fn teleport(&mut self, id: Id, to: (f32, f32)) {
         if let Some(index) = self.index_of(id) {

@@ -48,7 +48,8 @@ owns only the destination.
 | Done | What stands on the Hilltop changes the Woods (a lantern lends light, the telescope brings rare signs out sooner, each piece draws the eye to its kind of spot), and shows small on the station's hill and in silhouette on the Fairground's skyline |
 | Done | Spots only some company opens: a badger sett for an explorer, a crevice only a little one fits, a boulder a close pair can heave over. Extra chances, never the only way to anything |
 | Done | Fishing at the pool: eight kinds of fish, each keeping to its own part of the pool (trout under the falls, pike in the reeds, carp by the lilies). Cast where you think they are, but not on top of a wary one; tell a nibble from a bite, each kind nibbling its own number of times; reel in and ease off when it pulls, or the line snaps. The Old One only comes up at dusk. A patient angler gets a longer moment to strike, a playful one draws fish in, a strong one strains the line less, a dozing lazybones gets bolder bites, and a second companion lands fish with the net. Fish are let go and remembered: how many, the longest, and who caught the first. Now and then something snags and comes home for the Hilltop |
-| Next | More Woods activities (bug catching, longer expeditions); finds that open new Woods possibilities; the hidden Cursor Sovereign |
+| Done | A secret in the Woods (DESIGN.md §2, the Cursor Sovereign): an interactive cutscene played completely straight, with a menu of absurd attacks each acted out by the companion it belongs to, three phases, and the whole colony arriving for the finale. It leaves a relic for the Hilltop. How to find it is deliberately not written here; see CLAUDE.md |
+| Next | More Woods activities (bug catching, longer expeditions); finds that open new Woods possibilities |
 
 ## Running it
 
@@ -69,6 +70,7 @@ cargo run -p formiga-hill -- --render-hilltop hilltop.png
 cargo run -p formiga-hill -- --render-finds finds.png
 cargo run -p formiga-hill -- --render-fishing fishing.png --at 20
 cargo run -p formiga-hill -- --render-fish fish.png
+cargo run -p formiga-hill -- --render-sovereign secret.png --at 60
 cargo run -p formiga-hill -- --render-reactions reactions.png
 cargo run -p formiga-hill -- --render-story story.png --at 20
 cargo run -p formiga-hill -- --check-package path/to/my-story.formiga-hill
