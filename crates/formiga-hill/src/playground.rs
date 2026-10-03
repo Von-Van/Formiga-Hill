@@ -315,6 +315,12 @@ impl Playground {
     }
 
     /// Whether a traveller still has something to finish.
+    /// Whether a traveller is on its way somewhere right now.
+    pub fn walking(&self, id: Id) -> bool {
+        self.index_of(id)
+            .is_some_and(|index| self.actors[index].walking())
+    }
+
     pub fn busy(&self, id: Id) -> bool {
         self.index_of(id)
             .is_some_and(|index| !self.actors[index].is_idle())

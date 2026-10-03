@@ -5,6 +5,7 @@
     <key>CFBundleDevelopmentRegion</key><string>en</string>
     <key>CFBundleDisplayName</key><string>Formiga Hill</string>
     <key>CFBundleExecutable</key><string>Formiga Hill</string>
+    <key>CFBundleIconFile</key><string>FormigaHill</string>
     <key>CFBundleIdentifier</key><string>com.formiga.hill</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundleName</key><string>Formiga Hill</string>

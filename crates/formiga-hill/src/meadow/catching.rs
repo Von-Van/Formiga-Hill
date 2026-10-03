@@ -61,6 +61,8 @@ const DARK_SECS: f32 = 1.5;
 const CALMING: f32 = 0.35;
 /// The chance a swing that misses brings up something else instead.
 const NETTED: f32 = 0.1;
+/// How far apart the one with the net and a helper keep, so neither stands over the other.
+const HELPER_ROOM: f32 = 18.0;
 /// How long a dozy companion must keep still for something to land on it.
 const DOZE_SECS: f32 = 5.0;
 
@@ -463,22 +465,12 @@ impl Hunt {
             let crouch = Beat::new(Gesture::Crouch, ExpressionKind::Focused, 600.0);
             ground.direct(*netter, vec![Step::FaceX(pos.0), Step::Beat(crouch)], now);
         }
-        // A second companion comes round to help, keeping well back from the bug and watching.
-        if let (Some(netter), Some(helper)) = (self.party.first(), self.party.get(1))
+        // A second companion comes round to help, keeping back from the bug and watching.
+        if let Some(netter) = self.party.first()
             && let Some(at) = ground.position(*netter)
         {
             let stand = self.stand_for(pos, at);
-            let back = ground.beside_point(stand, if stand.0 < pos.0 { -26.0 } else { 26.0 });
-            let watch = Beat::new(Gesture::Watch, ExpressionKind::Focused, 600.0);
-            ground.direct(
-                *helper,
-                vec![
-                    Step::Walk { to: back },
-                    Step::FaceX(pos.0),
-                    Step::Beat(watch),
-                ],
-                now,
-            );
+            self.bring_helper(ground, stand, pos.0, now);
         }
         true
     }
@@ -561,6 +553,7 @@ impl Hunt {
             Phase::Hunting => {
                 self.light -= LIGHT_PER_SEC * dt;
                 self.creep_on(ground, dt, now);
+                self.keep_helper_clear(ground, now);
             }
             Phase::Swinging { target, since } if now - since >= SWING_SECS => {
                 self.resolve(ground, target, now);
@@ -677,6 +670,56 @@ impl Hunt {
         for index in startled {
             self.frighten(index, now);
         }
+    }
+
+    /// Sends the second companion, if one came, to watch from beside the one with the net at
+    /// `stand`, behind them from the bug at `bug_x` and never on top of them.
+    fn bring_helper(&self, ground: &mut Playground, stand: (f32, f32), bug_x: f32, now: f32) {
+        let Some(&helper) = self.party.get(1) else {
+            return;
+        };
+        let back = if stand.0 < bug_x { -1.0 } else { 1.0 };
+        let Some(spot) = [
+            (back * 28.0, 4.0),
+            (back * 22.0, 16.0),
+            (back * 22.0, -12.0),
+            (0.0, 22.0),
+            (-back * 26.0, 18.0),
+        ]
+        .into_iter()
+        .map(|(dx, dy)| (stand.0 + dx, stand.1 + dy))
+        .find(|&(x, y)| walkable(x, y) && distance((x, y), stand) >= HELPER_ROOM) else {
+            return;
+        };
+        let watch = Beat::new(Gesture::Watch, ExpressionKind::Focused, 600.0);
+        ground.direct(
+            helper,
+            vec![
+                Step::Walk { to: spot },
+                Step::FaceX(bug_x),
+                Step::Beat(watch),
+            ],
+            now,
+        );
+    }
+
+    /// If the second companion has ended up over the one with the net (the net carrier crept to
+    /// where it was waiting), it steps aside.
+    fn keep_helper_clear(&self, ground: &mut Playground, now: f32) {
+        let (Some(&netter), Some(&helper)) = (self.party.first(), self.party.get(1)) else {
+            return;
+        };
+        let (Some(at), Some(helping)) = (ground.position(netter), ground.position(helper)) else {
+            return;
+        };
+        if distance(at, helping) >= HELPER_ROOM || ground.walking(helper) {
+            return;
+        }
+        let bug_x = self
+            .target
+            .and_then(|index| self.fliers.get(index))
+            .map_or(at.0 + 1.0, |flier| flier.pos.0);
+        self.bring_helper(ground, at, bug_x, now);
     }
 
     /// Where to stand to have a bug at `pos` in the net: before it and below, on whichever side
@@ -1383,6 +1426,29 @@ mod tests {
                 .any(|event| matches!(event, Event::Startled { .. })),
             "the miss was talked over: {events:?}"
         );
+    }
+
+    #[test]
+    fn a_helper_never_ends_up_standing_over_the_one_with_the_net() {
+        let (cast, mut ground, mut hunt) = hunt_with(2, 9);
+        let mut now = run(&cast, &mut ground, &mut hunt, 0.0, 8.0);
+        let (netter, helper) = (hunt.party[0], hunt.party[1]);
+        // Both standing still, the helper exactly where the one with the net is.
+        let at = ground.position(netter).unwrap();
+        ground.teleport(helper, at);
+        let wait = Beat::new(Gesture::Watch, ExpressionKind::Focused, 600.0);
+        ground.direct(netter, vec![Step::Beat(wait)], now);
+        ground.direct(helper, vec![Step::Beat(wait)], now);
+        for _ in 0..240 {
+            now += 1.0 / 30.0;
+            ground.tick(&cast, now);
+            hunt.tick(&mut ground, now);
+        }
+        let apart = distance(
+            ground.position(netter).unwrap(),
+            ground.position(helper).unwrap(),
+        );
+        assert!(apart >= HELPER_ROOM - 1.0, "only {apart} px apart");
     }
 
     #[test]

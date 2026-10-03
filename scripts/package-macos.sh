@@ -28,6 +28,12 @@ lipo -create \
     -output "$app_dir/Contents/MacOS/Formiga Hill"
 chmod 755 "$app_dir/Contents/MacOS/Formiga Hill"
 
+# The icon is drawn by the binary itself, from the same picture as the window's.
+icon_dir="$(mktemp -d)"
+"$app_dir/Contents/MacOS/Formiga Hill" --icon "$icon_dir" > /dev/null
+cp "$icon_dir/FormigaHill.icns" "$app_dir/Contents/Resources/FormigaHill.icns"
+rm -rf "$icon_dir"
+
 # The travel version comes from the binary itself, so the bundle can never claim another.
 travel_version="$("$app_dir/Contents/MacOS/Formiga Hill" --travel-version)"
 plist="$app_dir/Contents/Info.plist"

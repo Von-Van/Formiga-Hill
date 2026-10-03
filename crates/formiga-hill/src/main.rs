@@ -16,6 +16,7 @@ mod font;
 mod green;
 mod hilltop;
 mod hosting;
+mod icon;
 mod keepsake_art;
 mod kit;
 mod materials;
@@ -139,6 +140,19 @@ fn main() -> Result<()> {
         .is_some_and(|arg| arg == "--travel-version")
     {
         println!("{}", formiga_travel::TRAVEL_FORMAT_VERSION);
+        return Ok(());
+    }
+    // For the packaging scripts too: Hill's icon, for the bundle and the installer.
+    if std::env::args_os().nth(1).is_some_and(|arg| arg == "--icon") {
+        let folder = std::env::args_os()
+            .nth(2)
+            .map(PathBuf::from)
+            .context("--icon needs a folder to write the icon into")?;
+        std::fs::create_dir_all(&folder)?;
+        std::fs::write(folder.join("FormigaHill.icns"), icon::icns())?;
+        std::fs::write(folder.join("FormigaHill.ico"), icon::ico())?;
+        std::fs::write(folder.join("FormigaHill.png"), icon::png(&icon::at(1024)))?;
+        println!("Wrote Hill's icon to {}", folder.display());
         return Ok(());
     }
     // Before anything starts a thread: see `daylight::Clock`.
@@ -275,7 +289,22 @@ fn main() -> Result<()> {
                 station::SCENE_WIDTH as f32 * scale,
                 station::SCENE_HEIGHT as f32 * scale + 40.0,
             ])
-            .with_min_inner_size([station::SCENE_WIDTH as f32, station::SCENE_HEIGHT as f32]),
+            .with_min_inner_size([station::SCENE_WIDTH as f32, station::SCENE_HEIGHT as f32])
+            .with_icon({
+                let picture = icon::at(256);
+                let mut rgba = Vec::with_capacity(256 * 256 * 4);
+                for y in 0..256 {
+                    for x in 0..256 {
+                        let pixel = picture.get(x, y);
+                        rgba.extend([pixel.r, pixel.g, pixel.b, pixel.a]);
+                    }
+                }
+                eframe::egui::IconData {
+                    rgba,
+                    width: 256,
+                    height: 256,
+                }
+            }),
         ..Default::default()
     };
     eframe::run_native(
@@ -963,6 +992,7 @@ mod tests {
             "<key>CFBundleIdentifier</key><string>{MACOS_BUNDLE_ID}</string>"
         )));
         assert!(plist.contains(&format!("<key>{MACOS_TRAVEL_VERSION_KEY}</key><integer>")));
+        assert!(plist.contains("<key>CFBundleIconFile</key><string>FormigaHill</string>"));
         let installer = read("windows/FormigaHill.wxs");
         for value in [
             WINDOWS_PATH_VALUE,

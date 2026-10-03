@@ -27,6 +27,10 @@ try {
     cargo build --release -p formiga-hill --target x86_64-pc-windows-msvc
     # The travel version comes from the binary itself, so the installer can never claim another.
     $TravelVersion = (& $Exe --travel-version).Trim()
+    # And so does the icon, from the same picture as the window's.
+    $IconDir = Join-Path $DistDir "icon"
+    & $Exe --icon $IconDir | Out-Null
+    $Icon = Join-Path $IconDir "FormigaHill.ico"
     if ($env:FORMIGA_SIGNTOOL_CERT_SHA1) {
         signtool sign /sha1 $env:FORMIGA_SIGNTOOL_CERT_SHA1 /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $Exe
     }
@@ -46,6 +50,7 @@ try {
             -d "HillExe=$Exe" `
             -d "HillVersion=$Version" `
             -d "TravelVersion=$TravelVersion" `
+            -d "HillIcon=$Icon" `
             -arch x64 `
             -o $Installer `
             (Join-Path $RepoDir "packaging\windows\FormigaHill.wxs")
