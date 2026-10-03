@@ -1,0 +1,261 @@
+# One bun was left on the Clubhouse table, and now there's only crumbs. Whoever likes a mystery
+# takes the case: question everyone, or follow the crumbs. Either way the bun turns up, kept
+# safe by someone who meant it for them all along, and it is shared out in very small pieces.
+
+[story]
+id = "the-last-bun"
+title = "title"
+area = "clubhouse"
+start = "plate"
+
+# A scholar if one came, or whoever is most curious, takes the case.
+[roles.detective]
+order = 1
+select = ["kind:scholar", "most:curiosity", "any"]
+
+# Whoever is fondest of the detective was keeping the bun for them. There always is someone.
+[roles.keeper]
+order = 2
+select = ["friend_of:detective", "most:affection", "any"]
+
+# The obvious suspect: whoever looks food over, or has the most get-up-and-go.
+[roles.hungry]
+order = 3
+select = ["habit:looks_food_over", "most:energy"]
+optional = true
+
+# And the usual suspect.
+[roles.rascal]
+order = 4
+select = ["kind:troublemaker", "most:impulsiveness"]
+optional = true
+
+# A little one, to have the last word.
+[roles.little]
+order = 5
+select = ["mini"]
+optional = true
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "plate"
+
+[[scenes.beats]]
+narrate = "plate.intro"
+
+[[scenes.beats]]
+walk = "detective"
+to = "table"
+
+[[scenes.beats]]
+walk = "keeper"
+to = "window"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "hungry"
+to = "rug"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "rascal"
+to = "chest"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "little"
+to = "armchair"
+meanwhile = true
+
+[[scenes.beats]]
+pose = "detective"
+as = "inspect"
+
+[[scenes.beats]]
+say = "detective"
+line = "plate.notice"
+
+[[scenes.beats]]
+walk = "detective"
+to = "centre"
+
+[[scenes.beats]]
+say = "detective"
+line = "plate.gather"
+
+[[scenes.beats]]
+react = "all"
+feeling = "surprise"
+
+[[scenes.beats]]
+choose = [
+  { line = "plate.choose_question", goto = "questions" },
+  { line = "plate.choose_crumbs", goto = "crumbs" },
+]
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "questions"
+
+[[scenes.beats]]
+walk = "detective"
+to = "beside:hungry"
+when = "present:hungry"
+
+[[scenes.beats]]
+say = "detective"
+line = "questions.hungry_ask"
+when = "present:hungry"
+
+[[scenes.beats]]
+say = "hungry"
+line = "questions.hungry"
+
+[[scenes.beats]]
+react = "hungry"
+feeling = "worry"
+
+[[scenes.beats]]
+walk = "detective"
+to = "beside:rascal"
+when = "present:rascal"
+
+[[scenes.beats]]
+say = "detective"
+line = "questions.rascal_ask"
+when = "present:rascal"
+
+[[scenes.beats]]
+say = "rascal"
+line = "questions.rascal"
+
+[[scenes.beats]]
+pose = "rascal"
+as = "huff"
+
+[[scenes.beats]]
+walk = "detective"
+to = "beside:keeper"
+
+[[scenes.beats]]
+say = "detective"
+line = "questions.keeper_ask"
+
+[[scenes.beats]]
+say = "keeper"
+line = "questions.keeper"
+
+[[scenes.beats]]
+react = "keeper"
+feeling = "shy"
+
+[[scenes.beats]]
+narrate = "questions.suspicious"
+about = "detective"
+
+[[scenes.beats]]
+goto = "reveal"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "crumbs"
+
+[[scenes.beats]]
+narrate = "crumbs.trail"
+
+[[scenes.beats]]
+walk = "detective"
+to = "armchair"
+
+[[scenes.beats]]
+pose = "detective"
+as = "crouch"
+
+[[scenes.beats]]
+walk = "detective"
+to = "bookshelf"
+
+[[scenes.beats]]
+pose = "detective"
+as = "inspect"
+
+[[scenes.beats]]
+narrate = "crumbs.found"
+
+[[scenes.beats]]
+react = "detective"
+feeling = "proud"
+
+[[scenes.beats]]
+set = "found"
+
+[[scenes.beats]]
+say = "detective"
+line = "crumbs.napkin"
+
+[[scenes.beats]]
+goto = "reveal"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "reveal"
+
+[[scenes.beats]]
+walk = "keeper"
+to = "beside:detective"
+
+[[scenes.beats]]
+say = "keeper"
+line = "reveal.confess"
+
+# If nobody followed the crumbs, the bun is still behind the books: the keeper fetches it.
+[[scenes.beats]]
+walk = "keeper"
+to = "bookshelf"
+when = "!flag:found"
+
+[[scenes.beats]]
+narrate = "reveal.fetch"
+about = "keeper"
+when = "!flag:found"
+
+[[scenes.beats]]
+walk = "keeper"
+to = "beside:detective"
+when = "!flag:found"
+
+[[scenes.beats]]
+react = "detective"
+feeling = "fond"
+
+[[scenes.beats]]
+say = "detective"
+line = "reveal.share"
+
+[[scenes.beats]]
+walk = "all"
+to = "rug"
+
+[[scenes.beats]]
+pose = "all"
+as = "sit"
+
+[[scenes.beats]]
+eat = "all"
+
+[[scenes.beats]]
+narrate = "reveal.pieces"
+
+[[scenes.beats]]
+say = "little"
+line = "reveal.little"
+
+[[scenes.beats]]
+celebrate = "little"
+
+[[scenes.beats]]
+narrate = "reveal.end"
+about = "detective"
+
+[[scenes.beats]]
+end = true

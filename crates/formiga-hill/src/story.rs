@@ -42,6 +42,14 @@ fn official() -> Vec<BuiltIn> {
             ]
         ),
         built_in!(
+            "the-last-bun.formiga-hill",
+            [
+                "manifest.toml",
+                "content/the-last-bun.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
             "book-with-no-ending.formiga-hill",
             [
                 "manifest.toml",
