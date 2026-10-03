@@ -79,7 +79,7 @@ side of it.
 - `--render-station`, `--render-green`, `--render-clubhouse`, `--render-fairground`, `--render-hide-and-seek`,
   `--render-woods`, `--render-fishing`, `--render-bug-hunt`, `--render-meadow`, `--render-hilltop`
   (each with `--at <seconds>`), `--render-finds`, `--render-fish`, `--render-bugs`,
-  `--render-sovereign` and `--render-reactions` draw
+  `--render-sovereign`, `--render-reactions` and `--render-costumes` draw
   without a window (any with `--hour <0-24>` to see it at that hour); look at them, cropped and
   enlarged, after changing anything visual or any behaviour in `character.rs`.
 - Behaviour is never written for a particular creature: it is read from the snapshot (axes,

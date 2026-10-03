@@ -206,6 +206,8 @@ fn main() -> Result<()> {
                 } else {
                     station.show_hilltop(&memories.colony().hilltop);
                 }
+                // A few notes on the board, as on a return visit with something to tell.
+                station.show_notices(4);
                 station.set_daylight(daylight);
                 station.compose(now)
             }

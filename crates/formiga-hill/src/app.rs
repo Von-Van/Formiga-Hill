@@ -4,6 +4,7 @@
 mod arranging;
 mod bug_hunt;
 mod camera;
+mod departures;
 mod encounter;
 mod finery;
 mod fishing_trip;
@@ -17,7 +18,7 @@ use crate::daylight::{Clock, Daylight};
 use crate::fairground::{self, Event, HideAndSeek, Phase};
 use crate::memories::Memories;
 use crate::playground::{Playground, Trust};
-use crate::station::{Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
+use crate::station::{Fixture, Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
 use crate::story::shelf::SetAside;
 use crate::story::{Director, Library, souvenirs};
 use crate::trip::Trip;
@@ -81,6 +82,9 @@ pub struct HillApp {
     /// Whether the notice board of stories is open, and the list of packages behind it.
     board: bool,
     shelf: bool,
+    /// Whether the station's notices, or its departures board, are open.
+    notices_open: bool,
+    departures_open: bool,
     /// The packages the person has set aside, and where community packages go.
     set_aside: SetAside,
     packages_folder: Option<std::path::PathBuf>,
@@ -181,13 +185,15 @@ impl HillApp {
         for problem in &library.problems {
             eprintln!("formiga-hill: a package was not loaded: {problem}");
         }
-        Self {
+        let mut app = Self {
             arrival,
             station,
             green: None,
             clubhouse: None,
             board: false,
             shelf: false,
+            notices_open: false,
+            departures_open: false,
             set_aside: SetAside::open(Memories::folder().as_deref()),
             packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
             fairground: None,
@@ -225,7 +231,9 @@ impl HillApp {
             story: None,
             memories,
             notice: None,
-        }
+        };
+        app.pin_notices();
+        app
     }
 
     /// The way home. Writes the receipt once, however the visit ends.
@@ -335,6 +343,11 @@ impl HillApp {
             self.finish_bug_hunt(now);
         }
         self.placing = None;
+        self.notices_open = false;
+        self.departures_open = false;
+        if area == Area::Station {
+            self.pin_notices();
+        }
         // Walking away calls a game off.
         if let Some((ground, game)) = &mut self.fairground
             && game.phase() != Phase::Ready
@@ -788,7 +801,7 @@ impl eframe::App for HillApp {
                     painter.galley(label.center() - galley.size() / 2.0, galley, INK);
                 };
 
-                let mut on_case = false;
+                let mut fixture = None;
                 self.pointer = pointer;
                 // With the camera out, the scene is only for framing photos.
                 camera_click = self.camera.out && response.clicked();
@@ -929,9 +942,21 @@ impl eframe::App for HillApp {
                             hovered
                         }
                         _ => {
+                            let settled = self.area == Area::Station
+                                && self.station.is_settled()
+                                && self.leaving.is_none();
+                            fixture = pointer
+                                .filter(|_| settled)
+                                .and_then(|(x, y)| self.station.fixture_at(x, y));
+                            let over_someone = pointer
+                                .is_some_and(|(x, y)| self.station.traveler_at(x, y).is_some());
                             if response.clicked() {
-                                // A click on the station skips the arrival.
+                                // A click on the station skips the arrival; once everyone is
+                                // down, a click on a board brings it close.
                                 self.station.skip_arrival();
+                                if let Some(fixture) = fixture.filter(|_| !over_someone) {
+                                    self.look_at(fixture);
+                                }
                             }
                             // Name tags on little cream labels, so they read over boards and stone
                             // alike, once everyone is standing still to wear them.
@@ -945,14 +970,26 @@ impl eframe::App for HillApp {
                                     tag(&traveler.name, centre);
                                 }
                             }
-                            on_case =
-                                pointer.is_some_and(|(x, y)| self.station.on_display_case(x, y));
                             pointer.and_then(|(x, y)| self.station.traveler_at(x, y).map(|t| t.id))
                         }
                     }
                 };
                 self.hovered = hovered;
-                if on_case && hovered.is_none() {
+                if fixture == Some(Fixture::Notices) && hovered.is_none() {
+                    let notes = departures::notices(&self.board()).len();
+                    response.on_hover_ui_at_pointer(|ui| {
+                        ui.strong("The notice board");
+                        ui.label(format!(
+                            "{notes} pinned up. Click to read {}.",
+                            if notes == 1 { "it" } else { "them" }
+                        ));
+                    });
+                } else if fixture == Some(Fixture::Departures) && hovered.is_none() {
+                    response.on_hover_ui_at_pointer(|ui| {
+                        ui.strong("Departures");
+                        ui.label("Where to go, and who would like to. Click to look closer.");
+                    });
+                } else if fixture == Some(Fixture::Case) && hovered.is_none() {
                     let kept: Vec<&str> = self
                         .memories
                         .colony()
@@ -999,6 +1036,8 @@ impl eframe::App for HillApp {
         self.journal_window(&ctx);
         self.board_window(&ctx, now);
         self.shelf_window(&ctx);
+        self.notices_window(&ctx);
+        self.departures_window(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));

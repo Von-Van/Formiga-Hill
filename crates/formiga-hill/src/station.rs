@@ -32,6 +32,8 @@ pub struct Station {
     /// What the backdrop shows: the display case's souvenirs, and the Hilltop on the skyline.
     keepsakes: Vec<String>,
     hilltop: Arrangement,
+    /// How many notes are pinned to the notice board.
+    notes: usize,
     train: Train,
     travelers: Vec<StationTraveler>,
     reduce_motion: bool,
@@ -39,6 +41,17 @@ pub struct Station {
     /// What shines after dark, and the hour's light.
     nightlights: Nightlights,
     daylight: Daylight,
+}
+
+/// Something on the station the person can look at more closely.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fixture {
+    /// The display case of kept souvenirs.
+    Case,
+    /// The notice board by the door.
+    Notices,
+    /// The departures board under the canopy.
+    Departures,
 }
 
 /// How often the scene is drawn while the train is in motion.
@@ -104,6 +117,7 @@ impl Station {
             backdrop,
             keepsakes: keepsakes.to_vec(),
             hilltop: Arrangement::new(),
+            notes: 0,
             train: Train::new(reduce_motion),
             travelers,
             reduce_motion,
@@ -123,8 +137,18 @@ impl Station {
         self.repaint();
     }
 
+    /// Pins a note to the notice board for each notice, as many as it has room for.
+    pub fn show_notices(&mut self, notices: usize) {
+        let notes = notices.min(scenery::NOTES_SHOWN);
+        if notes != self.notes {
+            self.notes = notes;
+            self.repaint();
+        }
+    }
+
     fn repaint(&mut self) {
         self.backdrop = scenery::backdrop(&self.keepsakes, &self.hilltop);
+        scenery::pin_notes(&mut self.backdrop, self.notes);
         self.nightlights = nightlights(&self.backdrop);
     }
 
@@ -133,10 +157,18 @@ impl Station {
         self.daylight = daylight;
     }
 
-    /// Whether a point in the scene is on the display case.
-    pub fn on_display_case(&self, x: f32, y: f32) -> bool {
-        let (left, top, right, bottom) = scenery::CASE;
-        (left as f32..right as f32).contains(&x) && (top as f32..bottom as f32).contains(&y)
+    /// What is at a point in the scene, if it is something to look at more closely.
+    pub fn fixture_at(&self, x: f32, y: f32) -> Option<Fixture> {
+        [
+            (Fixture::Case, scenery::CASE),
+            (Fixture::Notices, scenery::NOTICES),
+            (Fixture::Departures, scenery::DEPARTURES),
+        ]
+        .into_iter()
+        .find(|(_, (left, top, right, bottom))| {
+            (*left as f32..*right as f32).contains(&x) && (*top as f32..*bottom as f32).contains(&y)
+        })
+        .map(|(fixture, _)| fixture)
     }
 
     pub fn travelers(&self) -> &[StationTraveler] {
@@ -410,6 +442,59 @@ mod tests {
         for pair in station.travelers().windows(2) {
             let gap = pair[1].origin.0 - pair[0].origin.0;
             assert!(gap >= 40, "only {gap} pixels between neighbours");
+        }
+    }
+
+    #[test]
+    fn a_note_is_pinned_for_each_notice_and_only_on_the_board() {
+        let mut station = Station::new(&sample(), Journey::Here, &[]);
+        let bare = station.backdrop.clone();
+        let (left, top, right, bottom) = scenery::NOTICES;
+        let mut pinned = |notices| {
+            station.show_notices(notices);
+            let mut changed = 0;
+            for y in 0..SCENE_HEIGHT as i32 {
+                for x in 0..SCENE_WIDTH as i32 {
+                    if station.backdrop.get(x, y) != bare.get(x, y) {
+                        assert!((left..right).contains(&x) && (top..bottom).contains(&y));
+                        changed += 1;
+                    }
+                }
+            }
+            changed
+        };
+        let (one, three, many) = (pinned(1), pinned(3), pinned(40));
+        assert!(0 < one && one < three && three < many);
+        assert_eq!(pinned(0), 0);
+    }
+
+    #[test]
+    fn every_fixture_is_found_where_it_is_drawn() {
+        let station = Station::new(&sample(), Journey::Here, &[]);
+        for (fixture, (left, top, right, bottom)) in [
+            (Fixture::Case, scenery::CASE),
+            (Fixture::Notices, scenery::NOTICES),
+            (Fixture::Departures, scenery::DEPARTURES),
+        ] {
+            let centre = ((left + right) as f32 / 2.0, (top + bottom) as f32 / 2.0);
+            assert_eq!(station.fixture_at(centre.0, centre.1), Some(fixture));
+        }
+        assert_eq!(station.fixture_at(300.0, 190.0), None);
+    }
+
+    /// The departures board hangs under the canopy, among everyone standing on the platform: it
+    /// must clear their heads, not crown them.
+    #[test]
+    fn the_departures_board_hangs_clear_of_everyones_heads() {
+        let (left, _, right, bottom) = scenery::DEPARTURES;
+        for cast in [sample(), crowd(6), crowd(2)] {
+            let station = Station::new(&cast, Journey::Here, &[]);
+            for traveler in station.travelers() {
+                let (from, top, to, _) = traveler.bounds;
+                if from < right && to > left {
+                    assert!(top >= bottom, "{} reaches {top}", traveler.name);
+                }
+            }
         }
     }
 

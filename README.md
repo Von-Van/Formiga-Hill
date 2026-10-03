@@ -19,8 +19,8 @@ owns only the destination.
 
 | Area | What happens there | State |
 | --- | --- | --- |
-| Station | The train in and out; the colony's display case of kept souvenirs | Built |
-| Village Green | Free play, pats, snacks and toys | Built |
+| Station | The train in and out; the colony's display case of kept souvenirs; the notice board and the departures board | Built |
+| Village Green | Free play, pats, snacks, toys, the brush and the dress-up box | Built |
 | Fairground | Games the colony plays among themselves while you watch, starting with hide-and-seek | Built |
 | Clubhouse | Authored scenes, picked from the notice board and played out by the fire; free play between them | Built |
 | Woods | Activities you play yourself, with a companion or two, for finds to take home (DESIGN.md §2, the Woods → Hilltop loop): rummaging in the glade, fishing at the pool, bug catching in the meadow | Being built |
@@ -55,6 +55,10 @@ owns only the destination.
 | Done | A secret in the Woods (DESIGN.md §2, the Cursor Sovereign): an interactive cutscene played completely straight, with a menu of absurd attacks each acted out by the companion it belongs to, three phases, and the whole colony arriving for the finale. It leaves a relic for the Hilltop. How to find it is deliberately not written here; see CLAUDE.md |
 | Done | The Hill keeps your hours: its light follows your computer's clock, so a morning visit is morning everywhere and a late one is under the stars. Dawn comes up rose and evening goes down gold; after dark the station's lamp, ticket office and display case are lit, fireflies come out on the green and in the Woods, the Clubhouse dims only to lamp and firelight with the night in its window, and the Hilltop's lantern and fallen star glow, with the Fairground's bulbs far below. Nothing in play depends on the hour |
 | Done | Bug catching in the meadow at the Woods' edge: eleven bugs, each keeping to its own haunt (butterflies in the wildflowers, grasshoppers in the long grass, dragonflies over the pond, a stag beetle on the old stump). Choose one, hold to creep up and let go to keep still, watching its nerves; then swing when its own way leaves it open: a butterfly with its wings shut, a grasshopper before it chirps, a firefly while it is lit. Quiet companions creep better, playful ones draw bugs near, a little one fits into the brambles, a dozy one may be landed on. The dusk brings out the firefly, the stag beetle and the moon moth. Caught bugs are admired, let go and remembered; a miss sometimes nets something for the Hilltop |
+| Done | Grooming on the Green: brush a companion with the pointer held down and it answers in its own way as it goes, halfway and when it is done, and shines for the rest of the visit. Leave off and it waits for more |
+| Done | Hill's dress-up box: eight costume pieces (paper crown, straw hat, top hat, daisy chain, party hat, wizard's hat, bow tie, knitted scarf) worn over a companion for the visit only. Pick one and click a companion; each wears it in its own way. Nothing goes home and Desktop's own accessories are untouched |
+| Done | A camera, anywhere at the Hill: press C or the camera button, frame part of the scene with the viewfinder (the scroll wheel sizes it), and click to take the photo. Photos go in the colony's album at the Hill, up to 240, and "Save a copy…" writes one, four times the size, wherever you choose |
+| Done | The station's two boards. The notice board by the door pins up a note for each thing worth telling: a welcome, what each companion would like to do (read from its temperament), stories not yet told, finds waiting in the satchel, the hide-and-seek record, and the souvenirs going home. The departures board under the canopy lists every place, what is on there and who is keen, with a Go for each. Neither nags: nothing there is a chore or a reminder of time away |
 | Next | Longer expeditions; finds that open new Woods possibilities |
 
 ## Running it
@@ -83,6 +87,7 @@ cargo run -p formiga-hill -- --render-bugs bugs.png
 cargo run -p formiga-hill -- --render-bug-hunt hunt.png --at 30
 cargo run -p formiga-hill -- --render-sovereign secret.png --at 60
 cargo run -p formiga-hill -- --render-reactions reactions.png
+cargo run -p formiga-hill -- --render-costumes costumes.png
 cargo run -p formiga-hill -- --render-story story.png --at 20
 cargo run -p formiga-hill -- --check-package path/to/my-story.formiga-hill
 cargo run -p formiga-hill -- --package path/to/my-story.formiga-hill
