@@ -1,0 +1,261 @@
+# Someone finds a thin book on the Clubhouse shelf and reads it aloud by the fire, but the last
+# page is missing. A choice: make up an ending together, or hunt the room for the page. Either
+# way, something was kept between the pages all along.
+
+[story]
+id = "book-with-no-ending"
+title = "title"
+area = "clubhouse"
+start = "shelf"
+
+# Whoever is most curious finds the book, and reads it.
+[roles.reader]
+order = 1
+select = ["most:curiosity", "any"]
+
+# Their closest friend listens, or whoever is left.
+[roles.listener]
+order = 2
+select = ["friend_of:reader", "playmate_of:reader", "any"]
+
+# Whoever has the least energy is asleep by the armchair before the middle, if anyone is left.
+[roles.dozer]
+order = 3
+select = ["least:energy"]
+optional = true
+
+# A little one, if one came, to have the last word.
+[roles.little]
+order = 4
+select = ["mini"]
+optional = true
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "shelf"
+
+[[scenes.beats]]
+walk = "reader"
+to = "bookshelf"
+
+[[scenes.beats]]
+narrate = "shelf.intro"
+about = "reader"
+meanwhile = true
+
+[[scenes.beats]]
+pose = "reader"
+as = "inspect"
+
+[[scenes.beats]]
+say = "reader"
+line = "shelf.found"
+
+[[scenes.beats]]
+walk = "listener"
+to = "rug"
+
+[[scenes.beats]]
+walk = "dozer"
+to = "armchair"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "little"
+to = "hearth"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "reader"
+to = "beside:listener"
+
+[[scenes.beats]]
+pose = "listener"
+as = "sit"
+
+[[scenes.beats]]
+pose = "reader"
+as = "sit"
+meanwhile = true
+
+[[scenes.beats]]
+narrate = "shelf.reading"
+about = "reader"
+
+[[scenes.beats]]
+nap = "dozer"
+
+[[scenes.beats]]
+narrate = "shelf.dozer"
+about = "dozer"
+meanwhile = true
+
+[[scenes.beats]]
+react = "listener"
+feeling = "curious"
+
+[[scenes.beats]]
+say = "reader"
+line = "shelf.missing"
+
+[[scenes.beats]]
+react = "listener"
+feeling = "surprise"
+
+[[scenes.beats]]
+choose = [
+  { line = "shelf.choose_together", goto = "together" },
+  { line = "shelf.choose_search", goto = "search" },
+]
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "together"
+
+[[scenes.beats]]
+narrate = "together.intro"
+
+[[scenes.beats]]
+say = "listener"
+line = "together.ending"
+
+[[scenes.beats]]
+react = "reader"
+feeling = "fond"
+
+[[scenes.beats]]
+walk = "little"
+to = "beside:reader"
+
+[[scenes.beats]]
+say = "little"
+line = "together.little"
+
+[[scenes.beats]]
+react = "listener"
+feeling = "joy"
+when = "present:little"
+
+[[scenes.beats]]
+celebrate = "reader"
+
+[[scenes.beats]]
+goto = "close"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "search"
+
+[[scenes.beats]]
+narrate = "search.intro"
+
+[[scenes.beats]]
+walk = "reader"
+to = "bookshelf"
+
+[[scenes.beats]]
+walk = "listener"
+to = "table"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "little"
+to = "chest"
+meanwhile = true
+
+[[scenes.beats]]
+pose = "listener"
+as = "peek"
+
+[[scenes.beats]]
+pose = "little"
+as = "peek"
+meanwhile = true
+
+[[scenes.beats]]
+pose = "reader"
+as = "inspect"
+meanwhile = true
+
+[[scenes.beats]]
+say = "listener"
+line = "search.nothing"
+
+# Someone suspicious looks in the board's pins; otherwise everyone gives up and comes back.
+[[scenes.beats]]
+if = "high:reader.suspicion"
+goto = "board"
+
+[[scenes.beats]]
+set = "searched"
+
+[[scenes.beats]]
+goto = "close"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "board"
+
+[[scenes.beats]]
+walk = "reader"
+to = "board"
+
+[[scenes.beats]]
+pose = "reader"
+as = "inspect"
+
+[[scenes.beats]]
+say = "reader"
+line = "board.not_here"
+
+[[scenes.beats]]
+set = "searched"
+
+[[scenes.beats]]
+goto = "close"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "close"
+
+[[scenes.beats]]
+walk = "all"
+to = "rug"
+
+[[scenes.beats]]
+pose = "all"
+as = "sit"
+
+[[scenes.beats]]
+narrate = "close.fire"
+
+[[scenes.beats]]
+narrate = "close.daisy_searched"
+about = "reader"
+when = "flag:searched"
+
+[[scenes.beats]]
+narrate = "close.daisy"
+about = "reader"
+when = "!flag:searched"
+
+[[scenes.beats]]
+react = "reader"
+feeling = "surprise"
+
+[[scenes.beats]]
+say = "reader"
+line = "close.end"
+
+[[scenes.beats]]
+react = "listener"
+feeling = "fond"
+
+[[scenes.beats]]
+souvenir = "pressed_daisy"
+
+[[scenes.beats]]
+narrate = "close.kept"
+
+[[scenes.beats]]
+end = true

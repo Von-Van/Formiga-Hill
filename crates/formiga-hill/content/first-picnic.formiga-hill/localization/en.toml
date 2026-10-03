@@ -4,26 +4,26 @@
 title = "The First Picnic"
 
 [spread]
-intro = "Someone has left a picnic blanket on the green, and a basket that smells of warm buns."
-shy = "{shy} watches from the shade of the old oak."
+intro = "Someone has left a plate of warm buns on the Clubhouse table, and the rug by the fire is free."
+shy = "{shy} watches from behind the big armchair."
 choose_share = "Open the basket"
 choose_game = "Find something to play with"
 
 [spread.hello]
-text = "{friend}! Look, a whole blanket, and nobody on it."
+text = "{friend}! Look, a whole picnic, and nobody at it."
 sweetheart = "{friend}! Come and sit with me. There's room for everyone."
-grump = "Hmph. Somebody's left a blanket. Fine. We'll sit on it."
+grump = "Hmph. Somebody's left a picnic. Fine. We'll sit at it."
 showoff = "I found it first, {friend}. Everyone saw."
-lazybones = "A blanket. In the sun. This is the best day there has ever been."
-scholar = "Gingham, {friend}. Red and white. Somebody planned this."
+lazybones = "A picnic. By the fire. This is the best day there has ever been."
+scholar = "Buns with jam in, {friend}, and a cloth on the table. Somebody planned this."
 troublemaker = "Finders keepers, {friend}. It's ours now."
-explorer = "A blanket all the way out here, {friend}! I wonder who left it."
+explorer = "A picnic, indoors, {friend}! I wonder who left it."
 guardian = "It's safe, {friend}. I've checked it twice."
 wallflower = "{friend}... would you sit here with me?"
-oddball = "A square of red and white, {friend}. Like a very flat cake."
+oddball = "A picnic with a ceiling, {friend}. The clouds will be so jealous."
 
 [share]
-intro = "{host} lifts the lid of the basket. Buns, still warm."
+intro = "{host} fetches the buns over from the table. Still warm."
 
 [share.invite]
 text = "There's plenty, {shy}. Come and have one."
@@ -35,8 +35,8 @@ text = "Is there one for me?"
 troublemaker = "I want the one with the most jam."
 
 [game]
-intro = "{friend} goes to see what's in the toy chest."
-cheer = "{shy} cheers from the shade, very quietly."
+intro = "{friend} goes to see what's in the toy box."
+cheer = "{shy} cheers from behind the armchair, very quietly."
 
 [game.after]
 text = "Again! Again!"
@@ -51,10 +51,10 @@ wallflower = "Um... could I have a turn, please?"
 troublemaker = "My turn. My turn!"
 
 [sunset]
-intro = "The sun dips behind the Hill."
+intro = "Out of the window, the sun dips behind the Hill."
 shared = "Not a crumb is left. Everyone is very full."
 played = "Everyone is out of breath, and very happy about it."
-ribbon = "{host} ties a ribbon of gingham into a bow, to keep."
+ribbon = "{host} finds a gingham ribbon tucked under the tablecloth, and ties it in a bow to keep."
 
 [sunset.end]
 text = "Same time tomorrow, {friend}?"

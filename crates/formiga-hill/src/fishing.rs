@@ -8,7 +8,10 @@ pub mod fish;
 mod scenery;
 
 use crate::cast::{Cast, Id};
+use crate::daylight::Nightlights;
 use crate::playground::{Layout, Patch, Playground};
+use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
+use formiga_art::Canvas;
 
 /// Where the one fishing sits on the near bank, and where a second stands ready with the net.
 pub const SEAT: (f32, f32) = (112.0, 186.0);
@@ -88,9 +91,10 @@ pub fn layout() -> Layout {
     }
 }
 
-/// The pool, with the companions who came walking up to the bank.
+/// The pool, with the companions who came walking up to the bank. After dark, fireflies over
+/// the reeds and along the water's edge; the canopy hides the sky.
 pub fn open(cast: &Cast, party: &[Id], now: f32) -> Playground {
-    Playground::with_members(
+    let mut ground = Playground::with_members(
         cast,
         party,
         now,
@@ -98,7 +102,23 @@ pub fn open(cast: &Cast, party: &[Id], now: f32) -> Playground {
         scenery::backdrop(),
         scenery::foreground(),
         Vec::new(),
-    )
+    );
+    let mut lamps = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    crate::daylight::fireflies(
+        &mut lamps,
+        &[
+            (280, 70, 90, 60, 9),
+            (190, 96, 100, 24, 6),
+            (20, 90, 120, 50, 7),
+        ],
+        930,
+    );
+    ground.set_nightlights(Nightlights {
+        lamps,
+        sky: Canvas::new(1, 1),
+        indoors: false,
+    });
+    ground
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-//! Stories: short authored scenes staged on the green with the colony as cast, loaded from
+//! Stories: short authored scenes staged in the Clubhouse with the colony as cast, loaded from
 //! declarative content packages. Hill's own stories are packages in exactly the format a
 //! community author writes, built into the app and loaded by the same code; see
 //! `docs/PACKAGES.md` for the format.
@@ -31,14 +31,24 @@ macro_rules! built_in {
 type BuiltIn = (&'static str, Vec<(&'static str, &'static [u8])>);
 
 fn official() -> Vec<BuiltIn> {
-    vec![built_in!(
-        "first-picnic.formiga-hill",
-        [
-            "manifest.toml",
-            "content/first-picnic.toml",
-            "localization/en.toml",
-        ]
-    )]
+    vec![
+        built_in!(
+            "first-picnic.formiga-hill",
+            [
+                "manifest.toml",
+                "content/first-picnic.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "book-with-no-ending.formiga-hill",
+            [
+                "manifest.toml",
+                "content/book-with-no-ending.toml",
+                "localization/en.toml",
+            ]
+        ),
+    ]
 }
 
 /// Every story Hill can stage, and anything that would not load, with why.
@@ -128,15 +138,16 @@ mod tests {
         let library = Library::load(&[]);
         for (_, story) in library.stories() {
             for option in 0..4 {
-                let mut green = crate::green::open(&cast, 0.0);
+                let mut room =
+                    crate::clubhouse::Clubhouse::open(&cast, 0.0, &Default::default(), Vec::new());
                 let mut director = Director::new(story.clone(), &cast, 1).unwrap();
-                green.reserve(director.players());
+                room.ground().reserve(director.players());
                 let mut now = 0.0;
                 let mut lines = 0;
                 while !director.finished() && now < 600.0 {
                     now += 1.0 / 30.0;
-                    green.tick(&cast, now);
-                    director.run(&mut green, &cast, now);
+                    room.tick(&cast, now);
+                    director.run(room.ground(), &cast, now);
                     if director.shown().is_some() {
                         assert!(!director.shown().unwrap().text.contains('{'));
                         lines += 1;

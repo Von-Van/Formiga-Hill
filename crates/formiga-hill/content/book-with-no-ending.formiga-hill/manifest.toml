@@ -1,0 +1,13 @@
+# A quiet story by the fire, written exactly as any package author would write one.
+package_id = "com.formiga.hill.book-with-no-ending"
+title = "The Book with No Ending"
+author = "Formiga"
+version = "1.0.0"
+hill_api = 2
+content_types = ["story"]
+entry_points = ["content/book-with-no-ending.toml"]
+default_locale = "en"
+
+[requirements]
+min_cast = 2
+areas = ["clubhouse"]

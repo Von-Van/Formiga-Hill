@@ -11,6 +11,7 @@ mod scenery;
 mod train;
 
 use crate::cast::{Cast, Id, Member};
+use crate::daylight::{Daylight, Nightlights};
 use crate::hilltop::Arrangement;
 use crate::paint::{blit, ellipse, rgba};
 use formiga_art::{AnimationSpec, Canvas, CreatureRenderer, FRAME_SIZE};
@@ -35,6 +36,9 @@ pub struct Station {
     travelers: Vec<StationTraveler>,
     reduce_motion: bool,
     journey: Journey,
+    /// What shines after dark, and the hour's light.
+    nightlights: Nightlights,
+    daylight: Daylight,
 }
 
 /// How often the scene is drawn while the train is in motion.
@@ -93,8 +97,11 @@ impl Station {
             .collect();
         // Those further back are drawn first.
         travelers.sort_by_key(|traveler| traveler.bounds.3);
+        let backdrop = scenery::backdrop(keepsakes, &Arrangement::new());
         Self {
-            backdrop: scenery::backdrop(keepsakes, &Arrangement::new()),
+            nightlights: nightlights(&backdrop),
+            daylight: Daylight::default(),
+            backdrop,
             keepsakes: keepsakes.to_vec(),
             hilltop: Arrangement::new(),
             train: Train::new(),
@@ -107,13 +114,23 @@ impl Station {
     /// Puts the colony's kept souvenirs in the display case.
     pub fn show_keepsakes(&mut self, keepsakes: &[String]) {
         keepsakes.clone_into(&mut self.keepsakes);
-        self.backdrop = scenery::backdrop(&self.keepsakes, &self.hilltop);
+        self.repaint();
     }
 
     /// Shows what stands on the Hilltop, up on the skyline.
     pub fn show_hilltop(&mut self, hilltop: &Arrangement) {
         hilltop.clone_into(&mut self.hilltop);
+        self.repaint();
+    }
+
+    fn repaint(&mut self) {
         self.backdrop = scenery::backdrop(&self.keepsakes, &self.hilltop);
+        self.nightlights = nightlights(&self.backdrop);
+    }
+
+    /// The hour's light over the station.
+    pub fn set_daylight(&mut self, daylight: Daylight) {
+        self.daylight = daylight;
     }
 
     /// Whether a point in the scene is on the display case.
@@ -242,6 +259,8 @@ impl Station {
                 self.reduce_motion,
             );
         }
+        self.nightlights
+            .light(&mut scene, &self.backdrop, self.daylight);
         scene
     }
 
@@ -258,6 +277,15 @@ impl Station {
                 && y >= top as f32
                 && y <= bottom as f32 + 1.0
         })
+    }
+}
+
+/// What shines at the station after dark, and its night sky.
+fn nightlights(backdrop: &Canvas) -> Nightlights {
+    Nightlights {
+        lamps: scenery::lamplight(),
+        sky: scenery::night_sky(backdrop),
+        indoors: false,
     }
 }
 

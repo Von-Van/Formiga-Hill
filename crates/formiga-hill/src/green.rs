@@ -1,16 +1,18 @@
-//! The Village Green: the first place the colony goes from the station, for free play, and where
-//! stories are staged for now. The playground engine does the playing; this is the ground it is
-//! played on.
+//! The Village Green: the first place the colony goes from the station, for free play. (Stories
+//! are staged indoors, in the Clubhouse.) The playground engine does the playing; this is the
+//! ground it is played on.
 
 mod scenery;
 
 use crate::cast::Cast;
+use crate::daylight::Nightlights;
+use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Playground};
 use scenery::{BLANKET, SHADE, WALK_BOTTOM, WALK_LEFT, WALK_RIGHT, WALK_TOP, walkable};
 
 pub use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 
-/// The green's named spots, as a story's `walk … to = "…"` names them.
+/// The green's named spots, for anyone sent somewhere in particular.
 const SPOTS: [(&str, (f32, f32)); 10] = [
     ("blanket", (266.0, 166.0)),
     ("well", (232.0, 102.0)),
@@ -43,32 +45,38 @@ pub fn layout() -> Layout {
     }
 }
 
+/// Shows what stands on the Hilltop, far off through the gap in the trees.
+pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
+    ground.set_backdrop(scenery::backdrop(hilltop));
+}
+
 /// The green, with the colony walking in.
 pub fn open(cast: &Cast, now: f32) -> Playground {
-    Playground::new(
+    let backdrop = scenery::backdrop(&Arrangement::new());
+    let nightlights = Nightlights {
+        lamps: scenery::lamplight(),
+        sky: scenery::night_sky(&backdrop),
+        indoors: false,
+    };
+    let mut green = Playground::new(
         cast,
         now,
         layout(),
-        scenery::backdrop(),
+        backdrop,
         scenery::foreground(),
         Vec::new(),
-    )
+    );
+    green.set_nightlights(nightlights);
+    green
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::paint::blit;
-    use crate::story::script::PLACES;
 
     #[test]
-    fn every_place_a_story_can_name_is_on_the_green() {
-        for place in PLACES {
-            assert!(
-                SPOTS.iter().any(|(name, _)| *name == place),
-                "no {place} on the green"
-            );
-        }
+    fn every_named_spot_is_somewhere_to_stand() {
         for (name, (x, y)) in SPOTS {
             assert!(walkable(x, y), "{name} is somewhere nobody can stand");
         }
@@ -84,7 +92,7 @@ mod tests {
             green.tick(&cast, now);
         }
         let scene = green.compose(now);
-        let mut empty = scenery::backdrop();
+        let mut empty = scenery::backdrop(&Arrangement::new());
         blit(&mut empty, &scenery::foreground(), 0, 0);
         assert_ne!(scene, empty);
     }

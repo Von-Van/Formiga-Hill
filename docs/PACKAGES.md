@@ -1,22 +1,26 @@
 # Writing a story for Formiga Hill
 
-A story is a short scene, or a few, that the colony plays out at the Hill. You write it as plain
+A story is a short scene, or a few, that the colony plays out in the Clubhouse at the Hill: a
+snug room with a fire, where the person picks a story from the notice board. You write it as plain
 TOML files in a folder. There is no code to write, nothing to compile, and nothing your package
 can do except tell Hill who should do what, where, and what they say.
 
-Hill's own first story, *The First Picnic*, is written exactly this way. It's a complete working
-example: [`crates/formiga-hill/content/first-picnic.formiga-hill`](../crates/formiga-hill/content/first-picnic.formiga-hill).
+Hill's own stories, *The First Picnic* and *The Book with No Ending*, are written exactly this
+way. Each is a complete working example:
+[`crates/formiga-hill/content/first-picnic.formiga-hill`](../crates/formiga-hill/content/first-picnic.formiga-hill)
+and
+[`crates/formiga-hill/content/book-with-no-ending.formiga-hill`](../crates/formiga-hill/content/book-with-no-ending.formiga-hill).
 
 ## Trying a story
 
 ```sh
 formiga-hill --check-package my-story.formiga-hill        # does it load? what is wrong?
-formiga-hill --package my-story.formiga-hill               # play it, from the Stories menu
+formiga-hill --package my-story.formiga-hill               # play it, from the notice board
 formiga-hill --package my-story.formiga-hill --render-story moment.png --at 20
 ```
 
 `--check-package` names the file, scene and beat of anything wrong, in words like
-`scene "spread", beat 2: "the bandstand" is not a place on the green`.
+`scene "spread", beat 2: "the bandstand" is not a place in the clubhouse`.
 
 ## The folder
 
@@ -41,14 +45,14 @@ package_id = "org.example.lost-kite"   # yours: lowercase, with at least one dot
 title = "The Lost Kite"
 author = "Your name"
 version = "1.0.0"
-hill_api = 1                           # the content API you wrote for
+hill_api = 2                           # the content API you wrote for
 content_types = ["story"]
 entry_points = ["content/lost-kite.toml"]
 default_locale = "en"
 
 [requirements]
 min_cast = 2           # the fewest travellers it can be played with
-areas = ["green"]      # where it is staged
+areas = ["clubhouse"]  # where it is staged
 ```
 
 Hill refuses a package that:
@@ -59,13 +63,31 @@ Hill refuses a package that:
 
 Hill ignores fields it doesn't know, so a package written for a later Hill can still load.
 
+### Written for content API 1
+
+Content API 2 moved stories indoors, to the Clubhouse. A package written for API 1, when stories
+were staged on the green, still loads as it was written, with `area = "green"` and the green's
+places, and is played in the Clubhouse. Each place on the green is read as its counterpart there:
+
+| On the green | In the Clubhouse |
+| --- | --- |
+| `blanket` | `rug` |
+| `well` | `hearth` |
+| `oak` | `bookshelf` |
+| `swing` | `armchair` |
+| `chest`, `centre`, `left`, `right`, `front`, `back` | the same |
+
+`--check-package` says how such a story is read. To use the Clubhouse's own places, write for
+`hill_api = 2` and `area = "clubhouse"`; a package speaks one API's places or the other's, never
+both.
+
 ## A story file
 
 ```toml
 [story]
 id = "lost-kite"
 title = "title"          # a line in the localisation file
-area = "green"
+area = "clubhouse"
 start = "found"          # the first scene
 
 [roles.finder]
@@ -86,7 +108,7 @@ id = "found"
 
 [[scenes.beats]]
 walk = "finder"
-to = "oak"
+to = "bookshelf"
 
 [[scenes.beats]]
 say = "finder"
@@ -123,7 +145,7 @@ A scene is a list of beats, played in order. Each beat does one thing.
 
 | Beat | Does |
 | --- | --- |
-| `walk = "<who>"`, `to = "<place>"` | walks there. Places: `blanket`, `well`, `oak`, `swing`, `chest`, `centre`, `left`, `right`, `front`, `back`, or `beside:<role>` |
+| `walk = "<who>"`, `to = "<place>"` | walks there. Places: `rug` (before the fire), `hearth`, `armchair`, `bookshelf`, `window`, `board` (the notice board), `table`, `chest` (the toy box), `centre`, `left`, `right`, `front`, `back`, or `beside:<role>` |
 | `face = "<who>"`, `to = "<role>"` | turns to face someone |
 | `react = "<who>"`, `feeling = "<feeling>"` | `joy`, `surprise`, `worry`, `fond`, `proud`, `sleepy`, `grumpy`, `curious`, `bored`, `shy`, shown the way that creature would show it |
 | `pose = "<who>"`, `as = "<pose>"` | `inspect`, `sit`, `crouch`, `stretch`, `wave`, `peek`, `strut`, `cheer`, `dance`, `huff`, `beg`, `watch`, `cover`, `balance` |

@@ -6,6 +6,7 @@ mod hide_and_seek;
 mod scenery;
 
 use crate::cast::Cast;
+use crate::daylight::Nightlights;
 use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Patch, Playground};
 use scenery::GROUND;
@@ -66,14 +67,14 @@ pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
 /// The fairground with the colony walking in, and the game ready to play.
 pub fn open(cast: &Cast, now: f32) -> (Playground, HideAndSeek) {
     let (props, places) = scenery::props();
-    let ground = Playground::new(
-        cast,
-        now,
-        layout(),
-        scenery::backdrop(&Arrangement::new()),
-        scenery::foreground(),
-        props,
-    );
+    let backdrop = scenery::backdrop(&Arrangement::new());
+    let nightlights = Nightlights {
+        lamps: scenery::lamplight(),
+        sky: scenery::night_sky(&backdrop),
+        indoors: false,
+    };
+    let mut ground = Playground::new(cast, now, layout(), backdrop, scenery::foreground(), props);
+    ground.set_nightlights(nightlights);
     (ground, HideAndSeek::new(places))
 }
 

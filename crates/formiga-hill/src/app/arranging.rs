@@ -38,11 +38,19 @@ impl HillApp {
         if let Some(ground) = &mut self.hilltop {
             ground.set_props(props);
             ground.set_attractions(hilltop::attractions(&arrangement));
+            let lights = hilltop::nightlights(&arrangement, ground.backdrop());
+            ground.set_nightlights(lights);
         }
         // The Hill seen from below changes too.
         self.station.show_hilltop(&arrangement);
         if let Some((ground, _)) = &mut self.fairground {
             crate::fairground::show_hilltop(ground, &arrangement);
+        }
+        if let Some(green) = &mut self.green {
+            crate::green::show_hilltop(green, &arrangement);
+        }
+        if let Some(room) = &mut self.clubhouse {
+            room.show_hilltop(&arrangement);
         }
     }
 

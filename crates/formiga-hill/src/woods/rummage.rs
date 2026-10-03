@@ -21,8 +21,8 @@ use crate::cast::Id;
 use crate::character::{Beat, Character, Cue};
 use crate::dice::Dice;
 use crate::finds::{self, Find, Kind, Tier, art};
-use crate::paint::{blit, ellipse, mix, noise, put, rect, rgb, rgba};
-use crate::playground::{Playground, distance};
+use crate::paint::{blit, mix, put, rect, rgb, rgba};
+use crate::playground::{Playground, Prop, distance};
 use formiga_art::{Canvas, ExpressionKind, Rgba};
 use formiga_core::{ActionKind, Gesture, TemperamentKind};
 use std::f32::consts::{PI, TAU};
@@ -184,6 +184,9 @@ const GLINT: Spot = Spot {
 const GLINT_LIGHT: f32 = 0.2;
 
 pub struct Rummage {
+    /// How dark the hour has made the glade already, so the outing's own dusk only darkens it
+    /// past that.
+    hour_dark: f32,
     /// Whether the glint may show, and where among the spots it is once it has.
     beckons: bool,
     glint: Option<usize>,
@@ -191,6 +194,8 @@ pub struct Rummage {
     /// The glade's spots, and any extra ones this party opened, each with who opened it.
     spots: Vec<Spot>,
     opened: Vec<(usize, Opener, Id)>,
+    /// Whether each extra spot was searched when the glade last showed them.
+    extras_shown: Option<Vec<bool>>,
     /// Who is searching the spot being searched: whoever opened it, or the first who came.
     leader: Option<Id>,
     /// The light the outing started with.
@@ -321,6 +326,7 @@ impl Rummage {
             searched: vec![false; spots.len()],
             spots,
             opened,
+            extras_shown: None,
             leader: None,
             full,
             dusk: DUSK + influence.earlier,
@@ -332,6 +338,7 @@ impl Rummage {
             events,
             dice,
             reduce_motion: ground.reduce_motion(),
+            hour_dark: 0.0,
             from: (-24.0, 192.0),
             knack: knack_by_kind,
             help,
@@ -562,6 +569,15 @@ impl Rummage {
     }
 
     pub fn tick(&mut self, ground: &mut Playground, now: f32) {
+        let searched: Vec<bool> = self
+            .opened
+            .iter()
+            .map(|(i, _, _)| self.searched[*i])
+            .collect();
+        if self.extras_shown.as_ref() != Some(&searched) {
+            ground.set_props(self.extras());
+            self.extras_shown = Some(searched);
+        }
         self.update_signs(ground, now);
         if self.beckons
             && self.glint.is_none()
@@ -722,12 +738,29 @@ impl Rummage {
         }
     }
 
+    /// The extra spots this party opened, standing in the glade among everyone, so a companion
+    /// in front of one is drawn in front of it: the boulder as it lies, or rolled once searched.
+    fn extras(&self) -> Vec<Prop> {
+        self.opened
+            .iter()
+            .map(|(index, opener, _)| {
+                let spot = &self.spots[*index];
+                let searched = self.searched[*index];
+                standing(extra_base(*opener, searched), |scene| {
+                    draw_extra(scene, spot, *opener, searched)
+                })
+            })
+            .collect()
+    }
+
+    /// How dark the hour has made the glade already: the outing's dusk adds only what is more.
+    pub fn set_hour_dark(&mut self, darkness: f32) {
+        self.hour_dark = darkness;
+    }
+
     /// The glade darkening as the light goes, the signs, the ring, a find held up, the basket.
     pub fn draw(&self, scene: &mut Canvas, now: f32) {
-        for (index, opener, _) in &self.opened {
-            draw_extra(scene, &self.spots[*index], *opener, self.searched[*index]);
-        }
-        dim(scene, self.light);
+        dim(scene, self.light, self.hour_dark);
         if let Some(index) = self.glint {
             draw_glint(scene, self.spots[index].sign, now, self.reduce_motion);
         }
@@ -827,95 +860,46 @@ fn opener(party: &[Id], characters: &[Character], opener: Opener, close_pair: bo
     }
 }
 
-/// The place an extra spot opens on: a sett's spoil heap, a dark crack in the roots, a boulder
-/// furred with moss (rolled aside once searched).
+/// The place an extra spot opens on, painted to the glade's own standard: a badger's sett under
+/// the oak's roots, a crevice where a root leaves the trunk, a boulder furred with moss (rolled
+/// aside once searched).
 fn draw_extra(scene: &mut Canvas, spot: &Spot, opener: Opener, searched: bool) {
-    let (x, y) = (spot.sign.0 as i32, spot.sign.1 as i32);
-    let soil = [rgb(0x3a2a1e), rgb(0x5a4030), rgb(0x76563e), rgb(0x92704e)];
+    use super::scenery::{badger_sett, mossy_boulder, root_crevice};
     match opener {
-        Opener::Explorer => {
-            // A heap of fresh spoil with the sett's mouth dark in its face.
-            for (dy, half) in [(-4, 5), (-3, 8), (-2, 10), (-1, 12), (0, 13), (1, 13)] {
-                for dx in -half..=half {
-                    let lit = if dx < -half / 3 {
-                        3
-                    } else if dx < half / 2 {
-                        2
-                    } else {
-                        1
-                    };
-                    let grain = noise(x + dx + 400, y + dy, 811).is_multiple_of(7);
-                    let tone = if grain {
-                        soil[(lit + 1).min(3)]
-                    } else {
-                        soil[lit]
-                    };
-                    put(scene, x + dx, y + dy, tone);
-                }
-                put(scene, x - half, y + dy, soil[0]);
-                put(scene, x + half, y + dy, soil[0]);
-            }
-            for (dy, half) in [(-2, 2), (-1, 3), (0, 3), (1, 3)] {
-                for dx in -half..=half {
-                    put(scene, x + dx, y + dy, rgb(0x16100c));
-                }
-            }
-            put(scene, x - 3, y - 2, soil[3]);
-        }
-        Opener::LittleOne => {
-            // A narrow crack between two roots, just wide enough for small paws.
-            for dy in -4i32..=3 {
-                let half = if dy.abs() < 3 { 1 } else { 0 };
-                for dx in -half..=half {
-                    put(scene, x + dx, y + dy, rgb(0x120e0a));
-                }
-                put(scene, x - half - 1, y + dy, rgb(0x6a5040));
-                put(scene, x + half + 1, y + dy, rgb(0x3a2a20));
-            }
-        }
-        Opener::ClosePair => {
-            let stone = [rgb(0x4a4648), rgb(0x6a6466), rgb(0x8a8484), rgb(0xaaa4a0)];
-            let moss = [rgb(0x3e5a2c), rgb(0x587a3a), rgb(0x76984c)];
-            if searched {
-                // Rolled aside, its damp underside showing, a bare patch where it lay.
-                ellipse(scene, x, y + 1, 9, 3, rgba(0x3a2a1e, 200));
-                ellipse(scene, x + 14, y - 3, 7, 6, stone[1]);
-                ellipse(scene, x + 13, y - 4, 5, 4, stone[2]);
-                return;
-            }
-            ellipse(scene, x + 2, y + 2, 12, 3, rgba(0x203020, 90));
-            for dy in -9..=2 {
-                for dx in -11..=11 {
-                    let (u, v) = (dx as f32 / 11.0, (dy as f32 + 3.5) / 6.5);
-                    if u * u + v * v > 1.0 {
-                        continue;
-                    }
-                    let edge = u * u + v * v > 0.8;
-                    let lit = -u * 0.6 - v * 0.5;
-                    let mut tone = if edge {
-                        stone[0]
-                    } else if lit > 0.35 {
-                        stone[3]
-                    } else if lit > -0.2 {
-                        stone[2]
-                    } else {
-                        stone[1]
-                    };
-                    // Moss over the top, thickest where the light falls.
-                    if v < -0.25 && !edge && !noise(x + dx, y + dy, 812).is_multiple_of(3) {
-                        tone = moss[if lit > 0.3 {
-                            2
-                        } else if lit > -0.1 {
-                            1
-                        } else {
-                            0
-                        }];
-                    }
-                    put(scene, x + dx, y + dy, tone);
-                }
-            }
+        Opener::Explorer => badger_sett(scene, spot.sign),
+        Opener::LittleOne => root_crevice(scene, spot.sign),
+        Opener::ClosePair => mossy_boulder(scene, spot.sign, searched),
+    }
+}
+
+/// The row an extra spot stands on: anyone further down the picture is in front of it.
+fn extra_base(opener: Opener, searched: bool) -> f32 {
+    match (opener, searched) {
+        (Opener::Explorer, _) => 198.0,
+        (Opener::LittleOne, _) => 186.0,
+        (Opener::ClosePair, false) => 194.0,
+        (Opener::ClosePair, true) => 186.0,
+    }
+}
+
+/// Something painted onto the glade, made into a prop that stands with its foot on `base`.
+fn standing(base: f32, paint: impl FnOnce(&mut Canvas)) -> Prop {
+    let mut layer = Canvas::new(crate::station::SCENE_WIDTH, crate::station::SCENE_HEIGHT);
+    paint(&mut layer);
+    let Some((left, top, right, bottom)) = layer.alpha_bounds() else {
+        return Prop::new(Canvas::new(1, 1), (0, 0), base);
+    };
+    let (left, top) = (left as i32, top as i32);
+    let mut sprite = Canvas::new(
+        (right as i32 - left + 1) as u32,
+        (bottom as i32 - top + 1) as u32,
+    );
+    for y in 0..sprite.height() as i32 {
+        for x in 0..sprite.width() as i32 {
+            sprite.set(x, y, layer.get(left + x, top + y));
         }
     }
+    Prop::new(sprite, (left, top), base)
 }
 
 /// The glint: a small white pointer, outlined in black, where nothing like it should be, pulsing.
@@ -1029,8 +1013,8 @@ fn empty_handed(character: &Character) -> Vec<Beat> {
 }
 
 /// The glade darkening towards dusk as the light runs out.
-pub(crate) fn dim(scene: &mut Canvas, light: f32) {
-    let amount = ((DIMMING - light) / DIMMING).clamp(0.0, 1.0) * 0.45;
+pub(crate) fn dim(scene: &mut Canvas, light: f32, already: f32) {
+    let amount = ((DIMMING - light) / DIMMING).clamp(0.0, 1.0) * 0.45 - already;
     if amount <= 0.0 {
         return;
     }
@@ -1423,6 +1407,20 @@ mod tests {
                 "helping at {}, it would stand at ({x}, {y})",
                 spot.name
             );
+        }
+    }
+
+    #[test]
+    fn whoever_searches_an_extra_spot_is_drawn_in_front_of_it() {
+        for extra in EXTRAS {
+            for searched in [false, true] {
+                let base = extra_base(extra.opener, searched);
+                assert!(
+                    base < extra.spot.stand.1,
+                    "{:?} would be drawn over whoever stands at it",
+                    extra.opener
+                );
+            }
         }
     }
 

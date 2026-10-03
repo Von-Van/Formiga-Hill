@@ -5,7 +5,9 @@ mod app;
 mod cast;
 mod character;
 mod clearing;
+mod clubhouse;
 mod cues;
+mod daylight;
 mod dice;
 mod fairground;
 mod finds;
@@ -47,6 +49,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --from-save <FILE>       Development only: board a Desktop colony file, which is only ever read
   --render-station <PNG>   Draw the station to a PNG and exit without opening a window
   --render-green <PNG>     Draw the Village Green to a PNG and exit without opening a window
+  --render-clubhouse <PNG> Draw the Clubhouse to a PNG and exit without opening a window
   --render-fairground <PNG>
                            Draw the Fairground to a PNG and exit without opening a window
   --render-hide-and-seek <PNG>
@@ -59,12 +62,15 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-fish <PNG>      Draw every fish as it is held up, and its icon, for review
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
-  --render-story <PNG>     Draw a story on the green --at seconds after it starts, reading each
+  --render-story <PNG>     Draw a story in the Clubhouse --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
   --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
-  --at <SECONDS>           Draw that far into the arrival, or into free play on the green or
-                           at the Fairground
+  --sample-hilltop         Draw the station's skyline with a sample of finds on the Hilltop
+  --hour <HOUR>            Draw at that hour of the day, from 0 to 24, rather than at midday;
+                           with a window, hold the Hill at that hour rather than the clock's
+  --at <SECONDS>           Draw that far into the arrival, or into free play on the green, in
+                           the Clubhouse or at the Fairground
 ";
 
 enum Source {
@@ -77,6 +83,7 @@ enum Source {
 enum Area {
     Station,
     Green,
+    Clubhouse,
     Fairground,
     /// The Fairground, a game of hide-and-seek under way.
     HideAndSeek,
@@ -92,7 +99,7 @@ enum Area {
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
     Reactions,
-    /// The green, a story under way on it.
+    /// The Clubhouse, a story under way in it.
     Story,
 }
 
@@ -104,9 +111,15 @@ struct Args {
     packages: Vec<PathBuf>,
     /// Check these package folders and report, without opening a window.
     check: Vec<PathBuf>,
+    /// Draw the station with a sample of finds on the Hilltop, rather than the colony's own.
+    sample_hilltop: bool,
+    /// The hour to draw at, rather than midday.
+    hour: Option<f32>,
 }
 
 fn main() -> Result<()> {
+    // Before anything starts a thread: see `daylight::Clock`.
+    let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
     let Some(args) = parse_args(std::env::args_os().skip(1))? else {
         print!("{USAGE}");
         return Ok(());
@@ -117,6 +130,7 @@ fn main() -> Result<()> {
     let arrival = arrive(args.source)?;
 
     if let Some((area, path)) = args.render {
+        let daylight = daylight::Daylight::at_hour(args.hour.unwrap_or(12.0));
         let canvas = match area {
             Area::Station => {
                 let (journey, now) = match args.at {
@@ -130,13 +144,20 @@ fn main() -> Result<()> {
                 );
                 let mut station =
                     station::Station::new(&arrival.cast, journey, &memories.colony().souvenirs);
-                station.show_hilltop(&memories.colony().hilltop);
+                if args.sample_hilltop {
+                    station.show_hilltop(&sample_arrangement());
+                } else {
+                    station.show_hilltop(&memories.colony().hilltop);
+                }
+                station.set_daylight(daylight);
                 station.compose(now)
             }
             Area::Green => {
                 // Free play, run forward as the window would run it.
                 let until = args.at.unwrap_or(20.0);
                 let mut green = green::open(&arrival.cast, 0.0);
+                green::show_hilltop(&mut green, &sample_arrangement());
+                green.set_daylight(daylight);
                 let mut now = 0.0;
                 while now < until {
                     now += 1.0 / 30.0;
@@ -144,9 +165,28 @@ fn main() -> Result<()> {
                 }
                 green.compose(now)
             }
+            Area::Clubhouse => {
+                let until = args.at.unwrap_or(20.0);
+                let library = story::Library::load(&args.packages);
+                let pinned = library
+                    .stories()
+                    .enumerate()
+                    .map(|(index, _)| index == 0)
+                    .collect();
+                let mut room =
+                    clubhouse::Clubhouse::open(&arrival.cast, 0.0, &sample_arrangement(), pinned);
+                room.set_daylight(daylight);
+                let mut now = 0.0;
+                while now < until {
+                    now += 1.0 / 30.0;
+                    room.tick(&arrival.cast, now);
+                }
+                room.compose(now)
+            }
             Area::Fairground => {
                 let until = args.at.unwrap_or(20.0);
                 let (mut fairground, _) = fairground::open(&arrival.cast, 0.0);
+                fairground.set_daylight(daylight);
                 fairground::show_hilltop(&mut fairground, &sample_arrangement());
                 let mut now = 0.0;
                 while now < until {
@@ -155,11 +195,12 @@ fn main() -> Result<()> {
                 }
                 fairground.compose(now)
             }
-            Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0)),
-            Area::Woods => woods_moment(&arrival.cast, args.at.unwrap_or(12.0)),
+            Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0), daylight),
+            Area::Woods => woods_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Hilltop => {
                 let until = args.at.unwrap_or(20.0);
                 let mut hilltop = hilltop::open(&arrival.cast, 0.0, &sample_arrangement());
+                hilltop.set_daylight(daylight);
                 let mut now = 0.0;
                 while now < until {
                     now += 1.0 / 30.0;
@@ -168,7 +209,7 @@ fn main() -> Result<()> {
                 hilltop.compose(now)
             }
             Area::Finds => finds_sheet(),
-            Area::Fishing => fishing_moment(&arrival.cast, args.at.unwrap_or(12.0)),
+            Area::Fishing => fishing_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Fish => fish_sheet(),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
@@ -178,6 +219,7 @@ fn main() -> Result<()> {
                     &arrival.cast,
                     story_to_draw(&library)?,
                     args.at.unwrap_or(12.0),
+                    daylight,
                 )?
             }
         };
@@ -202,7 +244,11 @@ fn main() -> Result<()> {
         options,
         Box::new(|cc| {
             let library = story::Library::load(&args.packages);
-            Ok(Box::new(HillApp::new(cc, arrival, library)))
+            let clock = match args.hour {
+                Some(hour) => daylight::Clock::Held(hour),
+                None => daylight::Clock::Local(offset),
+            };
+            Ok(Box::new(HillApp::new(cc, arrival, library, clock)))
         }),
     )
     .map_err(|error| anyhow::anyhow!("the Hill window could not open: {error}"))
@@ -214,6 +260,8 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut at = None;
     let mut packages = Vec::new();
     let mut check = Vec::new();
+    let mut sample_hilltop = false;
+    let mut hour = None;
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
             bail!("choose one of --sample, {LAUNCH_ARGUMENT}, or --from-save");
@@ -234,6 +282,9 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Station, value("--render-station")?));
             }
             Some("--render-green") => render = Some((Area::Green, value("--render-green")?)),
+            Some("--render-clubhouse") => {
+                render = Some((Area::Clubhouse, value("--render-clubhouse")?));
+            }
             Some("--render-fairground") => {
                 render = Some((Area::Fairground, value("--render-fairground")?));
             }
@@ -266,6 +317,19 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                         .with_context(|| format!("--at needs seconds, not {seconds:?}"))?,
                 );
             }
+            Some("--sample-hilltop") => sample_hilltop = true,
+            Some("--hour") => {
+                let given = value("--hour")?;
+                hour = Some(
+                    given
+                        .to_str()
+                        .and_then(|text| text.parse::<f32>().ok())
+                        .filter(|hour| (0.0..=24.0).contains(hour))
+                        .with_context(|| {
+                            format!("--hour needs an hour from 0 to 24, not {given:?}")
+                        })?,
+                );
+            }
             Some("--package") => packages.push(value("--package")?),
             Some("--check-package") => check.push(value("--check-package")?),
             Some("-h" | "--help") => return Ok(None),
@@ -281,6 +345,8 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         at,
         packages,
         check,
+        sample_hilltop,
+        hour,
     }))
 }
 
@@ -331,27 +397,33 @@ fn story_to_draw(library: &story::Library) -> Result<&story::Story> {
 
 /// A story `at` seconds in, with each line read after two and a half seconds and the first choice
 /// always taken, for seeing how it is staged.
-fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
-    // The colony arrives and settles on the green first, as it would before anyone opens a story.
+fn story_moment(
+    cast: &Cast,
+    chosen: &story::Story,
+    at: f32,
+    daylight: daylight::Daylight,
+) -> Result<Canvas> {
+    // The colony comes in and settles first, as it would before anyone opens a story.
     const SETTLE: f32 = 12.0;
-    let mut green = green::open(cast, 0.0);
+    let mut room = clubhouse::Clubhouse::open(cast, 0.0, &sample_arrangement(), vec![false]);
+    room.set_daylight(daylight);
     let mut now = 0.0;
     while now < SETTLE {
         now += 1.0 / 30.0;
-        green.tick(cast, now);
+        room.tick(cast, now);
     }
     let mut director = story::Director::new(chosen.clone(), cast, 1).map_err(anyhow::Error::msg)?;
-    green.reserve(director.players());
+    room.ground().reserve(director.players());
     let at = SETTLE + at;
     let mut shown_since = None;
     while now < at && !director.finished() {
         now += 1.0 / 30.0;
-        green.tick(cast, now);
-        director.run(&mut green, cast, now);
+        room.tick(cast, now);
+        director.run(room.ground(), cast, now);
         let speaker = director
             .shown()
             .and_then(|shown| shown.speaker.as_ref().map(|(id, _)| *id));
-        green.set_speaker(speaker);
+        room.ground().set_speaker(speaker);
         if director.shown().is_some() {
             let since = *shown_since.get_or_insert(now);
             if now - since > 2.5 && now + 1.0 / 30.0 < at {
@@ -371,14 +443,15 @@ fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
             shown.text
         );
     }
-    Ok(green.compose(now))
+    Ok(room.compose(now))
 }
 
 /// A game of hide-and-seek `at` seconds into the search, once the colony has settled at the
 /// Fairground and hidden.
-fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
+fn hiding_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     const SETTLE: f32 = 12.0;
     let (mut ground, mut game) = fairground::open(cast, 0.0);
+    ground.set_daylight(daylight);
     let mut now = 0.0;
     let mut seeking_since = None;
     while seeking_since.is_none_or(|since| now < since + at) && now < 300.0 {
@@ -401,7 +474,7 @@ fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
 /// An outing to the Woods, `at` seconds in, played by a steady hand: it searches the spots in
 /// turn and catches each moment as the marker crosses the gold. A parent and its little one go if
 /// the colony has them, so the spots only some company opens show; otherwise the first two.
-fn woods_moment(cast: &Cast, at: f32) -> Canvas {
+fn woods_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     let family = cast
         .members
         .iter()
@@ -419,7 +492,9 @@ fn woods_moment(cast: &Cast, at: f32) -> Canvas {
         beckons: false,
         seed: 5,
     };
+    glade.set_daylight(daylight);
     let mut outing = woods::rummage::Rummage::new(&mut glade, outset, |_| false, 0.0);
+    outing.set_hour_dark(daylight.darkness());
     let mut now = 0.0;
     let mut next = 0;
     while now < at {
@@ -448,7 +523,7 @@ fn woods_moment(cast: &Cast, at: f32) -> Canvas {
 /// A fishing trip at the pool, `at` seconds in, played by a steady hand: it casts at each part of
 /// the pool in turn, strikes on the bite, reels in only while the fish isn't pulling, and tries
 /// somewhere else when nothing comes.
-fn fishing_moment(cast: &Cast, at: f32) -> Canvas {
+fn fishing_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     use fishing::angling::{Angling, Outset, Phase};
     let party: Vec<cast::Id> = cast.ids().take(2).collect();
     let mut pool = fishing::open(cast, &party, 0.0);
@@ -458,7 +533,9 @@ fn fishing_moment(cast: &Cast, at: f32) -> Canvas {
         influence: woods::influence(&sample_arrangement()),
         seed: 7,
     };
+    pool.set_daylight(daylight);
     let mut trip = Angling::new(&mut pool, outset, |_| false, |_| false, 0.0);
+    trip.set_hour_dark(daylight.darkness());
     let mut now = 0.0;
     let mut aim = 0;
     while now < at {
@@ -628,6 +705,13 @@ fn check_packages(folders: &[PathBuf]) -> Result<()> {
                         "  \u{201c}{}\u{201d}, for {} or more travellers",
                         story.title, story.min_cast
                     );
+                    // A story written for the green is played in the Clubhouse; say how it is read.
+                    if story.api == 1 {
+                        println!("    written for content API 1, so played in the Clubhouse");
+                        for (green, clubhouse) in &story.read_as {
+                            println!("    \"{green}\" is read as \"{clubhouse}\"");
+                        }
+                    }
                 }
             }
             Err(problem) => {
@@ -706,6 +790,16 @@ mod tests {
         let problem = story_to_draw(&library).unwrap_err().to_string();
         assert!(problem.contains("package.formiga-hill"), "{problem}");
         assert!(story_to_draw(&story::Library::load(&[])).is_ok());
+    }
+
+    #[test]
+    fn a_story_is_drawn_at_the_hour_asked_for() {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let library = story::Library::load(&[]);
+        let chosen = story_to_draw(&library).unwrap();
+        let at =
+            |hour| story_moment(&cast, chosen, 1.0, daylight::Daylight::at_hour(hour)).unwrap();
+        assert_ne!(at(12.0), at(0.0), "midnight looks like noon");
     }
 
     #[test]

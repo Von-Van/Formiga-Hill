@@ -1,13 +1,16 @@
-//! The Hill window: the station, the green, the Fairground, the Woods and the Hilltop, the
-//! colony in them, and the way home.
+//! The Hill window: the station, the green, the Clubhouse, the Fairground, the Woods and the
+//! Hilltop, the colony in them, and the way home.
 
 mod arranging;
 mod encounter;
 mod fishing_trip;
 mod rummaging;
+mod storytelling;
 
 use crate::cast::{Cast, Id};
 use crate::character::Offer;
+use crate::clubhouse::{self, Clubhouse};
+use crate::daylight::{Clock, Daylight};
 use crate::fairground::{self, Event, HideAndSeek, Phase};
 use crate::memories::Memories;
 use crate::playground::{Playground, Trust};
@@ -36,6 +39,8 @@ pub enum Visit {
 
 /// How often Hill looks for Desktop calling the colony home.
 const RECALL_CHECK_SECS: f32 = 1.0;
+/// How often Hill looks at the clock for the light of the hour.
+const HOUR_CHECK_SECS: f32 = 10.0;
 /// How long moving between areas takes, as a pixel dissolve.
 const DISSOLVE_SECS: f32 = 0.5;
 
@@ -44,6 +49,7 @@ const DISSOLVE_SECS: f32 = 0.5;
 enum Area {
     Station,
     Green,
+    Clubhouse,
     Fairground,
     Woods,
     Hilltop,
@@ -52,9 +58,10 @@ enum Area {
 }
 
 /// Every area, as the "Go to" menu lists them.
-const AREAS: [(Area, &str); 5] = [
+const AREAS: [(Area, &str); 6] = [
     (Area::Station, "The station"),
     (Area::Green, "The Village Green"),
+    (Area::Clubhouse, "The Clubhouse"),
     (Area::Fairground, "The Fairground"),
     (Area::Woods, "The Woods"),
     (Area::Hilltop, "The Hilltop"),
@@ -65,6 +72,10 @@ pub struct HillApp {
     station: Station,
     /// Made the first time anyone goes there, and kept for the rest of the visit.
     green: Option<Playground>,
+    /// The same, for the room where stories are staged.
+    clubhouse: Option<Clubhouse>,
+    /// Whether the notice board of stories is open.
+    board: bool,
     /// The same, and the game of hide-and-seek played there.
     fairground: Option<(Playground, HideAndSeek)>,
     /// Who the person has asked to be "it" at hide-and-seek, if anyone in particular.
@@ -99,7 +110,11 @@ pub struct HillApp {
     departed: bool,
     last_recall_check: f32,
     library: Library,
-    /// The story being played on the green, if any, and the package it came from.
+    /// Where the hours come from, the light of the one it is, and when Hill last looked.
+    clock: Clock,
+    daylight: Daylight,
+    last_hour_check: Option<f32>,
+    /// The story being played in the Clubhouse, if any, and the package it came from.
     story: Option<(String, Director)>,
     memories: Memories,
     /// A short note in the bottom bar, and when it was posted.
@@ -115,7 +130,12 @@ const LETTERBOX: egui::Color32 = egui::Color32::from_rgb(0x2f, 0x3b, 0x2c);
 const TAG: egui::Color32 = egui::Color32::from_rgba_unmultiplied_const(0xf6, 0xee, 0xd8, 0xe0);
 
 impl HillApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, arrival: Arrival, library: Library) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        arrival: Arrival,
+        library: Library,
+        clock: Clock,
+    ) -> Self {
         let presentation = arrival.cast.snapshot.presentation;
         cc.egui_ctx.set_theme(match presentation.theme {
             Theme::System => egui::ThemePreference::System,
@@ -143,6 +163,8 @@ impl HillApp {
             arrival,
             station,
             green: None,
+            clubhouse: None,
+            board: false,
             fairground: None,
             it: None,
             woods: rummaging::Woods::default(),
@@ -163,86 +185,13 @@ impl HillApp {
             departed: false,
             last_recall_check: 0.0,
             library,
+            clock,
+            daylight: clock.daylight(),
+            last_hour_check: None,
             story: None,
             memories,
             notice: None,
         }
-    }
-
-    fn start_story(&mut self, package: &str, story: &str, now: f32) {
-        let Some(green) = &mut self.green else {
-            return;
-        };
-        let Some((_, chosen)) = self
-            .library
-            .stories()
-            .find(|(p, s)| p.id == package && s.id == story)
-        else {
-            return;
-        };
-        // The same colony always casts a story the same way.
-        let seed = self
-            .arrival
-            .cast
-            .snapshot
-            .colony_id
-            .bytes()
-            .chain(story.bytes())
-            .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-                (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-            });
-        match Director::new(chosen.clone(), &self.arrival.cast, seed) {
-            Ok(director) => {
-                green.reserve(director.players());
-                self.story = Some((package.to_owned(), director));
-            }
-            Err(problem) => self.notice = Some((problem, now)),
-        }
-    }
-
-    /// Plays the story on, and settles it once it ends.
-    fn run_story(&mut self, now: f32) {
-        let (Some(green), Some((package, director))) = (&mut self.green, &mut self.story) else {
-            return;
-        };
-        director.run(green, &self.arrival.cast, now);
-        green.set_speaker(
-            director
-                .shown()
-                .and_then(|shown| shown.speaker.as_ref().map(|(id, _)| *id)),
-        );
-        if director.finished() {
-            green.release();
-            let kept: Vec<&str> = director
-                .souvenirs()
-                .iter()
-                .filter_map(|id| souvenirs::name(id))
-                .collect();
-            self.notice = Some((
-                if kept.is_empty() {
-                    format!("The end of \u{201c}{}\u{201d}.", director.title())
-                } else {
-                    format!(
-                        "The end of \u{201c}{}\u{201d}. Kept: {}.",
-                        director.title(),
-                        kept.join(", ").to_lowercase()
-                    )
-                },
-                now,
-            ));
-            let finished = format!("{package}/{}", director.story_id());
-            self.memories.finished(finished, director.souvenirs());
-            self.station
-                .show_keepsakes(&self.memories.colony().souvenirs);
-            self.story = None;
-        }
-    }
-
-    fn leave_story(&mut self) {
-        if let Some(green) = &mut self.green {
-            green.release();
-        }
-        self.story = None;
     }
 
     /// The way home. Writes the receipt once, however the visit ends.
@@ -270,6 +219,41 @@ impl HillApp {
         trip.recalled()
     }
 
+    /// Looks at the clock now and then, and lights everywhere for the hour it is: everywhere
+    /// the colony has been, so a place gone back to is already in the right light.
+    fn keep_hours(&mut self, now: f32) {
+        if self
+            .last_hour_check
+            .is_none_or(|since| now - since >= HOUR_CHECK_SECS)
+        {
+            self.daylight = self.clock.daylight();
+            self.last_hour_check = Some(now);
+        }
+        let daylight = self.daylight;
+        self.station.set_daylight(daylight);
+        if let Some(room) = &mut self.clubhouse {
+            room.set_daylight(daylight);
+        }
+        let grounds = [
+            self.green.as_mut(),
+            self.fairground.as_mut().map(|(ground, _)| ground),
+            self.hilltop.as_mut(),
+            self.woods.empty.as_mut(),
+            self.woods.pool.as_mut(),
+        ];
+        for ground in grounds.into_iter().flatten() {
+            ground.set_daylight(daylight);
+        }
+        if let Some((ground, rummage)) = &mut self.woods.outing {
+            ground.set_daylight(daylight);
+            rummage.set_hour_dark(daylight.darkness());
+        }
+        if let Some((ground, trip)) = &mut self.woods.fishing {
+            ground.set_daylight(daylight);
+            trip.set_hour_dark(daylight.darkness());
+        }
+    }
+
     /// Seconds since the window opened: the clock the whole visit runs on.
     fn now(&self) -> f32 {
         self.started.elapsed().as_secs_f32()
@@ -283,7 +267,12 @@ impl HillApp {
             self.leaving = Some((self.compose(now), now));
         }
         if area == Area::Green && self.green.is_none() {
-            self.green = Some(crate::green::open(&self.arrival.cast, now));
+            let mut green = crate::green::open(&self.arrival.cast, now);
+            crate::green::show_hilltop(&mut green, &self.memories.colony().hilltop);
+            self.green = Some(green);
+        }
+        if area == Area::Clubhouse {
+            self.open_clubhouse(now);
         }
         if area == Area::Fairground && self.fairground.is_none() {
             let (mut ground, game) = fairground::open(&self.arrival.cast, now);
@@ -317,6 +306,10 @@ impl HillApp {
     fn compose(&mut self, now: f32) -> Canvas {
         match (self.area, &mut self.green, &mut self.fairground) {
             (Area::Green, Some(green), _) => green.compose(now),
+            (Area::Clubhouse, _, _) => self
+                .clubhouse
+                .as_mut()
+                .map_or_else(|| self.station.compose(now), |room| room.compose(now)),
             (Area::Fairground, _, Some((ground, _))) => ground.compose(now),
             (Area::Woods, _, _) => self.compose_woods(now),
             (Area::Hilltop, _, _) => self.compose_hilltop(now),
@@ -400,9 +393,13 @@ impl HillApp {
     }
 
     fn refresh_scene(&mut self, ctx: &egui::Context, now: f32) -> egui::TextureId {
-        // The green is always on the move; the station only when its key says so.
+        // The green is always on the move; the station only when its key says so, or the hour.
         let frames = match self.area {
-            Area::Station if self.leaving.is_none() => self.station.frame_key(now),
+            Area::Station if self.leaving.is_none() => {
+                let mut key = self.station.frame_key(now);
+                key.push((self.daylight.hour() * 60.0) as usize);
+                key
+            }
             _ => Vec::new(),
         };
         if self.texture.is_none() || frames.is_empty() || frames != self.shown_frames {
@@ -449,11 +446,8 @@ impl HillApp {
                     ui.add_enabled_ui(settled, |ui| self.go_menu(ui, now));
                 });
             }
-            Area::Green if self.story.is_some() => self.story_panel(ui),
             Area::Green => {
                 tools(ui, &mut self.tool);
-                ui.separator();
-                self.stories_menu(ui, now);
                 if let Some((notice, _)) = &self.notice {
                     ui.label(egui::RichText::new(notice).italics());
                 }
@@ -461,6 +455,7 @@ impl HillApp {
                     self.go_menu(ui, now);
                 });
             }
+            Area::Clubhouse => self.clubhouse_bar(ui, now),
             Area::Fairground => self.fairground_bar(ui, now),
             Area::Woods => {
                 self.woods_bar(ui, now);
@@ -553,105 +548,6 @@ impl HillApp {
             self.go_menu(ui, now);
         });
     }
-
-    fn stories_menu(&mut self, ui: &mut egui::Ui, now: f32) {
-        let travellers = self.arrival.cast.members.len();
-        let mut start = None;
-        ui.menu_button("Stories", |ui| {
-            for (package, story) in self.library.stories() {
-                let finished = self
-                    .memories
-                    .colony()
-                    .stories
-                    .contains(&format!("{}/{}", package.id, story.id));
-                let label = if finished {
-                    format!("{}  \u{2713}", story.title)
-                } else {
-                    story.title.clone()
-                };
-                let fits = travellers >= story.min_cast;
-                let button = ui
-                    .add_enabled(fits, egui::Button::new(label))
-                    .on_disabled_hover_text(format!(
-                        "Needs at least {} travellers",
-                        story.min_cast
-                    ));
-                if button.clicked() {
-                    start = Some((package.id.clone(), story.id.clone()));
-                    ui.close();
-                }
-            }
-            let kept = &self.memories.colony().souvenirs;
-            if !kept.is_empty() {
-                ui.separator();
-                ui.label(egui::RichText::new("Kept").strong());
-                for id in kept {
-                    if let Some(name) = souvenirs::name(id) {
-                        ui.label(name);
-                    }
-                }
-            }
-        });
-        if let Some((package, story)) = start {
-            self.start_story(&package, &story, now);
-        }
-    }
-
-    /// The story's words: who is speaking and what they say, or the choice to make.
-    fn story_panel(&mut self, ui: &mut egui::Ui) {
-        let Some((_, director)) = &mut self.story else {
-            return;
-        };
-        let mut leave = false;
-        egui::Frame::new()
-            .fill(PAPER)
-            .corner_radius(6.0)
-            .inner_margin(egui::Margin::symmetric(12, 8))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(director.title())
-                            .italics()
-                            .color(INK)
-                            .small(),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        leave = ui.small_button("Leave the story").clicked();
-                    });
-                });
-                if let Some(shown) = director.shown().cloned() {
-                    if let Some((_, name)) = &shown.speaker {
-                        ui.label(egui::RichText::new(name).strong().color(INK));
-                    }
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(egui::RichText::new(&shown.text).color(INK).size(16.0));
-                    });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Next  \u{25b8}").clicked() {
-                            director.read_on();
-                        }
-                    });
-                } else if !director.choices().is_empty() {
-                    let mut chosen = None;
-                    ui.horizontal_wrapped(|ui| {
-                        for (index, choice) in director.choices().into_iter().enumerate() {
-                            if ui.button(format!("{}  {choice}", index + 1)).clicked() {
-                                chosen = Some(index);
-                            }
-                        }
-                    });
-                    if let Some(index) = chosen {
-                        director.choose(index);
-                    }
-                } else {
-                    ui.label(egui::RichText::new("\u{2026}").color(INK));
-                }
-            });
-        if leave {
-            self.leave_story();
-        }
-    }
 }
 
 const TOOLS: [(Offer, &str, &str); 3] = [
@@ -681,6 +577,7 @@ impl eframe::App for HillApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let now = self.now();
+        self.keep_hours(now);
         self.station.update(now);
         if !self.departed && self.recalled(now) {
             // Desktop has the colony already: close, and write nothing.
@@ -695,7 +592,7 @@ impl eframe::App for HillApp {
             let onwards =
                 input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Enter);
             match &mut self.story {
-                Some((_, director)) => {
+                Some((_, director)) if self.area == Area::Clubhouse => {
                     if onwards && director.shown().is_some() {
                         director.read_on();
                     }
@@ -711,7 +608,7 @@ impl eframe::App for HillApp {
                         }
                     }
                 }
-                None => {
+                _ => {
                     if onwards || input.key_pressed(egui::Key::Escape) {
                         self.station.skip_arrival();
                     }
@@ -764,6 +661,9 @@ impl eframe::App for HillApp {
         }
         if let (Area::Green, Some(green)) = (self.area, &mut self.green) {
             green.tick(&self.arrival.cast, now);
+        }
+        if let (Area::Clubhouse, Some(room)) = (self.area, &mut self.clubhouse) {
+            room.tick(&self.arrival.cast, now);
         }
         if let (Area::Fairground, Some((ground, game))) = (self.area, &mut self.fairground) {
             ground.tick(&self.arrival.cast, now);
@@ -891,15 +791,46 @@ impl eframe::App for HillApp {
                         }
                         hovered
                     }
-                    (Area::Green, Some(green), _) => {
-                        green.set_pointer(pointer);
-                        let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
+                    (Area::Clubhouse, _, _) => {
+                        let Some(room) = &mut self.clubhouse else {
+                            return;
+                        };
+                        let ground = room.ground();
+                        ground.set_pointer(pointer);
+                        let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                        let on_board = self.story.is_none()
+                            && hovered.is_none()
+                            && pointer.is_some_and(|(x, y)| clubhouse::on_board(x, y));
                         if let Some((_, director)) = &mut self.story {
                             // During a story, a click on the scene reads on.
                             if response.clicked() && director.shown().is_some() {
                                 director.read_on();
                             }
+                        } else if on_board {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            let (x, y) = clubhouse::board_label();
+                            tag("The notice board", to_screen(x, y));
+                            if response.clicked() {
+                                self.board = !self.board;
+                            }
                         } else if let Some(id) = hovered {
+                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            if response.clicked() {
+                                ground.offer(id, self.tool, &mut self.trust, now);
+                            }
+                        }
+                        if let Some(id) = hovered
+                            && let (Some((x, y)), Some(member)) =
+                                (ground.head(id, now), self.arrival.cast.member(id))
+                        {
+                            tag(&member.name, to_screen(x, y - 6.0));
+                        }
+                        hovered
+                    }
+                    (Area::Green, Some(green), _) => {
+                        green.set_pointer(pointer);
+                        let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
+                        if let Some(id) = hovered {
                             ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                             if response.clicked() {
                                 green.offer(id, self.tool, &mut self.trust, now);
@@ -970,6 +901,7 @@ impl eframe::App for HillApp {
             });
 
         self.journal_window(&ctx);
+        self.board_window(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));

@@ -1,0 +1,81 @@
+# The Book with No Ending, in English. A line is plain text, or a table with `text` and a version
+# for any temperament that would say it differently. {role} becomes the name of whoever plays it.
+
+title = "The Book with No Ending"
+
+[shelf]
+choose_together = "Make up an ending together"
+choose_search = "Look for the missing page"
+
+[shelf.intro]
+text = "{reader} runs a finger along the Clubhouse shelf, and stops at a thin green book."
+scholar = "{reader} has read every book on the shelf, or thought so, until a thin green one."
+troublemaker = "{reader} pulls out a book from the very back of the shelf, where it was hiding."
+lazybones = "{reader} means to have a nap, but a thin green book catches the eye on the way."
+
+[shelf.found]
+text = "\"The Long Way Round.\" Who wants to hear it?"
+scholar = "\"The Long Way Round.\" I don't know this one. Listen!"
+showoff = "I'm going to read this one out. With the voices."
+wallflower = "Um... would anyone like to hear a story?"
+grump = "Somebody sit down. I'm reading this, and I'm only reading it once."
+
+[shelf.reading]
+text = "{reader} reads by the firelight. A traveller sets out from a little station and gets lost on purpose, all the way round the world."
+explorer = "{reader} reads by the firelight, faster and faster: a traveller sets out from a little station and gets lost on purpose, all the way round the world."
+sweetheart = "{reader} reads by the firelight, doing a kind voice for the traveller, who sets out from a little station and gets lost on purpose."
+
+[shelf.dozer]
+text = "{dozer} is curled up by the armchair, asleep before the second page."
+lazybones = "{dozer} is curled up by the armchair, asleep before the first page."
+guardian = "{dozer} keeps watch by the armchair, with both eyes shut."
+
+[shelf.missing]
+text = "...and at last the traveller came home, and found... Oh. The last page is gone."
+scholar = "...and found... the last page has been torn out. Who would do that to a book?"
+grump = "...and found... Hmph. Somebody's had the last page."
+oddball = "...and found... nothing. The book just stops. Maybe that's the ending."
+
+# ---------------------------------------------------------------------------------------------
+[together]
+intro = "Nobody minds very much. There is a fire, and there are buns, and an ending can be made."
+
+[together.ending]
+text = "And found everyone waiting for them, and they had tea."
+sweetheart = "And found everyone they loved waiting at the station, all of them."
+troublemaker = "And found the whole house full of cake, and ate it."
+explorer = "And found a map in their pocket to somewhere even further away."
+grump = "And found it had rained the whole time, and was glad to be indoors."
+wallflower = "And found... their friends had kept a seat for them."
+showoff = "And found a crowd at the station, cheering, because of how brave they'd been."
+oddball = "And found they had been home all along, upside down."
+
+[together.little]
+text = "And then they had a nap!"
+troublemaker = "And then a dragon came! A small one."
+
+# ---------------------------------------------------------------------------------------------
+[search]
+intro = "Everyone hunts the Clubhouse for the missing page."
+
+[search.nothing]
+text = "Not under the cloth. Not in the teapot."
+guardian = "I've checked the table. Twice. It isn't here."
+lazybones = "It isn't under here. I looked very hard, sitting down."
+
+[board.not_here]
+text = "Not pinned to the board, either. Somebody's hidden it well."
+grump = "Not on the board. Some people just can't leave a book alone."
+
+# ---------------------------------------------------------------------------------------------
+[close]
+fire = "The fire settles to a glow, and everyone comes back to the rug."
+daisy = "As {reader} closes the book, something slips out from between the pages."
+daisy_searched = "{reader} gives the book a last shake, and something flutters out from inside the cover."
+kept = "Whoever left the book wanted it found. The daisy is the colony's now, to keep."
+
+[close.end]
+text = "It's a daisy. Somebody pressed it, and kept it here."
+scholar = "Pressed flat, years ago, maybe. A bookmark for the very last page."
+sweetheart = "Oh, look, a daisy. I think that was the ending all along."
+grump = "A flower. Well. That's better than most endings."

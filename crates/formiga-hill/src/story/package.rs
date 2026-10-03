@@ -7,15 +7,16 @@
 //! stories are packages too, built into Hill and loaded by the same code.
 
 use super::lines::Lines;
-use super::script::{AREAS, Story, parse_story};
+use super::script::{Story, parse_story, staged_area};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs;
 use std::path::Path;
 
-/// The newest content API this Hill hosts.
-pub const HILL_API: u32 = 1;
+/// The newest content API this Hill hosts. API 2 staged stories in the Clubhouse; a package
+/// written for API 1, when they were staged on the green, still loads, and plays there too.
+pub const HILL_API: u32 = 2;
 
 pub mod limits {
     pub const MAX_FILES: usize = 64;
@@ -252,10 +253,11 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
             )));
         }
     }
+    let mut areas = Vec::new();
     for area in &manifest.requirements.areas {
-        if !AREAS.contains(&area.as_str()) {
-            return Err(in_manifest(format!("there is no area called \"{area}\"")));
-        }
+        let staged = staged_area(manifest.hill_api, area)
+            .map_err(|problem| in_manifest(format!("requirements.areas: {problem}")))?;
+        areas.push(staged);
     }
     if manifest.entry_points.is_empty() || manifest.entry_points.len() > limits::MAX_ENTRY_POINTS {
         return Err(in_manifest(format!(
@@ -285,11 +287,9 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
         }
         let story_text =
             text(files, entry).map_err(|problem| refuse(&package, Some(entry), problem))?;
-        let story = parse_story(story_text, &lines, min_cast)
+        let story = parse_story(story_text, &lines, min_cast, manifest.hill_api)
             .map_err(|problem| refuse(&package, Some(entry), problem))?;
-        if !manifest.requirements.areas.is_empty()
-            && !manifest.requirements.areas.contains(&story.area.to_owned())
-        {
+        if !areas.is_empty() && !areas.contains(&story.area) {
             return Err(refuse(
                 &package,
                 Some(entry),
@@ -365,7 +365,7 @@ mod tests {
                 title = "A tiny story"
                 author = "Someone"
                 version = "1.0.0"
-                hill_api = 1
+                hill_api = 2
                 content_types = ["story"]
                 entry_points = ["content/tiny.toml"]
                 future_field = "is ignored"
@@ -378,7 +378,7 @@ mod tests {
                 [story]
                 id = "tiny"
                 title = "title"
-                area = "green"
+                area = "clubhouse"
                 start = "only"
 
                 [roles.anyone]
@@ -422,19 +422,19 @@ mod tests {
         files.insert(
             "manifest.toml".into(),
             manifest
-                .replace("hill_api = 1", "hill_api = 2")
+                .replace("hill_api = 2", "hill_api = 3")
                 .into_bytes(),
         );
-        assert!(problem(&files).contains("content API 2"));
+        assert!(problem(&files).contains("content API 3"));
     }
 
     #[test]
     fn permissions_and_unknown_capabilities_are_refused() {
         for (from, to) in [
-            ("hill_api = 1", "hill_api = 1\npermissions = [\"network\"]"),
+            ("hill_api = 2", "hill_api = 2\npermissions = [\"network\"]"),
             (
-                "hill_api = 1",
-                "hill_api = 1\n[requirements]\ncapabilities = [\"photos\"]",
+                "hill_api = 2",
+                "hill_api = 2\n[requirements]\ncapabilities = [\"photos\"]",
             ),
             (
                 "content_types = [\"story\"]",
@@ -500,5 +500,65 @@ mod tests {
             assert!(read_folder(&root).unwrap_err().problem.contains("links"));
         }
         fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// A package written for content API 1, when stories were staged on the green, as one was.
+    fn written_for_the_green() -> Files {
+        let mut files = minimal();
+        let manifest = String::from_utf8(files["manifest.toml"].clone()).unwrap();
+        let manifest = manifest.replace("hill_api = 2", "hill_api = 1")
+            + "[requirements]\nareas = [\"green\"]\n";
+        files.insert("manifest.toml".into(), manifest.into_bytes());
+        let story = String::from_utf8(files["content/tiny.toml"].clone()).unwrap();
+        files.insert(
+            "content/tiny.toml".into(),
+            story
+                .replace("area = \"clubhouse\"", "area = \"green\"")
+                .replace(
+                    "[[scenes.beats]]\n                say",
+                    "[[scenes.beats]]\n                walk = \"anyone\"\n                to = \"blanket\"\n\n                [[scenes.beats]]\n                walk = \"anyone\"\n                to = \"centre\"\n\n                [[scenes.beats]]\n                say",
+                )
+                .into_bytes(),
+        );
+        files
+    }
+
+    #[test]
+    fn a_package_written_for_the_green_still_loads_and_plays_in_the_clubhouse() {
+        let package = load(&written_for_the_green(), "tiny.formiga-hill").unwrap();
+        let story = &package.stories[0];
+        assert_eq!(story.area, "clubhouse");
+        assert_eq!(story.api, 1);
+        assert_eq!(story.read_as, vec![("blanket", "rug")]);
+        assert!(matches!(
+            story.scenes[0].beats[0].action,
+            super::super::script::Action::Walk {
+                to: super::super::script::Place::Named("rug"),
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn each_content_api_speaks_only_its_own_places() {
+        // The Clubhouse's places are API 2's, and the green's API 1's.
+        let mut files = written_for_the_green();
+        let story = String::from_utf8(files["content/tiny.toml"].clone()).unwrap();
+        files.insert(
+            "content/tiny.toml".into(),
+            story
+                .replace("to = \"blanket\"", "to = \"hearth\"")
+                .into_bytes(),
+        );
+        assert!(problem(&files).contains("not a place on the green"));
+        let mut files = minimal();
+        let story = String::from_utf8(files["content/tiny.toml"].clone()).unwrap();
+        files.insert(
+            "content/tiny.toml".into(),
+            story
+                .replace("area = \"clubhouse\"", "area = \"green\"")
+                .into_bytes(),
+        );
+        assert!(problem(&files).contains("\"green\" is not one of clubhouse"));
     }
 }

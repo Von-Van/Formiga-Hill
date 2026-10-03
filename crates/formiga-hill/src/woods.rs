@@ -6,9 +6,12 @@ pub mod rummage;
 mod scenery;
 
 use crate::cast::{Cast, Id};
+use crate::daylight::Nightlights;
 use crate::finds::{self, Kind};
 use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Patch, Playground};
+use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
+use formiga_art::Canvas;
 
 /// A place in the glade worth searching.
 #[derive(Clone, Copy, Debug)]
@@ -257,9 +260,10 @@ pub fn influence(arrangement: &Arrangement) -> Influence {
     influence
 }
 
-/// The glade, with the companions who came walking in.
+/// The glade, with the companions who came walking in. After dark, fireflies drift under the
+/// trees; the canopy hides the sky.
 pub fn open(cast: &Cast, party: &[Id], now: f32) -> Playground {
-    Playground::with_members(
+    let mut ground = Playground::with_members(
         cast,
         party,
         now,
@@ -267,7 +271,19 @@ pub fn open(cast: &Cast, party: &[Id], now: f32) -> Playground {
         scenery::backdrop(),
         scenery::foreground(),
         Vec::new(),
-    )
+    );
+    let mut lamps = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    crate::daylight::fireflies(
+        &mut lamps,
+        &[(20, 70, 340, 40, 16), (40, 120, 300, 50, 8)],
+        950,
+    );
+    ground.set_nightlights(Nightlights {
+        lamps,
+        sky: Canvas::new(1, 1),
+        indoors: false,
+    });
+    ground
 }
 
 #[cfg(test)]

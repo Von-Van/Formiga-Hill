@@ -1328,6 +1328,30 @@ fn root(scene: &mut Canvas, points: &[(i32, i32)], (thick, thin): (f32, f32), sa
     }
 }
 
+/// One of the oak's roots: the points it runs along, how thick it is where it leaves the trunk
+/// and at its end, and its salt.
+type Root = (&'static [(i32, i32)], (f32, f32), u32);
+
+/// The roots lying on the soil, drawn in this order.
+const ROOTS: [Root; 5] = [
+    (
+        &[(342, 176), (328, 181), (316, 183), (304, 184), (291, 187)],
+        (11.0, 3.0),
+        1801,
+    ),
+    (&[(386, 174), (380, 184), (374, 191)], (12.0, 4.0), 1802),
+    SETT_ROOT,
+    (
+        &[(350, 175), (343, 185), (333, 193), (321, 197)],
+        (12.0, 3.0),
+        1804,
+    ),
+    (&[(334, 186), (326, 188), (316, 187)], (4.0, 2.0), 1805),
+];
+
+/// The root that ends beside the badger's sett, which is dug in under its tip.
+const SETT_ROOT: Root = (&[(366, 175), (360, 186), (349, 194)], (11.0, 3.0), 1803);
+
 /// The oak's roots sprawling forward and to the left over the soil, a dark nook among them.
 fn root_tangle(scene: &mut Canvas) {
     // Bare soil between the roots, and the nook where something might be dug up.
@@ -1335,36 +1359,9 @@ fn root_tangle(scene: &mut Canvas) {
     ellipse(scene, 316, 190, 7, 3, EARTH.shadow);
     ellipse(scene, 316, 190, 5, 2, EARTH.edge);
     put(scene, 313, 189, EARTH.light);
-    root(
-        scene,
-        &[(342, 176), (328, 181), (316, 183), (304, 184), (291, 187)],
-        (11.0, 3.0),
-        1801,
-    );
-    root(
-        scene,
-        &[(386, 174), (380, 184), (374, 191)],
-        (12.0, 4.0),
-        1802,
-    );
-    root(
-        scene,
-        &[(366, 175), (360, 186), (349, 194)],
-        (11.0, 3.0),
-        1803,
-    );
-    root(
-        scene,
-        &[(350, 175), (343, 185), (333, 193), (321, 197)],
-        (12.0, 3.0),
-        1804,
-    );
-    root(
-        scene,
-        &[(334, 186), (326, 188), (316, 187)],
-        (4.0, 2.0),
-        1805,
-    );
+    for (points, widths, salt) in ROOTS {
+        root(scene, points, widths, salt);
+    }
     // Pebbles turned up among them.
     for (x, y) in [(328, 189), (306, 189), (340, 196)] {
         boulder(scene, (x, y), (2, 1), 1806 + x as u32);
@@ -2068,6 +2065,652 @@ fn reeds(scene: &mut Canvas) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The places only some company finds
+// ---------------------------------------------------------------------------------------------
+//
+// These are painted over the finished glade only when a party opens them (see `EXTRAS`), so
+// each lays the sun back over itself wherever a beam crosses it. None of them reads what is
+// already there, so they could as well be painted onto a clear canvas and laid over the glade.
+
+/// Yellow lichen, in rosettes on bare stone.
+const LICHEN: Ramp = Ramp::new(0x5a5428, 0x7a7234, 0x9a9042, 0xb8ac56, 0xd0c470);
+/// Stone that has lain in the earth: darker, browner and damp.
+const DAMP_ROCK: Ramp = Ramp::new(0x2a2a24, 0x3c3a30, 0x504c3e, 0x68624e, 0x847e66);
+/// Grass and moss that grew on under a stone's edge: pale, yellowed and flattened.
+const BLANCHED: Ramp = Ramp::new(0x56583a, 0x707246, 0x8a8a56, 0xa2a068, 0xb8b47e);
+/// Earth a badger has dug out from deep down: paler than the floor it is thrown over.
+const SPOIL: Ramp = Ramp::new(0x3a2a1c, 0x5a4430, 0x786046, 0x967c5a, 0xb09872);
+/// Old bedding a badger has dragged out: dry grass and bracken.
+const BEDDING: Ramp = Ramp::new(0x4a3e24, 0x6a5a32, 0x8a7642, 0xa69254, 0xbeaa6a);
+const WOODLOUSE: Ramp = Ramp::new(0x2e2e34, 0x46464e, 0x5e5e66, 0x7a7a82, 0x9898a0);
+/// Where the light comes from, for a surface shaded by which way it faces: up and to the left,
+/// and towards the eye.
+const LIGHT: [f32; 3] = [-0.505, -0.589, 0.631];
+
+/// A badger's sett, dug in under the tip of one of the oak's roots: a wide, low mouth going back
+/// into the dark, in a bank of earth the badgers have thrown up, the root lying across the top
+/// of it with hair roots trailing, and in front a spoil heap of earth from deep down and old
+/// bedding, a trough worn through it where they drag things out.
+pub fn badger_sett(scene: &mut Canvas, sign: (f32, f32)) {
+    let (mx, floor_y) = (sign.0 as i32 + 5, sign.1 as i32 + 3);
+    // The bank, its crown still under the leaf litter, its face dug bare.
+    let (bx, foot) = (mx + 4, floor_y + 1);
+    ellipse(scene, bx + 4, foot, 13, 2, SHADE);
+    for x in bx - 11..=bx + 11 {
+        let u = (x - bx) as f32 / 11.0;
+        let rise = 9.0 * (1.0 - u * u).max(0.0).powf(0.6);
+        let top = foot - rise.round() as i32;
+        let litter = top + 1 + pick(x, 0, 2901, 3);
+        for y in top..foot {
+            let v = (y - top) as f32 / rise.max(1.0);
+            let lit = u * 0.9 + v * 1.1 - 0.6;
+            let color = if y == top {
+                LITTER.edge
+            } else if y <= litter {
+                tone(
+                    LITTER,
+                    2 + i32::from(chance(x, y, 2902, 100)) - i32::from(u > 0.5),
+                )
+            } else {
+                let level = if lit < -0.2 {
+                    3
+                } else if lit < 0.6 {
+                    2
+                } else {
+                    1
+                } + match noise(x, y.div_euclid(2), 2903) % 7 {
+                    0 => 1,
+                    1 => -1,
+                    _ => 0,
+                };
+                tone(EARTH, level.clamp(1, 4))
+            };
+            put(scene, x, y, color);
+        }
+    }
+    // The mouth: wider than it is high, the way a badger is, its rim dug clean and the lip over
+    // it catching the light.
+    let mouth = |y: i32, grow: f32| -> (i32, i32) {
+        let rise = (floor_y - y) as f32 / (7.0 + grow);
+        let half = 7.0 + grow;
+        let half = if rise < 0.4 {
+            half
+        } else {
+            half * (1.0 - ((rise - 0.4) / 0.6).powi(2)).max(0.0).sqrt()
+        };
+        (
+            (mx as f32 - half).round() as i32,
+            (mx as f32 + half).round() as i32,
+        )
+    };
+    let (from, to) = mouth(floor_y, 1.0);
+    for x in from..=to {
+        let Some(lip) = (floor_y - 8..=floor_y).find(|&y| {
+            let (from, to) = mouth(y, 1.0);
+            (from..=to).contains(&x)
+        }) else {
+            continue;
+        };
+        vline(scene, x, lip, floor_y + 1 - lip, EARTH.edge);
+        put(scene, x, lip - 1, EARTH.light);
+    }
+    for y in floor_y - 7..=floor_y {
+        let (from, to) = mouth(y, 0.0);
+        for x in from..=to {
+            let color = if y > floor_y - 2 && x > mx - 3 {
+                HOLLOW_FLOOR
+            } else if x >= to - 1 && y > floor_y - 6 {
+                mix(HOLLOW, HOLLOW_FLOOR, 0.6)
+            } else {
+                HOLLOW
+            };
+            put(scene, x, y, color);
+        }
+    }
+    // The root it is dug in under, lying across the top of the mouth, and hair roots hanging
+    // from it into the dark.
+    let (points, widths, salt) = SETT_ROOT;
+    root(scene, points, widths, salt);
+    for (x, y, long) in [(mx - 4, floor_y - 3, 2), (mx - 1, floor_y - 5, 3)] {
+        vline(scene, x, y, long, OAK_BARK.base);
+        put(scene, x, y + long, OAK_BARK.light);
+    }
+    // The spoil heap, with the trough worn down the middle of it from the mouth.
+    let (hx, hy) = (mx + 4, floor_y + 7);
+    ellipse(scene, hx + 3, hy, 15, 2, SHADE);
+    for x in hx - 13..=hx + 13 {
+        let u = (x - hx) as f32 / 13.0;
+        let rise = 6.0 * (1.0 - u * u).max(0.0).powf(0.9) + patches(x, 0, (3, 1), 2904);
+        let top = hy - rise.round() as i32;
+        for y in top..hy {
+            let v = (y - top) as f32 / rise.max(1.0);
+            let lit = u * 0.8 + v * 1.2 - 0.5;
+            let trough = x - (mx + (y - floor_y) * 5 / 7);
+            let level = if y == top {
+                1
+            } else if y == top + 1 {
+                4
+            } else if lit < -0.2 {
+                3
+            } else if lit < 0.6 {
+                2
+            } else {
+                1
+            } + match trough {
+                -1..=1 => -1,
+                2 => 1,
+                _ => 0,
+            } + match noise(x, y, 2905) % 7 {
+                0 => 1,
+                1 => -1,
+                _ => 0,
+            };
+            put(scene, x, y, tone(SPOIL, level.clamp(0, 4)));
+        }
+    }
+    boulder(scene, (hx + 6, hy - 3), (2, 1), 2906);
+    boulder(scene, (hx - 8, hy - 2), (1, 1), 2907);
+    // Old bedding dragged out with it: wisps of dry grass caught on the lip and lying on the
+    // heap.
+    for (x, y, dx, dy) in [
+        (mx + 6, floor_y - 1, 3, -1),
+        (mx + 8, floor_y + 1, 2, 1),
+        (hx + 1, hy - 4, -3, 1),
+        (hx + 8, hy - 2, 3, 0),
+    ] {
+        line(scene, (x, y), (x + dx, y + dy), BEDDING.base);
+        put(scene, x, y, BEDDING.light);
+        put(scene, x + dx, y + dy + 1, rgba(0x14241c, 60));
+    }
+}
+
+/// A crevice where a root parts from the oak's foot, just wide enough for small paws: a dark
+/// slot narrowing up into the bark, its lips rolled in towards it, the far side catching a
+/// little light, litter spilling in at its foot, a cobweb strung across it and a pair of tiny
+/// toadstools growing beside it.
+pub fn root_crevice(scene: &mut Canvas, sign: (f32, f32)) {
+    let (top, bottom) = (sign.1 as i32 - 10, sign.1 as i32 + 5);
+    let span = (bottom - top) as f32;
+    // The first and last columns of the slot in a row, the first being its dark edge, and how
+    // far down it the row is: a pixel wide at the top, widening to its foot, and leaning a
+    // little with the flare of the trunk.
+    let row = |y: i32| -> (i32, i32, f32) {
+        let t = (y - top) as f32 / span;
+        let width = 1.0 + 6.2 * t.powf(1.3);
+        let centre = sign.0 + 0.5 + (0.5 - t) * 1.2;
+        let from = (centre - width / 2.0).round() as i32;
+        (from, from + width.round() as i32 - 1, t)
+    };
+    for y in top..=bottom {
+        let (from, to, t) = row(y);
+        // The bark rolled in round it, lit on its left lip and shaded on its right.
+        if chance(from, y, 2950, 140) {
+            put(scene, from - 2, y, OAK_BARK.light);
+        }
+        put(scene, from - 1, y, OAK_BARK.light);
+        put(scene, from, y, OAK_BARK.edge);
+        put(scene, to + 1, y, OAK_BARK.edge);
+        put(scene, to + 2, y, OAK_BARK.shadow);
+        for x in from + 1..=to {
+            let color = if x == to && t > 0.4 {
+                HOLLOW_FLOOR
+            } else if x == to {
+                mix(HOLLOW, HOLLOW_FLOOR, 0.4)
+            } else if y == bottom {
+                HOLLOW_FLOOR
+            } else {
+                HOLLOW
+            };
+            put(scene, x, y, color);
+        }
+    }
+    // The split running on up the bark above it.
+    let (tip, _, _) = row(top);
+    for (dx, dy) in [(0, -1), (0, -2), (1, -3)] {
+        put(scene, tip + dx, top + dy, OAK_BARK.edge);
+        put(scene, tip + dx - 1, top + dy, OAK_BARK.light);
+    }
+    // Leaf litter spilling in over its foot, and moss either side of it.
+    let (from, to, _) = row(bottom);
+    for x in from..=to + 1 {
+        if chance(x, bottom, 2951, 150) {
+            put(scene, x, bottom + 1, LITTER.light);
+            put(scene, x, bottom, LITTER.shadow);
+        } else {
+            put(scene, x, bottom + 1, EARTH.shadow);
+        }
+    }
+    for (x, y) in [
+        (from - 2, bottom),
+        (from - 1, bottom + 1),
+        (to + 2, bottom + 1),
+    ] {
+        put(scene, x, y, MOSS.base);
+        put(scene, x, y - 1, MOSS.light);
+        put(scene, x + 1, y + 1, MOSS.shadow);
+    }
+    // A cobweb strung across its upper part.
+    let (from, to, _) = row(top + 5);
+    line(
+        scene,
+        (from - 1, top + 4),
+        (to + 1, top + 6),
+        rgba(0xdce4d8, 80),
+    );
+    // Two tiny toadstools growing out of the bark beside its foot.
+    let (_, to, _) = row(bottom - 1);
+    for (x, foot, tall) in [(to + 4, bottom - 1, 2), (to + 6, bottom + 1, 1)] {
+        vline(scene, x, foot - tall + 1, tall, STALK.light);
+        let under = foot - tall;
+        put(scene, x - 1, under, CAP.edge);
+        put(scene, x, under, STALK.edge);
+        put(scene, x + 1, under, CAP.edge);
+        put(scene, x - 1, under - 1, CAP.light);
+        put(scene, x, under - 1, CAP.base);
+        put(scene, x + 1, under - 1, CAP.shadow);
+        put(scene, x, under - 2, CAP.shine);
+    }
+}
+
+/// The mossy boulder a close pair can heave over: sunk a little into the floor in the sunbeam
+/// that comes down past the ferns, lichen on its flanks and moss over its crown. Once searched
+/// it lies rolled over towards the ferns, its damp underside to the front, and where it lay is
+/// a bare dip of earth with blanched grass round it and woodlice caught out in the light.
+pub fn mossy_boulder(scene: &mut Canvas, sign: (f32, f32), rolled: bool) {
+    let base = sign.1 as i32 + 6;
+    let lying = Stone {
+        centre: (sign.0 + 0.5, sign.1 - 2.0),
+        radii: (13.0, 10.0),
+        turn: 0.0,
+        sunk: base,
+        buried: 0.78,
+        salt: 2801,
+    };
+    if !rolled {
+        stone(scene, &lying);
+        return;
+    }
+    bare_patch(scene, (sign.0 as i32, base - 2), (12, 4));
+    // Moss torn up as it went over.
+    for (dx, dy) in [(-15, -3), (-12, 0), (-17, 1)] {
+        let (x, y) = (sign.0 as i32 + dx, base + dy);
+        hline(scene, x, y, 2, MOSS.base);
+        put(scene, x, y - 1, MOSS.light);
+        put(scene, x + 1, y + 1, MOSS.edge);
+    }
+    // Over on its side, settled a little into the moss, showing what lay deepest.
+    let (centre, radii) = ((sign.0 - 22.0, sign.1 - 10.0), (12.0, 9.2));
+    stone(
+        scene,
+        &Stone {
+            centre,
+            radii,
+            turn: -0.75,
+            sunk: (centre.1 + radii.1 * 0.95) as i32,
+            buried: 0.45,
+            ..lying
+        },
+    );
+}
+
+/// A stone big enough that it takes two to shift: lumpy, chipped into faces that each catch the
+/// light their own way, moss over whichever side was uppermost and earth caked on whichever lay
+/// in the ground.
+struct Stone {
+    /// Its middle, in the glade.
+    centre: (f32, f32),
+    /// Half its width and half its height as it lay before anyone moved it.
+    radii: (f32, f32),
+    /// How far it has been turned over from how it lay, clockwise, in radians.
+    turn: f32,
+    /// The lowest row of it that shows: below that it is sunk in the floor.
+    sunk: i32,
+    /// How far down it, as it lay, the earth came up: damp below that.
+    buried: f32,
+    salt: u32,
+}
+
+/// What a stone's surface is at a point.
+#[derive(Clone, Copy, PartialEq)]
+enum Face {
+    Rock,
+    Moss,
+    /// What lay in the earth.
+    Underside,
+}
+
+/// How many chipped faces a stone has.
+const FACETS: i32 = 6;
+/// How square a stone is: 2 would be an ellipse.
+const SQUARENESS: f32 = 2.15;
+
+impl Stone {
+    /// Where `(x, y)` falls on the stone in its own frame as it lay, scaled so its outline is
+    /// about 1 away from its middle, and how far out that is; `None` if it is off the stone.
+    fn at(&self, x: i32, y: i32) -> Option<(f32, f32, f32)> {
+        if y > self.sunk {
+            return None;
+        }
+        let (dx, dy) = (
+            x as f32 + 0.5 - self.centre.0,
+            y as f32 + 0.5 - self.centre.1,
+        );
+        let (sin, cos) = self.turn.sin_cos();
+        let u = (dx * cos + dy * sin) / self.radii.0;
+        let v = (dy * cos - dx * sin) / self.radii.1;
+        let angle = v.atan2(u);
+        let lumps = 1.0 + 0.07 * (3.0 * angle + 0.6).sin() + 0.04 * (5.0 * angle + 2.1).sin();
+        let out =
+            (u.abs().powf(SQUARENESS) + v.abs().powf(SQUARENESS)).powf(1.0 / SQUARENESS) / lumps;
+        (out <= 1.0).then_some((u, v, out))
+    }
+
+    /// Whether `(u, v)` is moss, bare rock, or the side that lay in the earth. Moss lies over
+    /// the crown in cushions and further down the left, dripping down here and there.
+    fn face(&self, u: f32, v: f32) -> Face {
+        let column = (u * self.radii.0).round() as i32;
+        let ragged = (noise(column, 0, self.salt) % 100) as f32 / 100.0 * 0.12;
+        let drip = if noise(column, 1, self.salt).is_multiple_of(4) {
+            0.16
+        } else {
+            0.0
+        };
+        let cushions = 0.12 * (u * 6.5 + 1.3).sin().abs();
+        if v < -0.4 - 0.32 * u + cushions + ragged + drip {
+            Face::Moss
+        } else if v > self.buried - ragged {
+            Face::Underside
+        } else {
+            Face::Rock
+        }
+    }
+
+    /// Which chipped face `(u, v)` is on: whichever of the stone's scattered seeds is nearest.
+    fn facet(&self, u: f32, v: f32) -> i32 {
+        (0..FACETS)
+            .min_by(|&a, &b| {
+                let (au, av) = self.seed(a);
+                let (bu, bv) = self.seed(b);
+                let distance = |su: f32, sv: f32| (u - su).powi(2) + (v - sv).powi(2) * 1.4;
+                distance(au, av).total_cmp(&distance(bu, bv))
+            })
+            .unwrap_or(0)
+    }
+
+    fn seed(&self, index: i32) -> (f32, f32) {
+        (
+            pick(index, 0, self.salt + 1, 161) as f32 / 100.0 - 0.8,
+            pick(index, 1, self.salt + 1, 161) as f32 / 100.0 - 0.8,
+        )
+    }
+
+    /// Which way the stone's surface faces at `(u, v)`, turned into the glade: rounded like a
+    /// cushion, flat across its middle and turning away at its edges.
+    fn normal(&self, u: f32, v: f32, out: f32) -> [f32; 3] {
+        let along = |w: f32, radius: f32| w.signum() * w.abs().powf(SQUARENESS - 1.0) / radius;
+        let (gu, gv) = (along(u, self.radii.0), along(v, self.radii.1));
+        let length = (gu * gu + gv * gv).sqrt().max(1e-6);
+        let (sin, cos) = self.turn.sin_cos();
+        let (gx, gy) = (
+            (gu * cos - gv * sin) / length,
+            (gu * sin + gv * cos) / length,
+        );
+        let tilt = out.powf(1.8).min(0.97);
+        [gx * tilt, gy * tilt, (1.0 - tilt * tilt).sqrt()]
+    }
+
+    /// How brightly the surface at `(u, v)` is lit, about -1 to 1. Each chipped face is nearly
+    /// flat, leaning its own way, so it takes the light all of a piece.
+    fn lit(&self, u: f32, v: f32, out: f32) -> f32 {
+        let facet = self.facet(u, v);
+        let (su, sv) = self.seed(facet);
+        let seed_out = (su.abs().powf(SQUARENESS) + sv.abs().powf(SQUARENESS))
+            .powf(1.0 / SQUARENESS)
+            .min(1.0);
+        let flat = self.normal(su, sv, seed_out);
+        let round = self.normal(u, v, out);
+        let lean = |axis: i32| (pick(facet, axis, self.salt + 2, 25) - 12) as f32 / 100.0;
+        let normal = [
+            flat[0] * 0.35 + round[0] * 0.65 + lean(0),
+            flat[1] * 0.35 + round[1] * 0.65 + lean(1),
+            flat[2] * 0.35 + round[2] * 0.65,
+        ];
+        let length = normal.iter().map(|n| n * n).sum::<f32>().sqrt();
+        normal.iter().zip(LIGHT).map(|(n, l)| n / length * l).sum()
+    }
+}
+
+/// Paints a stone where it lies, with the shade it casts and the sun that falls on it.
+fn stone(scene: &mut Canvas, stone: &Stone) {
+    let reach = stone.radii.0.max(stone.radii.1) * 1.12;
+    let (left, right) = (
+        (stone.centre.0 - reach).floor() as i32,
+        (stone.centre.0 + reach).ceil() as i32,
+    );
+    let (top, bottom) = (
+        (stone.centre.1 - reach).floor() as i32,
+        ((stone.centre.1 + reach).ceil() as i32).min(stone.sunk),
+    );
+    let on = |x: i32, y: i32| stone.at(x, y).is_some();
+    let face = |x: i32, y: i32| stone.at(x, y).map(|(u, v, _)| stone.face(u, v));
+    let foot = (left..=right)
+        .filter_map(|x| (top..=bottom).rev().find(|&y| on(x, y)))
+        .max()
+        .unwrap_or(bottom);
+    let middle = stone.centre.0.round() as i32;
+    let half = stone.radii.0.round() as i32;
+    ellipse(scene, middle + 4, foot + 1, half + 2, 2, SHADE);
+    ellipse(scene, middle + 1, foot, half, 1, rgba(0x14241c, 50));
+    let mut painted = Vec::new();
+    for y in top..=bottom {
+        for x in left..=right {
+            let Some((u, v, out)) = stone.at(x, y) else {
+                continue;
+            };
+            let here = stone.face(u, v);
+            let outline = [(0, -1), (0, 1), (-1, 0), (1, 0)]
+                .iter()
+                .any(|&(dx, dy)| !on(x + dx, y + dy));
+            let shade = stone.lit(u, v, out)
+                + (noise(x, y, stone.salt + 3) % 100) as f32 / 100.0 * 0.12
+                - 0.06;
+            let mut level = if shade > 0.84 {
+                4
+            } else if shade > 0.66 {
+                3
+            } else if shade > 0.3 {
+                2
+            } else {
+                1
+            };
+            // A ridge where one chipped face meets the next catches the light.
+            let ridge = stone
+                .at(x + 1, y + 1)
+                .is_some_and(|(nu, nv, _)| stone.facet(nu, nv) != stone.facet(u, v));
+            if ridge && here == Face::Rock && (2..4).contains(&level) {
+                level += 1;
+            }
+            let above = face(x, y - 1);
+            let color = match here {
+                Face::Moss if outline || face(x, y + 1) != Some(Face::Moss) => MOSS.edge,
+                Face::Moss => {
+                    let cushion = patches(
+                        (u * stone.radii.0) as i32 + 40,
+                        (v * stone.radii.1) as i32 + 40,
+                        (3, 2),
+                        stone.salt + 4,
+                    );
+                    let bump = if cushion > 0.66 {
+                        1
+                    } else if cushion < 0.3 {
+                        -1
+                    } else {
+                        0
+                    };
+                    tone(MOSS, (level + bump).clamp(1, 4))
+                }
+                Face::Rock if outline => ROCK.edge,
+                // Shaded under the moss hanging over it.
+                Face::Rock if above == Some(Face::Moss) => ROCK.shadow,
+                Face::Rock => {
+                    let color = tone(ROCK, level);
+                    if chance(x, y, stone.salt + 5, 26) {
+                        mix(color, ROCK.edge, 0.35)
+                    } else {
+                        color
+                    }
+                }
+                Face::Underside if outline => DAMP_ROCK.edge,
+                Face::Underside if above == Some(Face::Rock) => DAMP_ROCK.shadow,
+                Face::Underside => {
+                    let clod = patches(
+                        (u * stone.radii.0) as i32 + 40,
+                        (v * stone.radii.1) as i32 + 40,
+                        (3, 2),
+                        stone.salt + 6,
+                    );
+                    if clod > 0.62 && stone.turn != 0.0 {
+                        tone(EARTH, level)
+                    } else if level >= 3 && chance(x, y, stone.salt + 7, 50) {
+                        // Still wet from the ground.
+                        DAMP_ROCK.shine
+                    } else {
+                        tone(DAMP_ROCK, level)
+                    }
+                }
+            };
+            put(scene, x, y, color);
+            painted.push((x, y));
+        }
+    }
+    // Moss standing up off the crown like fur, and a few of its stalks with their capsules.
+    for x in left..=right {
+        let Some(crown) = (top..=bottom).find(|&y| on(x, y)) else {
+            continue;
+        };
+        if face(x, crown) != Some(Face::Moss) {
+            continue;
+        }
+        if chance(x, crown, stone.salt + 8, 130) {
+            put(
+                scene,
+                x,
+                crown - 1,
+                if x < middle { MOSS.light } else { MOSS.base },
+            );
+            painted.push((x, crown - 1));
+        }
+        if stone.turn == 0.0 && chance(x, crown, stone.salt + 9, 40) {
+            vline(scene, x, crown - 3, 2, BULRUSH.light);
+            put(scene, x, crown - 4, CAP.light);
+            painted.extend([(x, crown - 3), (x, crown - 2), (x, crown - 4)]);
+        }
+    }
+    // Rosettes of lichen on the bare stone.
+    for index in 0..5 {
+        let x = left + 3 + pick(index, 0, stone.salt + 10, right - left - 5);
+        let y = top + 3 + pick(index, 1, stone.salt + 10, bottom - top - 5);
+        let bare = |x: i32, y: i32| face(x, y) == Some(Face::Rock);
+        if !(bare(x, y) && bare(x - 1, y) && bare(x + 1, y) && bare(x, y + 1)) {
+            continue;
+        }
+        put(scene, x, y, LICHEN.base);
+        put(scene, x - 1, y, LICHEN.light);
+        match pick(index, 2, stone.salt + 10, 3) {
+            0 => put(scene, x, y + 1, LICHEN.shadow),
+            1 => put(scene, x + 1, y, LICHEN.shadow),
+            _ => put(scene, x - 1, y + 1, LICHEN.shadow),
+        }
+    }
+    // Grass growing up round its foot where it is sunk.
+    if stone.turn == 0.0 {
+        for x in [left + 3, left + 5, right - 4, right - 2] {
+            let tall = 2 + pick(x, 0, stone.salt + 12, 3);
+            let lean = if x < middle { -1 } else { 1 };
+            line(
+                scene,
+                (x, bottom + 1),
+                (x + lean, bottom + 1 - tall),
+                GRASS.base,
+            );
+            put(scene, x + lean, bottom + 1 - tall, GRASS.light);
+            painted.push((x + lean, bottom + 1 - tall));
+        }
+    }
+    for (x, y) in painted {
+        sunlit(scene, x, y, false);
+    }
+}
+
+/// The bare patch where a stone lay: a shallow dip of damp earth, the grass that grew in under
+/// its edge blanched and flattened round it, worm holes, a pale root, and woodlice caught out.
+fn bare_patch(scene: &mut Canvas, (cx, cy): (i32, i32), (rx, ry): (i32, i32)) {
+    let mut painted = Vec::new();
+    for y in cy - ry - 1..=cy + ry + 1 {
+        for x in cx - rx - 1..=cx + rx + 1 {
+            let (dx, dy) = ((x - cx) as f32 / rx as f32, (y - cy) as f32 / ry as f32);
+            let out = (dx * dx + dy * dy).sqrt() + (noise(x, y, 2810) % 100) as f32 / 100.0 * 0.16;
+            if out > 1.08 {
+                continue;
+            }
+            let color = if out > 0.84 {
+                // Ragged: the floor's own moss shows through it here and there.
+                if !chance(x, y, 2811, 200) {
+                    continue;
+                }
+                if chance(x, y, 2812, 50) {
+                    MOSS.light
+                } else {
+                    tone(BLANCHED, 2 + i32::from(dy < 0.0))
+                }
+            } else if out > 0.7 && dy < 0.0 {
+                // The rim of the dip, nearest the eye at the back.
+                EARTH.edge
+            } else {
+                // The dip's near wall, up and to the left, in its own shadow; its far wall lit.
+                let wall = dx + dy * 0.8;
+                let level = if out > 0.5 && wall > 0.4 {
+                    3
+                } else if out < 0.5 && patches(x, y, (4, 2), 2813) > 0.55 {
+                    2
+                } else {
+                    1
+                };
+                tone(EARTH, level)
+            };
+            put(scene, x, y, color);
+            painted.push((x, y));
+        }
+    }
+    // Wet glints, worm holes, a pale root and two woodlice.
+    for index in 0..4 {
+        let x = cx - rx / 2 + pick(index, 0, 2814, rx);
+        let y = cy - ry / 2 + pick(index, 1, 2814, ry.max(1));
+        put(scene, x, y, EARTH.shine);
+    }
+    for (dx, dy) in [(-6, 0), (3, -1), (7, 1)] {
+        put(scene, cx + dx, cy + dy, HOLLOW);
+        put(scene, cx + dx + 1, cy + dy, EARTH.light);
+    }
+    line(
+        scene,
+        (cx - 9, cy + 1),
+        (cx - 4, cy + 2),
+        mix(STALK.shadow, EARTH.base, 0.3),
+    );
+    put(scene, cx - 3, cy + 1, STALK.shadow);
+    for (x, y) in [(cx + 1, cy + 1), (cx - 3, cy - 1)] {
+        hline(scene, x, y, 3, WOODLOUSE.base);
+        put(scene, x, y, WOODLOUSE.light);
+        put(scene, x + 1, y - 1, WOODLOUSE.shine);
+        hline(scene, x, y + 1, 3, WOODLOUSE.edge);
+    }
+    for (x, y) in painted {
+        sunlit(scene, x, y, true);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
 // The light
 // ---------------------------------------------------------------------------------------------
 
@@ -2078,35 +2721,83 @@ fn sunbeams(scene: &mut Canvas) {
         let salt = 2500 + index as u32 * 10;
         for y in top..end {
             let centre = origin + SLANT * y as f32;
-            let strength = ((y - top) as f32 / 18.0).min(1.0) * ((end - y) as f32 / 40.0).min(1.0);
             for x in (centre - half - 2.0) as i32..=(centre + half + 2.0) as i32 {
-                let off = (x as f32 - centre).abs() / half
-                    + (noise(x, y, salt) % 100) as f32 / 100.0 * 0.14;
-                let alpha = if off < 0.35 {
-                    52.0
-                } else if off < 0.7 {
-                    34.0
-                } else if off < 1.0 {
-                    16.0
-                } else {
-                    0.0
-                } * strength;
-                if alpha >= 1.0 {
-                    put(scene, x, y, rgba(SUN, alpha as u8));
+                let alpha = shaft(index, x, y);
+                if alpha > 0 {
+                    put(scene, x, y, rgba(SUN, alpha));
                 }
             }
         }
         // Where it lands.
-        let (lx, ly) = ((origin + SLANT * end as f32) as i32, end - 2);
-        let half = half as i32;
-        for (rx, ry, alpha) in [(half * 2 + 4, 5, 22), (half * 2, 3, 26), (half, 1, 30)] {
+        let (lx, ly) = landing(index);
+        for (rx, ry, alpha) in pool(index) {
             ellipse(scene, lx, ly, rx, ry, rgba(SUN, alpha));
         }
         // Motes caught in the light.
+        let half = half as i32;
         for mote in 0..9 {
             let y = top + 20 + pick(mote, 0, salt + 1, end - top - 40);
             let x = (origin + SLANT * y as f32) as i32 + pick(mote, 1, salt + 1, half * 2) - half;
             put(scene, x, y, rgba(0xfff0c0, 110));
+        }
+    }
+}
+
+/// How strongly the `index`th beam's shaft falls on `(x, y)`: the alpha of the sun laid over it.
+fn shaft(index: usize, x: i32, y: i32) -> u8 {
+    let (origin, half, top, end) = BEAMS[index];
+    let centre = origin + SLANT * y as f32;
+    if y < top || y >= end || x < (centre - half - 2.0) as i32 || x > (centre + half + 2.0) as i32 {
+        return 0;
+    }
+    let strength = ((y - top) as f32 / 18.0).min(1.0) * ((end - y) as f32 / 40.0).min(1.0);
+    let salt = 2500 + index as u32 * 10;
+    let off = (x as f32 - centre).abs() / half + (noise(x, y, salt) % 100) as f32 / 100.0 * 0.14;
+    let alpha = if off < 0.35 {
+        52.0
+    } else if off < 0.7 {
+        34.0
+    } else if off < 1.0 {
+        16.0
+    } else {
+        0.0
+    } * strength;
+    // Anything fainter than one step is no light at all.
+    alpha as u8
+}
+
+/// Where the `index`th beam lands on the floor.
+fn landing(index: usize) -> (i32, i32) {
+    let (origin, _, _, end) = BEAMS[index];
+    ((origin + SLANT * end as f32) as i32, end - 2)
+}
+
+/// The warm pool where the `index`th beam lands: rings of sun, widest and faintest first.
+fn pool(index: usize) -> [(i32, i32, u8); 3] {
+    let half = BEAMS[index].1 as i32;
+    [(half * 2 + 4, 5, 22), (half * 2, 3, 26), (half, 1, 30)]
+}
+
+/// The sun that falls on `(x, y)`, laid over whatever has just been painted there as the
+/// sunbeams were laid over the glade, so something added to it sits in the same light. Only the
+/// `floor` takes the pools where the beams land; anything standing up off it only the shafts.
+fn sunlit(scene: &mut Canvas, x: i32, y: i32, floor: bool) {
+    for index in 0..BEAMS.len() {
+        let alpha = shaft(index, x, y);
+        if alpha > 0 {
+            put(scene, x, y, rgba(SUN, alpha));
+        }
+        if !floor {
+            continue;
+        }
+        let (lx, ly) = landing(index);
+        let (dx, dy) = (i64::from(x - lx), i64::from(y - ly));
+        for (rx, ry, alpha) in pool(index) {
+            // The same test `ellipse` makes.
+            let (rx2, ry2) = (i64::from(rx * rx), i64::from(ry * ry));
+            if dx * dx * ry2 + dy * dy * rx2 <= rx2 * ry2 {
+                put(scene, x, y, rgba(SUN, alpha));
+            }
         }
     }
 }
@@ -2222,7 +2913,7 @@ fn front_litter(scene: &mut Canvas) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::woods::SPOTS;
+    use crate::woods::{EXTRAS, Extra, Opener, SPOTS};
 
     #[test]
     fn the_backdrop_fills_every_pixel() {
@@ -2263,5 +2954,86 @@ mod tests {
     fn the_glade_is_the_same_every_time() {
         assert_eq!(backdrop(), backdrop());
         assert_eq!(foreground(), foreground());
+    }
+
+    /// The glade with an extra spot painted over it, as an outing that opened it draws it.
+    fn opened(glade: &Canvas, extra: &Extra, searched: bool) -> Canvas {
+        let mut scene = glade.clone();
+        let sign = extra.spot.sign;
+        match extra.opener {
+            Opener::Explorer => badger_sett(&mut scene, sign),
+            Opener::LittleOne => root_crevice(&mut scene, sign),
+            Opener::ClosePair => mossy_boulder(&mut scene, sign, searched),
+        }
+        scene
+    }
+
+    #[test]
+    fn the_extra_spots_leave_room_to_stand() {
+        let glade = backdrop();
+        for extra in &EXTRAS {
+            for searched in [false, true] {
+                let scene = opened(&glade, extra, searched);
+                let (x, y) = (extra.spot.stand.0 as i32, extra.spot.stand.1 as i32);
+                for dy in -2..=1 {
+                    for dx in -4..=4 {
+                        assert_eq!(
+                            scene.get(x + dx, y + dy),
+                            glade.get(x + dx, y + dy),
+                            "{} is painted where its companion stands",
+                            extra.spot.name
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_crevice_is_dark_where_its_glint_shows() {
+        let glade = backdrop();
+        let extra = EXTRAS
+            .iter()
+            .find(|extra| extra.opener == Opener::LittleOne)
+            .unwrap();
+        let scene = opened(&glade, extra, false);
+        let (x, y) = (extra.spot.sign.0 as i32, extra.spot.sign.1 as i32);
+        // The glint is a cross two pixels each way.
+        for (dx, dy) in [(0, 0), (-2, 0), (2, 0), (0, -2), (0, 2)] {
+            let pixel = scene.get(x + dx, y + dy);
+            let brightness = u32::from(pixel.r) + u32::from(pixel.g) + u32::from(pixel.b);
+            assert!(brightness < 150, "the crevice is not dark at {dx},{dy}");
+        }
+    }
+
+    #[test]
+    fn the_boulder_is_rolled_aside_once_searched() {
+        let glade = backdrop();
+        let extra = EXTRAS
+            .iter()
+            .find(|extra| extra.opener == Opener::ClosePair)
+            .unwrap();
+        let (lying, rolled) = (opened(&glade, extra, false), opened(&glade, extra, true));
+        // Its crown was over the sign; once it has gone over, the glade shows there again.
+        let (x, y) = (extra.spot.sign.0 as i32, extra.spot.sign.1 as i32 - 8);
+        assert_ne!(lying.get(x, y), glade.get(x, y));
+        assert_eq!(rolled.get(x, y), glade.get(x, y));
+        // And where it lay is bare earth: browner than the stone was.
+        let (x, y) = (extra.spot.sign.0 as i32, extra.spot.sign.1 as i32 + 4);
+        let (stone, earth) = (lying.get(x, y), rolled.get(x, y));
+        assert!(i32::from(earth.r) - i32::from(earth.b) > i32::from(stone.r) - i32::from(stone.b));
+    }
+
+    #[test]
+    fn the_extra_spots_are_the_same_every_time() {
+        let glade = backdrop();
+        for extra in &EXTRAS {
+            for searched in [false, true] {
+                assert_eq!(
+                    opened(&glade, extra, searched),
+                    opened(&glade, extra, searched)
+                );
+            }
+        }
     }
 }

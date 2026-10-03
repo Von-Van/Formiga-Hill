@@ -174,6 +174,9 @@ struct Swimmer {
 }
 
 pub struct Angling {
+    /// How dark the hour has made the pool already, so the trip's own dusk only darkens it past
+    /// that.
+    hour_dark: f32,
     party: Vec<Id>,
     swimmers: Vec<Swimmer>,
     phase: Phase,
@@ -280,6 +283,7 @@ impl Angling {
             events: Vec::new(),
             dice,
             reduce_motion: ground.reduce_motion(),
+            hour_dark: 0.0,
             last_step: now,
             clock: now,
             holding: false,
@@ -901,8 +905,13 @@ impl Angling {
 
     /// The glade darkening, the fish beneath the surface, the line and float, the strain, the
     /// fish held up, and the creel.
+    /// How dark the hour has made the pool already: the trip's dusk adds only what is more.
+    pub fn set_hour_dark(&mut self, darkness: f32) {
+        self.hour_dark = darkness;
+    }
+
     pub fn draw(&self, scene: &mut Canvas, now: f32) {
-        dim(scene, self.light);
+        dim(scene, self.light, self.hour_dark);
         for swimmer in self.swimmers.iter().filter(|s| s.surfaced) {
             draw_shadow(scene, swimmer, now, self.reduce_motion);
         }

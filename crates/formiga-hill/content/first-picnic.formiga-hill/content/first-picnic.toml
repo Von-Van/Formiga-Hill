@@ -1,10 +1,11 @@
-# Someone has left a picnic on the green. Three scenes and a choice: share the basket, or find
-# something to play with; then everyone sits down together as the sun goes behind the Hill.
+# Someone has left warm buns in the Clubhouse. Three scenes and a choice: share them on the rug,
+# or find something to play with; then everyone sits down together as the sun goes behind the
+# Hill, out of the window.
 
 [story]
 id = "first-picnic"
 title = "title"
-area = "green"
+area = "clubhouse"
 start = "spread"
 
 # The host is whoever is fondest of company, and their closest friend comes along.
@@ -37,7 +38,7 @@ narrate = "spread.intro"
 
 [[scenes.beats]]
 walk = "host"
-to = "blanket"
+to = "rug"
 
 [[scenes.beats]]
 walk = "friend"
@@ -46,12 +47,12 @@ meanwhile = true
 
 [[scenes.beats]]
 walk = "shy"
-to = "oak"
+to = "armchair"
 meanwhile = true
 
 [[scenes.beats]]
 walk = "little"
-to = "swing"
+to = "window"
 meanwhile = true
 
 [[scenes.beats]]
@@ -214,7 +215,7 @@ narrate = "sunset.intro"
 
 [[scenes.beats]]
 walk = "all"
-to = "blanket"
+to = "rug"
 
 [[scenes.beats]]
 pose = "all"

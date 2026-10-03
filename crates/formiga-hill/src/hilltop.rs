@@ -5,8 +5,9 @@
 mod scenery;
 
 use crate::cast::Cast;
+use crate::daylight::Nightlights;
 use crate::finds::{self, art};
-use crate::paint::{blit, mix};
+use crate::paint::{blit, mix, rgb};
 use crate::playground::{Attraction, Layout, Patch, Playground, Prop};
 use formiga_art::{Canvas, Rgba};
 use std::collections::BTreeMap;
@@ -106,17 +107,48 @@ pub fn attractions(arrangement: &Arrangement) -> Vec<Attraction> {
         .collect()
 }
 
+/// What shines on the summit after dark: the places below, and anything placed up here that
+/// gives off a light of its own.
+pub fn nightlights(arrangement: &Arrangement, backdrop: &Canvas) -> Nightlights {
+    let mut lamps = scenery::lamplight();
+    for (spot, id) in arrangement {
+        let color = match id.as_str() {
+            "lost_lantern" => rgb(0xffcf6a),
+            "fallen_star" => rgb(0xfff2b0),
+            "sovereign_arrow" => rgb(0xf4f6ff),
+            _ => continue,
+        };
+        let Some((x, y)) = SPOTS.get(usize::from(*spot)) else {
+            continue;
+        };
+        let piece = art::piece(id);
+        let middle = (
+            *x as i32 - piece.anchor.0 + piece.sprite.width() as i32 / 2,
+            *y as i32 - piece.anchor.1 + piece.sprite.height() as i32 / 2,
+        );
+        crate::daylight::glow(&mut lamps, middle, 30, color);
+    }
+    Nightlights {
+        lamps,
+        sky: scenery::night_sky(backdrop),
+        indoors: false,
+    }
+}
+
 /// The summit with the colony walking up onto it, and whatever has been placed.
 pub fn open(cast: &Cast, now: f32, arrangement: &Arrangement) -> Playground {
+    let backdrop = scenery::backdrop();
+    let lights = nightlights(arrangement, &backdrop);
     let mut ground = Playground::new(
         cast,
         now,
         layout(),
-        scenery::backdrop(),
+        backdrop,
         scenery::foreground(),
         props(arrangement),
     );
     ground.set_attractions(attractions(arrangement));
+    ground.set_nightlights(lights);
     ground
 }
 

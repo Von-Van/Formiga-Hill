@@ -35,13 +35,15 @@ const CHIMNEY_TOP: (i32, i32) = (101, 52);
 /// right and bottom edges, for knowing when the pointer is over it.
 pub const CASE: (i32, i32, i32, i32) = (15, 101, 43, 134);
 
-/// The Hill as the station sees it: the tree at the top of the near hill, a little way off.
+/// The Hill as the station sees it: the old tree at the left of its broad summit, which is wide
+/// enough for everything on the Hilltop to stand along it to the tree's right, drawn a little
+/// larger than the distance would make them so that each can be made out.
 const VISTA: Vista = Vista {
-    tree: (307.0, 68.0),
-    crest: |x| 160.0 - 92.0 * (1.0 - ((x - 312.0) / 112.0).powi(2)).max(0.0).sqrt(),
-    spread: 6.0,
-    shrink: 5,
-    tint: Tint::Haze(HILL_SHADE, 0.35),
+    tree: (292.0, 56.0),
+    crest: hill_crest,
+    spread: 5.0,
+    shrink: 4,
+    tint: Tint::Haze(HAZE, 0.15),
 };
 
 /// The scene behind everyone, with whatever souvenirs the colony has kept in the display case
@@ -96,52 +98,940 @@ pub const SMOKE_STEPS_PER_SECOND: f32 = 8.0;
 // Far away
 // ---------------------------------------------------------------------------------------------
 
+// What the far scenery needs besides the imports above: it builds its clouds and the old tree
+// in layers of their own before laying them over the scene.
+use crate::paint::blit;
+use formiga_art::Rgba;
+
+const WIDTH: i32 = SCENE_WIDTH as i32;
+
+/// The Hill's turf, its old tree and the path up it, in the Hilltop's own tones, so the Hill
+/// seen from the station is the same place, only further off.
+const TURF: Ramp = Ramp::new(0x55814c, 0x72a569, 0x86bb7c, 0x9ccb8b, 0xbadca4);
+const BARK: Ramp = Ramp::new(0x3e2c22, 0x5a4230, 0x7a5a3a, 0x93714f, 0xae8d68);
+const CROWN: Ramp = Ramp::new(0x2b4f31, 0x3f7143, 0x5d9a5a, 0x78b46a, 0x9dcf85);
+const EARTH: Ramp = Ramp::new(0x8e7553, 0xb39a6f, 0xcdb688, 0xdcc89a, 0xece0bb);
+const CLOUDS: Ramp = Ramp::new(0xc9d7e2, 0xdfe7ee, 0xf4f4f1, 0xfdfbf5, 0xffffff);
+const HEDGE: Ramp = Ramp::new(0x2f5733, 0x3f6e40, 0x4f8250, 0x67995e, 0x85b277);
+/// The colour of the air a long way off, which everything fades towards with distance.
+const HAZE: Rgba = rgb(0xcfe1dc);
+const SHADE: Rgba = rgba(0x2c4a2e, 60);
+
 fn sky(scene: &mut Canvas) {
-    let width = SCENE_WIDTH as i32;
-    // In bands rather than a smooth ramp, as pixel skies are.
+    const BANDS: i32 = 8;
+    // Where the last band begins; it runs on down behind the hills to the horizon.
+    const LOW: i32 = 96;
+    // In bands, as pixel skies are, each dithered a row into the next.
+    let band = |y: i32| (y * (BANDS - 1) / LOW).min(BANDS - 1);
     for y in 0..HORIZON {
-        let band = mix(SKY_TOP, SKY_LOW, (y * 6 / HORIZON) as f32 / 5.0);
-        scene.fill_rect(0, y, width, 1, band);
+        for x in 0..WIDTH {
+            let mut index = band(y);
+            if band(y + 1) != index && (x + y) % 2 == 0 {
+                index += 1;
+            }
+            let color = mix(SKY_TOP, SKY_LOW, index as f32 / (BANDS - 1) as f32);
+            scene.set(x, y, color);
+        }
     }
-    for (x, y, size) in [(58, 30, 9), (300, 22, 11), (236, 56, 7)] {
-        scene.fill_ellipse(x, y, size * 2, size / 2 + 2, CLOUD);
-        scene.fill_ellipse(x - size / 2, y - 3, size, size / 2 + 1, CLOUD);
-        scene.fill_ellipse(x + size / 2, y - 4, size, size / 2 + 2, CLOUD);
+    // A big fair-weather cloud over the line, smaller ones drifting, clear of the chimney's smoke
+    // and of the old tree, and long thin ones low down where the far hills begin.
+    cloud(
+        scene,
+        (206, 32),
+        &[
+            (-26, 3, 7),
+            (-13, -3, 10),
+            (2, -7, 12),
+            (16, -2, 9),
+            (27, 3, 6),
+        ],
+    );
+    cloud(scene, (44, 24), &[(-10, 0, 6), (0, -4, 8), (10, -1, 6)]);
+    cloud(scene, (352, 14), &[(-7, 0, 4), (1, -3, 6), (9, 0, 4)]);
+    for (x, y, long) in [(0, 64, 30), (228, 72, 36), (130, 78, 26)] {
+        for dx in 0..long {
+            let fade = (dx.min(long - dx) * 40).min(150) as u8;
+            put(scene, x + dx, y, Rgba { a: fade, ..CLOUD });
+            if (4..long - 6).contains(&dx) {
+                put(scene, x + dx + 3, y + 1, rgba(0xdfe7ee, fade / 2));
+            }
+        }
     }
 }
 
-fn hills(scene: &mut Canvas) {
-    let width = SCENE_WIDTH as i32;
-    scene.fill_ellipse(70, 150, 120, 42, FAR_HILL);
-    scene.fill_ellipse(200, 156, 140, 34, FAR_HILL);
-    scene.fill_ellipse(312, 160, 112, 92, HILL);
-    scene.fill_ellipse(340, 168, 70, 70, HILL_SHADE);
-    // The way up: from the garden gate to the tree at the top.
-    let path = [
-        (252, 146),
-        (250, 134),
-        (292, 122),
-        (276, 106),
-        (314, 92),
-        (300, 80),
-        (306, 72),
-    ];
-    for pair in path.windows(2) {
-        let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
-        scene.line(x0, y0, x1, y1, 2, PATH);
+/// A heaped cloud from round puffs `(dx, dy, radius)`: flat underneath, sunlit on top and to the
+/// left, cool grey below, and edged only along its underside, which is the only hard edge a cloud
+/// has. The Hilltop's clouds, so the two skies are one sky.
+fn cloud(scene: &mut Canvas, (cx, cy): (i32, i32), puffs: &[(i32, i32, i32)]) {
+    let mut layer = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    let floor = cy + 3;
+    for &(dx, dy, radius) in puffs {
+        let (px, py) = (cx + dx, cy + dy);
+        for y in py - radius..=(py + radius).min(floor) {
+            for x in px - radius * 3 / 2..=px + radius * 3 / 2 {
+                let (ex, ey) = (
+                    (x - px) as f32 / (radius as f32 * 1.4),
+                    (y - py) as f32 / radius as f32,
+                );
+                let reach = ex * ex + ey * ey;
+                if reach > 1.0 {
+                    continue;
+                }
+                // Lit towards the upper left of each puff, shaded towards the flat base.
+                let toward = ex * 0.7 + ey;
+                let low = (y - (floor - radius / 2)) as f32 / (radius as f32 / 2.0 + 1.0);
+                let color = if low > 0.5 {
+                    CLOUDS.shadow
+                } else if toward < -0.55 && reach > 0.35 {
+                    CLOUDS.shine
+                } else if toward > 0.45 || low > 0.0 {
+                    CLOUDS.base
+                } else {
+                    CLOUDS.light
+                };
+                if layer.get(x, y).a == 0 || brightness(color) > brightness(layer.get(x, y)) {
+                    layer.set(x, y, color);
+                }
+            }
+        }
     }
-    scene.fill_rect(306, 62, 3, 10, TRUNK);
-    scene.fill_circle(307, 58, 8, LEAVES);
-    scene.fill_circle(301, 61, 5, LEAVES);
-    scene.fill_circle(313, 61, 5, LEAVES);
+    for x in cx - 60..cx + 60 {
+        for y in cy - 30..=floor {
+            if layer.get(x, y).a > 0 && layer.get(x, y + 1).a == 0 {
+                layer.set(x, y, CLOUDS.edge);
+            }
+        }
+    }
+    blit(scene, &layer, 0, 0);
+}
 
-    scene.fill_rect(0, HORIZON, width, PLATFORM_BACK - HORIZON, GRASS);
-    for x in (0..width).step_by(7) {
-        scene.set(x, HORIZON + 3 + (x % 5), GRASS_DARK);
-        scene.set(x + 3, HORIZON + 9 + (x % 3), GRASS_DARK);
+/// How light a colour is, so overlapping puffs keep their lit sides.
+fn brightness(color: Rgba) -> u32 {
+    u32::from(color.r) + u32::from(color.g) + u32::from(color.b)
+}
+
+/// Noise that rolls smoothly between whole-numbered points, for soft patches rather than
+/// speckle.
+fn smooth_noise(x: f32, y: f32, salt: u32) -> f32 {
+    let (ix, iy) = (x.floor() as i32, y.floor() as i32);
+    let ease = |t: f32| t * t * (3.0 - 2.0 * t);
+    let (fx, fy) = (ease(x - ix as f32), ease(y - iy as f32));
+    let corner = |dx: i32, dy: i32| (noise(ix + dx, iy + dy, salt) % 1000) as f32 / 999.0;
+    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * fx;
+    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * fx;
+    top + (bottom - top) * fy
+}
+
+/// A point along a smooth curve through `points`, `t` of the way from the first to the last.
+fn along(points: &[(f32, f32)], t: f32) -> (f32, f32) {
+    let spans = (points.len() - 1) as f32;
+    let at = (t * spans).clamp(0.0, spans - 0.001);
+    let index = at.floor() as usize;
+    let local = at - index as f32;
+    let get = |i: isize| points[i.clamp(0, points.len() as isize - 1) as usize];
+    let (p0, p1, p2, p3) = (
+        get(index as isize - 1),
+        get(index as isize),
+        get(index as isize + 1),
+        get(index as isize + 2),
+    );
+    // Catmull-Rom, so the curve passes through every point.
+    let blend = |a: f32, b: f32, c: f32, d: f32| {
+        0.5 * (2.0 * b
+            + (c - a) * local
+            + (2.0 * a - 5.0 * b + 4.0 * c - d) * local * local
+            + (3.0 * b - a - 3.0 * c + d) * local * local * local)
+    };
+    (blend(p0.0, p1.0, p2.0, p3.0), blend(p0.1, p1.1, p2.1, p3.1))
+}
+
+// ---------------------------------------------------------------------------------------------
+// The country beyond, and the Hill
+// ---------------------------------------------------------------------------------------------
+
+fn hills(scene: &mut Canvas) {
+    for range in RANGES {
+        country(scene, &range);
     }
-    // The path again where it crosses the grass, so it reaches the gate.
-    scene.line(252, PLATFORM_BACK, 250, HORIZON, 2, PATH);
+    hill(scene);
+    hill_path(scene);
+    old_tree(scene);
+    meadow(scene);
+}
+
+/// One range of the country beyond the line, seen across the valley: how high it stands and how
+/// its crest rolls, the colour of its grass, and how much the air between pales it.
+struct Range {
+    base: f32,
+    rise: f32,
+    phase: f32,
+    grass: Rgba,
+    far: f32,
+    /// How big its fields look, across and down, in pixels: they grow as the land comes nearer.
+    fields: (f32, f32),
+    /// Where woods stand on its slope.
+    woods: &'static [(i32, i32)],
+    salt: u32,
+}
+
+/// Three ranges, furthest first: blue downs along the horizon, a patchwork of fields and
+/// hedgerows below them, and the nearest rise, with its hedgerow trees and a wood.
+const RANGES: [Range; 3] = [
+    Range {
+        base: 99.0,
+        rise: 9.0,
+        phase: 0.6,
+        grass: rgb(0x8fb3ac),
+        far: 0.55,
+        fields: (0.0, 0.0),
+        woods: &[],
+        salt: 860,
+    },
+    Range {
+        base: 110.0,
+        rise: 5.0,
+        phase: 2.3,
+        grass: FAR_HILL,
+        far: 0.3,
+        fields: (16.0, 3.0),
+        woods: &[(6, 104), (186, 107)],
+        salt: 870,
+    },
+    Range {
+        base: 121.0,
+        rise: 5.0,
+        phase: 4.1,
+        grass: rgb(0x86bb72),
+        far: 0.24,
+        fields: (26.0, 4.5),
+        woods: &[(176, 118)],
+        salt: 880,
+    },
+];
+
+impl Range {
+    fn crest(&self, x: i32) -> i32 {
+        let x = x as f32;
+        let phase = self.phase;
+        (self.base
+            - self.rise
+                * (1.0
+                    + 0.55 * (x / 47.0 + phase).sin()
+                    + 0.3 * (x / 23.0 + phase * 2.0).sin()
+                    + 0.12 * (x / 9.0 + phase).sin()))
+        .round() as i32
+    }
+
+    fn fade(&self, color: Rgba) -> Rgba {
+        mix(color, HAZE, self.far)
+    }
+
+    /// Which field a point below the crest falls in: rows that follow the lie of the land, their
+    /// hedges wandering and some fields deeper than others, each row cut into fields of its own
+    /// widths by hedges running aslant, so they never line up into a grid.
+    fn field(&self, x: i32, y: i32) -> (i32, i32) {
+        let (across, down) = self.fields;
+        let wander = (smooth_noise(x as f32 / 24.0, 0.5, self.salt) - 0.5) * down * 1.8;
+        let below = (y - self.crest(x)) as f32 + wander;
+        let mut row = (below / down).floor() as i32;
+        if noise(row, 2, self.salt).is_multiple_of(3) {
+            row -= 1;
+        }
+        let width = across * (0.6 + (noise(row, 0, self.salt) % 80) as f32 / 100.0);
+        let offset = (noise(row, 1, self.salt) % 100) as f32 / 100.0;
+        let aslant = (noise(row, 3, self.salt) % 100) as f32 / 50.0 - 1.0;
+        let column = ((x as f32 + below * aslant * 1.5) / width + offset).floor() as i32;
+        (row, column)
+    }
+}
+
+/// What a field grows, as two tones: pasture mostly, with hay, ripe wheat and plough among it.
+fn crop(kind: u32) -> (Rgba, Rgba) {
+    match kind % 14 {
+        0..=4 => (rgb(0x8cc27a), rgb(0x7fb66f)),
+        5..=7 => (rgb(0xa3cf8a), rgb(0x94c47e)),
+        8 | 9 => (rgb(0x74a862), rgb(0x689b58)),
+        10 => (rgb(0xdcc57c), rgb(0xc8b06a)),
+        11 => (rgb(0xe8d898), rgb(0xd8c47e)),
+        12 => (rgb(0xb39272), rgb(0x977657)),
+        _ => (rgb(0x95ba66), rgb(0x7c9e56)),
+    }
+}
+
+/// A range of the country: lit on the slopes that face left, edged along its crest in a darker
+/// shade of its own green, and, where it is near enough, cut into fields by hedgerows, with
+/// trees standing in them and a wood on its slope.
+fn country(scene: &mut Canvas, range: &Range) {
+    let edge = mix(range.grass, rgb(0x3d5e58), 0.35);
+    let lit = mix(range.grass, rgb(0xf4f6ee), 0.3);
+    let fielded = range.fields.0 > 0.0;
+    let mut trees = Vec::new();
+    for x in 0..WIDTH {
+        let crest = range.crest(x);
+        let facing = range.crest(x + 2) - range.crest(x - 2);
+        for y in crest..=HORIZON {
+            let mut color = if fielded && y > crest + 1 {
+                let here = range.field(x, y);
+                let (a, b) = crop(noise(here.0, here.1, range.salt + 1));
+                let hedge = range.field(x, y - 1) != here
+                    || (range.field(x - 1, y) != here && y > crest + 2);
+                if hedge {
+                    if range.fields.0 > 20.0 && chance(x, y, range.salt + 2, 26) {
+                        trees.push((x, y));
+                    }
+                    HEDGE.shadow
+                } else if range.field(x - 1, y - 1) != here {
+                    // The hedge's shadow, falling to the lower right.
+                    mix(a, HEDGE.shadow, 0.3)
+                } else if noise(x, y, range.salt + 3).is_multiple_of(9) {
+                    b
+                } else {
+                    a
+                }
+            } else if smooth_noise(x as f32 / 7.0, y as f32 / 3.0, range.salt + 6) > 0.72 {
+                // Woods too far off to make out, darkening the far slopes in patches.
+                mix(range.grass, edge, 0.45)
+            } else {
+                range.grass
+            };
+            // Slopes facing left catch the light; those facing right are in shade.
+            if y == crest || (y == crest + 1 && range.crest(x - 1) > crest + 1) {
+                color = edge;
+            } else if facing > 0 && y < crest + 3 {
+                color = mix(color, lit, 0.6);
+            } else if facing < 0 && y < crest + 3 {
+                color = mix(color, edge, 0.35);
+            }
+            // Deeper into the valley, the land is in the shade of the nearer ranges.
+            let depth = ((y - crest) as f32 / 14.0).min(1.0);
+            color = mix(color, HEDGE.edge, depth * 0.12);
+            scene.set(x, y, range.fade(color));
+        }
+    }
+    for (x, y) in trees {
+        hedgerow_tree(scene, x, y, range.far);
+    }
+    for &at in range.woods {
+        wood(scene, at, range);
+    }
+}
+
+/// A tree in a hedgerow: a dark round head lit on its upper left, paled by `far`.
+fn hedgerow_tree(scene: &mut Canvas, x: i32, y: i32, far: f32) {
+    let fade = |color| mix(color, HAZE, far);
+    ellipse(scene, x + 1, y, 2, 2, fade(HEDGE.edge));
+    ellipse(scene, x, y - 1, 2, 1, fade(HEDGE.base));
+    put(scene, x - 1, y - 2, fade(HEDGE.light));
+    put(scene, x + 1, y + 1, fade(HEDGE.shadow));
+}
+
+/// A wood on a range's slope: tree heads crowded into a low mound, the nearer in front of the
+/// further, each lit on its upper left.
+fn wood(scene: &mut Canvas, (cx, cy): (i32, i32), range: &Range) {
+    let size = if range.fields.0 > 20.0 { 2 } else { 1 };
+    let span = 10 * size + 4;
+    let mut heads: Vec<(i32, i32)> = (0..span * 2)
+        .map(|index| {
+            let x = cx - span + (noise(index, 0, range.salt + 4) % (span as u32 * 2)) as i32;
+            let hump = (span - (x - cx).abs()) * 3 / span;
+            let y = cy - (noise(index, 1, range.salt + 5) % (hump as u32 + 2)) as i32;
+            (x, y)
+        })
+        .collect();
+    heads.sort_by_key(|&(x, y)| (y, x));
+    for (x, y) in heads {
+        ellipse(scene, x + 1, y + 1, size + 1, size, range.fade(HEDGE.edge));
+        ellipse(scene, x, y, size, size, range.fade(HEDGE.shadow));
+        put(scene, x - 1, y - size + 1, range.fade(HEDGE.base));
+        if size > 1 {
+            put(scene, x - 1, y - 1, range.fade(HEDGE.light));
+        }
+    }
+}
+
+/// The middle of the Hill, where its summit is highest.
+const HILL_MIDDLE: f32 = 326.0;
+/// Where the summit stands, and how far it rounds down across its breadth.
+const HILL_TOP: f32 = 53.0;
+const HILL_DOME: f32 = 5.0;
+/// Half the summit's breadth, before it falls away into the slopes, and how far the slopes run.
+const SUMMIT_HALF: f32 = 36.0;
+const SLOPE_RUN: f32 = 72.0;
+/// How high the summit stands above the horizon.
+const HILL_RISE: f32 = HORIZON as f32 - HILL_TOP;
+
+/// The Hill's skyline at a point across: a broad summit, gently domed, rounding over into long
+/// slopes that flare out at the foot as real hills do.
+fn hill_crest(x: f32) -> f32 {
+    let off = (x - HILL_MIDDLE).abs();
+    let dome = HILL_DOME * (1.0 - (-(off / SUMMIT_HALF).powi(2)).exp());
+    let slope = ((off - SUMMIT_HALF).max(0.0) / SLOPE_RUN).powi(2);
+    HILL_TOP + dome + (HILL_RISE - HILL_DOME) * (1.0 - (-slope).exp())
+}
+
+/// How much the air pales the Hill at a row: a little at the foot, more up at the summit, which
+/// is further off.
+fn hill_haze(y: i32) -> f32 {
+    let up = ((HORIZON - y) as f32 / HILL_RISE).clamp(0.0, 1.0);
+    0.02 + up * 0.12
+}
+
+/// How far up the Hill's face a point is, 0 at the foot and 1 on the skyline above it. Lines of
+/// the same height arch over the Hill as its skyline does, as they would round any dome seen
+/// from below it.
+fn hill_up(x: i32, y: i32) -> f32 {
+    let top = hill_crest(x as f32);
+    ((HORIZON - y) as f32 / (HORIZON as f32 - top).max(1.0)).clamp(0.0, 1.0)
+}
+
+/// How lit the Hill's turf is at a point, 0 to 1: brightest on the slopes turned towards the sun
+/// on the left and up on the summit, rounding into shade on the right and down towards the
+/// foot, with broad soft patches where the grass grows differently and a cloud's shadow lying
+/// across it, so the face reads as a great curve of land rather than a flat green.
+fn hill_light(x: i32, y: i32) -> f32 {
+    let across = ((x as f32 - HILL_MIDDLE) / 100.0).clamp(-1.2, 1.0);
+    let up = hill_up(x, y);
+    let patches = smooth_noise(x as f32 / 38.0, y as f32 / 13.0, 891) * 0.65
+        + smooth_noise(x as f32 / 14.0, y as f32 / 6.0, 892) * 0.35;
+    // The shadow of a cloud passing over, lying across the right of the face.
+    let (cx, cy) = ((x as f32 - 334.0) / 44.0, (y as f32 - 108.0) / 13.0);
+    let cloud = if cx * cx + cy * cy <= 1.0 { 0.28 } else { 0.0 };
+    0.5 - 0.68 * across + 0.32 * (up - 0.5) + (patches - 0.5) * 0.85 - cloud
+}
+
+/// The turf's tone at a step of its ramp, from -1 (deep in the grass) to 4 (sunlit).
+fn turf(step: i32) -> Rgba {
+    match step {
+        ..=-1 => mix(TURF.edge, TURF.shadow, 0.45),
+        0 => TURF.shadow,
+        1 => mix(TURF.shadow, TURF.base, 0.5),
+        2 => TURF.base,
+        3 => mix(TURF.base, TURF.light, 0.5),
+        _ => TURF.light,
+    }
+}
+
+/// Which step of the turf's ramp a pixel of the Hill takes: its light, its edges broken a pixel
+/// at a time.
+fn turf_step(x: i32, y: i32) -> i32 {
+    let scatter = (noise(x, y, 893) % 100) as f32 / 100.0 - 0.5;
+    (hill_light(x, y) * 4.0 + scatter * 0.55)
+        .round()
+        .clamp(0.0, 4.0) as i32
+}
+
+/// A colour on the Hill at a row, paled by the air.
+fn on_hill(color: Rgba, y: i32) -> Rgba {
+    mix(color, HAZE, hill_haze(y))
+}
+
+/// Gorse on the Hill's slopes: where each patch grows, and how many bushes are in it.
+const GORSE: [(i32, i32, i32); 7] = [
+    (212, 118, 5),
+    (264, 112, 2),
+    (324, 101, 4),
+    (343, 82, 3),
+    (374, 106, 5),
+    (312, 124, 3),
+    (306, 70, 2),
+];
+
+/// The Hill, close by on the right: a great dome of turf, lit from the left, its skyline
+/// outlined and grass standing up along it, sheep-tracks running round its slopes, gorse here
+/// and there, and a hedge along its foot.
+fn hill(scene: &mut Canvas) {
+    /// How many sheep-tracks run round the Hill, from the foot to the summit.
+    const TRACKS: i32 = 13;
+    for x in 0..WIDTH {
+        let top = hill_crest(x as f32).round() as i32;
+        if top >= HORIZON {
+            continue;
+        }
+        for y in top..HORIZON {
+            let mut step = turf_step(x, y);
+            // Grass a little longer than the turf, in short darker blades, closer together as
+            // the slope comes nearer.
+            if chance(x, y, 897, (8.0 + (1.0 - hill_up(x, y)) * 30.0) as u32) {
+                step -= 1;
+            }
+            scene.set(x, y, on_hill(turf(step), y));
+        }
+        // Sheep-tracks, terraced round the slopes along lines of the same height, so they arch
+        // over the Hill as its skyline does, wider apart as they come nearer: each a shade
+        // darker, its lip below catching the light, broken where the turf has grown over.
+        let wobble = smooth_noise(x as f32 / 11.0, 0.0, 894) * 0.6;
+        for track in 1..TRACKS {
+            let up = (track as f32 / TRACKS as f32).powf(0.8);
+            let y = (HORIZON as f32 - (up * (HORIZON - top) as f32) + wobble).round() as i32;
+            if up > 0.85 || y <= top + 2 || chance(x.div_euclid(5), track, 895, 100) {
+                continue;
+            }
+            scene.set(x, y, on_hill(turf(turf_step(x, y) - 1), y));
+            if chance(x, y, 896, 150) {
+                scene.set(x, y + 1, on_hill(turf(turf_step(x, y + 1) + 1), y));
+            }
+        }
+        // The skyline, outlined in the turf's own shade, catching the light just under it where
+        // it faces the sun, with grass standing up along it.
+        scene.set(x, top, on_hill(TURF.shadow, top));
+        if x < HILL_MIDDLE as i32 + 24 {
+            put(scene, x, top + 1, on_hill(TURF.light, top));
+        }
+        if chance(x, 0, 898, 70) {
+            let tall = 1 + (noise(x, 1, 899) % 2) as i32;
+            vline(scene, x, top - tall, tall, on_hill(TURF.shadow, top));
+        }
+    }
+    for (index, &(cx, cy, bushes)) in GORSE.iter().enumerate() {
+        // Back to front, so the nearer bushes of a patch stand in front of the further.
+        let mut patch: Vec<(i32, i32, i32)> = (0..bushes)
+            .map(|bush| {
+                let salt = (index * 10) as i32 + bush;
+                let x = cx + bush * 4 - bushes * 2 + (noise(salt, 0, 900) % 3) as i32;
+                let y = cy + (noise(salt, 1, 901) % 4) as i32 - 2 + (bush % 2) * 2;
+                (x, y, salt)
+            })
+            .collect();
+        patch.sort_by_key(|&(x, y, _)| (y, x));
+        for (x, y, salt) in patch {
+            gorse(scene, x, y, salt);
+        }
+    }
+    // Daisies and buttercups on the lower slopes, in little scatters.
+    for index in 0..14 {
+        let x = 200 + (noise(index, 0, 909) % 184) as i32;
+        let y = HORIZON - 6 - (noise(index, 1, 910) % 22) as i32;
+        for floret in 0..3 {
+            let (fx, fy) = (
+                x + (noise(index, floret, 911) % 7) as i32 - 3,
+                y + (noise(floret, index, 912) % 3) as i32 - 1,
+            );
+            if fy <= hill_crest(fx as f32) as i32 + 2 || path_near(fx, fy, 2.0) {
+                continue;
+            }
+            let blossom = if noise(index, floret, 913).is_multiple_of(3) {
+                BLOSSOMS[2]
+            } else {
+                BLOSSOMS[3]
+            };
+            put(scene, fx, fy, on_hill(blossom, fy));
+        }
+    }
+    // A hedge along the foot of the Hill, with trees standing in it.
+    for x in 0..WIDTH {
+        let top = hill_crest(x as f32).round() as i32;
+        if top > HORIZON - 4 {
+            continue;
+        }
+        let rise = (noise(x.div_euclid(2), 0, 902) % 2) as i32;
+        for y in HORIZON - 3 - rise..HORIZON {
+            let color = if y == HORIZON - 3 - rise {
+                HEDGE.base
+            } else if chance(x, y, 903, 60) {
+                HEDGE.light
+            } else {
+                HEDGE.shadow
+            };
+            scene.set(x, y, on_hill(color, y));
+        }
+        if chance(x, 1, 904, 14) && !path_near(x, HORIZON - 4, 6.0) {
+            hedgerow_tree(scene, x, HORIZON - 5, hill_haze(HORIZON - 4));
+        }
+    }
+}
+
+/// A gorse bush on the Hill: a dark, prickly mound lit on its upper left, its shade falling
+/// downhill to the right, flowering yellow, bigger the nearer it grows.
+fn gorse(scene: &mut Canvas, x: i32, y: i32, salt: i32) {
+    if path_near(x, y, 5.0) {
+        return;
+    }
+    let (rx, ry) = if y > 104 {
+        (3, 3)
+    } else if y > 80 {
+        (3, 2)
+    } else {
+        (2, 2)
+    };
+    // A round bush sitting on the ground: its middle is up off the turf.
+    let middle = y - ry + 1;
+    let inside = |dx: i32, dy: i32| {
+        middle + dy <= y && (dx * dx * ry * ry + dy * dy * rx * rx) <= rx * rx * ry * ry
+    };
+    ellipse(scene, x + 2, y, rx, 1, SHADE);
+    for dy in -ry..=ry {
+        for dx in -rx..=rx {
+            if !inside(dx, dy) {
+                continue;
+            }
+            let rim = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                .iter()
+                .any(|&(ox, oy)| !inside(dx + ox, dy + oy));
+            let lit = -(dx as f32) / rx as f32 - dy as f32 / ry as f32;
+            let (px, py) = (x + dx, middle + dy);
+            let color = if rim {
+                HEDGE.edge
+            } else if lit > 0.7 && !chance(px, py, 906, 50) {
+                HEDGE.light
+            } else if lit > -0.2 && !chance(px, py, 907, 60) {
+                HEDGE.base
+            } else {
+                HEDGE.shadow
+            };
+            put(scene, px, py, on_hill(color, y));
+        }
+    }
+    // Yellow flowers among the prickles.
+    for flower in 0..rx - 1 {
+        let dx = (noise(salt, flower, 905) % (rx as u32 * 2 - 1)) as i32 - rx + 1;
+        let dy = (noise(flower, salt, 908) % ry as u32) as i32 - ry / 2;
+        if inside(dx, dy) && inside(dx, dy - 1) && inside(dx, dy + 1) {
+            put(scene, x + dx, middle + dy, on_hill(rgb(0xe8c860), y));
+        }
+    }
+}
+
+/// The way up the Hill, from the garden gate to the old tree on top: switching back and forth
+/// across the slope, the turns closer together as it climbs.
+const HILL_PATH: [(f32, f32); 15] = [
+    (250.0, 132.0),
+    (254.0, 126.0),
+    (276.0, 121.0),
+    (299.0, 116.0),
+    (295.0, 110.0),
+    (272.0, 105.0),
+    (255.0, 100.0),
+    (259.0, 94.0),
+    (280.0, 89.0),
+    (297.0, 84.0),
+    (295.0, 79.0),
+    (282.0, 74.0),
+    (280.0, 68.0),
+    (287.0, 62.0),
+    (292.0, 57.0),
+];
+
+/// Points along the path up the Hill, a pixel or so apart, with how wide it is there.
+fn path_points() -> Vec<(f32, f32, f32)> {
+    let steps = 700;
+    (0..=steps)
+        .map(|step| {
+            let (x, y) = along(&HILL_PATH, step as f32 / steps as f32);
+            let up = ((HORIZON as f32 - y) / HILL_RISE).clamp(0.0, 1.0);
+            (x, y, 3.2 - up * 2.2)
+        })
+        .collect()
+}
+
+/// Whether a point is within `room` of the path.
+fn path_near(x: i32, y: i32, room: f32) -> bool {
+    HILL_PATH.windows(2).any(|pair| {
+        let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+        let (dx, dy) = (x1 - x0, y1 - y0);
+        let t =
+            (((x as f32 - x0) * dx + (y as f32 - y0) * dy) / (dx * dx + dy * dy)).clamp(0.0, 1.0);
+        let (px, py) = (x0 + dx * t - x as f32, y0 + dy * t - y as f32);
+        px * px + py * py <= room * room
+    })
+}
+
+/// The path up the Hill: worn earth, pale where it is trodden, its upper edge in the shade of
+/// the turf above it and its lower edge a bank catching the light; narrower the further it goes.
+fn hill_path(scene: &mut Canvas) {
+    let mut layer = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    for (x, y, width) in path_points() {
+        let half = width / 2.0;
+        let (left, right) = ((x - half).round() as i32, (x + half).round() as i32);
+        let row = y.round() as i32;
+        for px in left..right.max(left + 1) {
+            layer.set(px, row, EARTH.light);
+        }
+    }
+    for y in 0..HORIZON {
+        for x in 0..WIDTH {
+            if layer.get(x, y).a == 0 {
+                continue;
+            }
+            let color = if layer.get(x, y - 1).a == 0 {
+                EARTH.shadow
+            } else if chance(x, y, 903, 40) {
+                EARTH.base
+            } else if chance(x, y, 904, 20) {
+                EARTH.shine
+            } else {
+                EARTH.light
+            };
+            scene.set(x, y, on_hill(color, y));
+            if layer.get(x, y + 1).a == 0 {
+                put(scene, x, y + 1, on_hill(turf(turf_step(x, y + 1) + 1), y));
+            }
+        }
+    }
+}
+
+/// The Hilltop's old tree, as the Hilltop draws it: the masses of its crown `(x, y, radius)`, and
+/// where its trunk meets the ground there. The station draws the same tree from these, smaller.
+const HILLTOP_CROWN: [(i32, i32, i32); 8] = [
+    (50, 30, 27),
+    (26, 20, 16),
+    (74, 22, 15),
+    (8, 36, 13),
+    (22, 50, 18),
+    (80, 46, 15),
+    (66, 54, 9),
+    (6, 56, 9),
+];
+const HILLTOP_FOOT: (i32, i32) = (53, 112);
+/// How much smaller the old tree looks from the station than from under it.
+const TREE_SCALE: f32 = 0.36;
+
+/// The crown's masses as the station sees them, `(x, y, radius)` in the scene.
+fn tree_masses() -> [(i32, i32, i32); 8] {
+    let (fx, fy) = (VISTA.tree.0.round() as i32, VISTA.tree.1.round() as i32);
+    HILLTOP_CROWN.map(|(x, y, radius)| {
+        (
+            fx + ((x - HILLTOP_FOOT.0) as f32 * TREE_SCALE).round() as i32,
+            fy + ((y - HILLTOP_FOOT.1) as f32 * TREE_SCALE).round() as i32,
+            (radius as f32 * TREE_SCALE).round() as i32,
+        )
+    })
+}
+
+/// Whether a point is within the crown, `inset` pixels in from its edge.
+fn in_tree_crown(masses: &[(i32, i32, i32)], x: i32, y: i32, inset: i32) -> bool {
+    masses.iter().any(|&(cx, cy, radius)| {
+        let reach = radius - inset;
+        reach > 0 && (x - cx).pow(2) + (y - cy).pow(2) <= reach * reach
+    })
+}
+
+/// The old tree on the summit, seen from the station: its crooked trunk, its crown in clumps of
+/// leaves lit from the upper left, its shade on the turf, all a little paled by the distance.
+fn old_tree(scene: &mut Canvas) {
+    let (foot_x, foot_y) = (VISTA.tree.0.round() as i32, VISTA.tree.1.round() as i32);
+    let masses = tree_masses();
+    let mut layer = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    // The trunk: old and a little crooked, flaring into roots at its foot, furrowed, lit on the
+    // left, in shade under the crown.
+    for y in foot_y - 22..=foot_y {
+        let up = (foot_y - y) as f32;
+        let centre = foot_x as f32 - up * 0.06 + (up / 4.5).sin() * 0.9;
+        let half = 2.2 + (4.0 - up).max(0.0).powi(2) * 0.18;
+        let (left, right) = (
+            (centre - half).round() as i32,
+            (centre + half).round() as i32,
+        );
+        for x in left..=right {
+            let mut color = if x == left || x == right {
+                BARK.edge
+            } else if x == left + 1 {
+                BARK.light
+            } else if x == right - 1 {
+                BARK.shadow
+            } else {
+                BARK.base
+            };
+            if x > left + 1 && x < right - 1 && noise(x, y.div_euclid(3), 914).is_multiple_of(3) {
+                color = mix(color, BARK.edge, 0.5);
+            }
+            if up > 9.0 {
+                color = mix(color, BARK.edge, ((up - 9.0) / 8.0).min(0.6));
+            }
+            layer.set(x, y, color);
+        }
+    }
+    // The crown, as clumps back to front, then the limbs among the lowest of them.
+    let mut crown = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    let (left, right) = (foot_x - 30, foot_x + 30);
+    let (top, bottom) = (foot_y - 45, foot_y);
+    for y in top..bottom {
+        for x in left..right {
+            if in_tree_crown(&masses, x, y, 1) {
+                crown.set(x, y, CROWN.edge);
+            }
+        }
+    }
+    let mut clumps = Vec::new();
+    for gy in (top..bottom).step_by(3) {
+        for gx in (left..right).step_by(4) {
+            let x = gx + (noise(gx, gy, 905) % 3) as i32 - 1 + if gy % 6 == 0 { 2 } else { 0 };
+            let y = gy + (noise(gx, gy, 906) % 3) as i32 - 1;
+            if in_tree_crown(&masses, x, y, 1) {
+                let radius = if in_tree_crown(&masses, x, y, 4) {
+                    4
+                } else {
+                    3
+                };
+                clumps.push((x, y, radius));
+            }
+        }
+    }
+    clumps.sort_by_key(|&(x, y, _)| (y, x));
+    for &(x, y, radius) in &clumps {
+        clump(
+            &mut crown,
+            (x, y, radius),
+            clump_tones(&masses, x, y, foot_x, foot_y),
+        );
+    }
+    for (from, to) in [
+        ((foot_x - 1, foot_y - 12), (foot_x - 7, foot_y - 18)),
+        ((foot_x + 1, foot_y - 12), (foot_x + 7, foot_y - 17)),
+    ] {
+        line(&mut crown, from, to, mix(BARK.shadow, BARK.edge, 0.3));
+        line(
+            &mut crown,
+            (from.0, from.1 + 1),
+            (to.0, to.1 + 1),
+            BARK.edge,
+        );
+    }
+    // One outline round the whole crown, in its own darkest green.
+    let mut edges = Vec::new();
+    for y in top - 2..bottom + 2 {
+        for x in left - 2..right + 2 {
+            if crown.get(x, y).a == 0 {
+                continue;
+            }
+            let open = [(1, 0), (-1, 0), (0, 1), (0, -1)]
+                .iter()
+                .any(|(dx, dy)| crown.get(x + dx, y + dy).a == 0);
+            if open && !is_bark(crown.get(x, y)) {
+                edges.push((x, y));
+            }
+        }
+    }
+    for (x, y) in edges {
+        crown.set(x, y, CROWN.edge);
+    }
+    blit(&mut layer, &crown, 0, 0);
+    // Its shade on the turf, falling away to the right.
+    for y in foot_y - 1..foot_y + 3 {
+        for x in foot_x - 6..foot_x + 16 {
+            let (dx, dy) = (
+                (x - foot_x - 4) as f32 / 11.0,
+                (y - foot_y - 1) as f32 / 2.0,
+            );
+            if dx * dx + dy * dy <= 1.0 {
+                put(scene, x, y, SHADE);
+            }
+        }
+    }
+    for y in top - 2..=foot_y + 2 {
+        for x in left - 2..right + 2 {
+            let pixel = layer.get(x, y);
+            if pixel.a > 0 {
+                put(scene, x, y, mix(pixel, HAZE, hill_haze(y) * 0.8));
+            }
+        }
+    }
+}
+
+/// Whether a colour is one of the limbs' bark tones, which keep their own outline.
+fn is_bark(color: Rgba) -> bool {
+    color.r > color.g
+}
+
+/// The tones for a clump of leaves at a point: lit by where it sits on its own mass, and on the
+/// tree as a whole.
+fn clump_tones(
+    masses: &[(i32, i32, i32)],
+    x: i32,
+    y: i32,
+    foot_x: i32,
+    foot_y: i32,
+) -> ([Rgba; 3], Option<Rgba>) {
+    let (mx, my, radius) = masses
+        .iter()
+        .copied()
+        .filter(|&(cx, cy, r)| (x - cx).pow(2) + (y - cy).pow(2) <= r * r)
+        .min_by_key(|&(_, _, r)| r)
+        .unwrap_or(masses[0]);
+    let local = 0.5 - ((x - mx) + (y - my)) as f32 / (3.0 * radius.max(1) as f32);
+    let (across, up) = ((x - foot_x + 18) as f32 / 36.0, (foot_y - y) as f32 / 36.0);
+    let whole = 1.0 - across * 0.45 - (1.0 - up) * 0.55;
+    let lit = local * 0.45 + whole * 0.55;
+    if lit > 0.62 {
+        ([CROWN.shadow, CROWN.base, CROWN.light], Some(CROWN.shine))
+    } else if lit > 0.44 {
+        ([CROWN.shadow, CROWN.base, CROWN.light], None)
+    } else if lit > 0.28 {
+        ([CROWN.edge, CROWN.shadow, CROWN.base], None)
+    } else {
+        (
+            [CROWN.edge, mix(CROWN.edge, CROWN.shadow, 0.5), CROWN.shadow],
+            None,
+        )
+    }
+}
+
+/// A clump of leaves: a dark underside, its body, and a lit crescent on its upper left.
+fn clump(
+    layer: &mut Canvas,
+    (cx, cy, radius): (i32, i32, i32),
+    ([dark, mid, bright], shine): ([Rgba; 3], Option<Rgba>),
+) {
+    ellipse(layer, cx + 1, cy + 1, radius, radius - 1, dark);
+    ellipse(layer, cx, cy, radius - 1, (radius - 2).max(1), mid);
+    for y in cy - radius..=cy + radius {
+        for x in cx - radius..=cx + radius {
+            let (dx, dy) = (x - cx, y - cy);
+            let (rx, ry) = (radius - 1, (radius - 2).max(1));
+            if dx * dx * ry * ry + dy * dy * rx * rx > rx * rx * ry * ry {
+                continue;
+            }
+            // Ragged, leafy edges to the light, not a smooth arc.
+            let ragged = (noise(x, y, 907) % 2) as i32;
+            if dx + dy < -radius / 2 - ragged + 1 {
+                layer.set(x, y, bright);
+            } else if dx + dy > radius / 2 + ragged && noise(x, y, 908).is_multiple_of(3) {
+                layer.set(x, y, dark);
+            }
+        }
+    }
+    if let Some(shine) = shine {
+        layer.set(cx - radius / 2, cy - radius / 2, shine);
+    }
+}
+
+/// The meadow behind the garden, between the hedge at the foot of the Hill and the fence, with
+/// the path crossing it to the gate.
+fn meadow(scene: &mut Canvas) {
+    for y in HORIZON..PLATFORM_BACK {
+        for x in 0..WIDTH {
+            let patch = smooth_noise(x as f32 / 14.0, y as f32 / 4.0, 909);
+            let mut color = if patch > 0.62 {
+                mix(GRASS, GRASS_LIGHT, 0.5)
+            } else if patch < 0.3 {
+                mix(GRASS, GRASS_DARK, 0.4)
+            } else {
+                GRASS
+            };
+            if chance(x, y, 910, 22) {
+                color = GRASS_DARK;
+            } else if chance(x, y, 911, 10) {
+                color = GRASS_LIGHT;
+            }
+            scene.set(x, y, color);
+        }
+        // The hedge's shade along the back.
+        if y < HORIZON + 2 {
+            hline(
+                scene,
+                0,
+                y,
+                WIDTH,
+                rgba(0x2c4a2e, 50 - (y - HORIZON) as u8 * 20),
+            );
+        }
+    }
+    // The path across it to the gate.
+    for y in HORIZON..PLATFORM_BACK {
+        let x = 250 + (y - HORIZON) * 2 / (PLATFORM_BACK - HORIZON);
+        put(scene, x - 1, y, EARTH.shadow);
+        hline(scene, x, y, 2, PATH);
+        put(scene, x + 2, y, EARTH.base);
+    }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1130,6 +2020,53 @@ fn potted_fern(scene: &mut Canvas, x: i32) {
     bevel(scene, x, top, 7, 6, pot);
     hline(scene, x - 1, top, 9, pot.light);
     hline(scene, x, PLATFORM_BACK, 7, rgba(0x2a2226, 80));
+}
+
+// ---------------------------------------------------------------------------------------------
+// After dark
+// ---------------------------------------------------------------------------------------------
+
+/// Where the moon rides, between the chimney and the clouds.
+const MOON: (i32, i32) = (132, 20);
+
+/// What shines after dark: the platform lamp and the pool of light it throws on the boards, the
+/// clerk's lamp in the ticket office, and the display case, lit for the night.
+pub fn lamplight() -> Canvas {
+    let mut lamps = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    let x = 356;
+    crate::daylight::glow(&mut lamps, (x + 1, 94), 40, rgb(0xffd77a));
+    ellipse(
+        &mut lamps,
+        x + 1,
+        PLATFORM_BACK + 6,
+        30,
+        7,
+        rgba(0xffd77a, 46),
+    );
+    let (lx, ly) = (x - 4, 86);
+    for (pane, glow) in [(lx + 1, GLOW[1]), (lx + 6, GLOW[0])] {
+        rect(&mut lamps, pane, ly + 1, 4, 10, glow);
+        vline(&mut lamps, pane, ly + 1, 10, GLOW[2]);
+    }
+    rect(&mut lamps, 100, 112, 18, 13, rgba(0xffc860, 140));
+    crate::daylight::glow(&mut lamps, (109, 118), 20, rgba(0xffc860, 200));
+    let (left, top, right, bottom) = CASE;
+    rect(
+        &mut lamps,
+        left + 2,
+        top + 2,
+        right - left - 4,
+        bottom - top - 4,
+        rgba(0xffe2a0, 96),
+    );
+    lamps
+}
+
+/// The sky after dark, deepened, with its stars and the moon.
+pub fn night_sky(painted: &Canvas) -> Canvas {
+    let mut only = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    sky(&mut only);
+    crate::daylight::night_sky(painted, &only, HORIZON, Some(MOON))
 }
 
 #[cfg(test)]
