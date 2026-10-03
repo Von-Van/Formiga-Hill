@@ -10,4 +10,4 @@ default_locale = "en"
 
 [requirements]
 min_cast = 2
-areas = ["green"]
+areas = ["clubhouse"]

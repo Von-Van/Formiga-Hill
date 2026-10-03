@@ -6,7 +6,7 @@
 //! [story]
 //! id = "first-picnic"
 //! title = "title"            # a line in the localisation file
-//! area = "green"
+//! area = "clubhouse"
 //! start = "spread"
 //!
 //! [roles.host]
@@ -17,7 +17,7 @@
 //!
 //! [[scenes.beats]]
 //! walk = "host"
-//! to = "blanket"
+//! to = "rug"
 //! ```
 
 use super::lines::{Lines, fill};
@@ -25,11 +25,24 @@ use formiga_core::{Habit, TemperamentKind};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-/// The official areas a story can be staged on.
-pub const AREAS: [&str; 1] = ["green"];
-/// The named spots of the green a beat can send someone to.
-pub const PLACES: [&str; 10] = [
-    "blanket", "well", "oak", "swing", "chest", "centre", "left", "right", "front", "back",
+/// The official areas a story can be staged in. Stories moved indoors when the Clubhouse was
+/// built, and the green went back to free play.
+pub const AREAS: [&str; 1] = ["clubhouse"];
+/// The named spots of the Clubhouse a beat can send someone to.
+pub const PLACES: [&str; 13] = [
+    "rug",
+    "hearth",
+    "armchair",
+    "bookshelf",
+    "window",
+    "board",
+    "table",
+    "chest",
+    "centre",
+    "left",
+    "right",
+    "front",
+    "back",
 ];
 pub const MAX_ROLES: usize = 12;
 pub const MAX_SCENES: usize = 64;
@@ -491,7 +504,7 @@ fn parse_beat(
                     .find(|place| *place == to)
                     .ok_or_else(|| {
                         format!(
-                            "\"{to}\" is not a place on the green ({}), or beside:<role>",
+                            "\"{to}\" is not a place in the clubhouse ({}), or beside:<role>",
                             PLACES.join(", ")
                         )
                     })?,
@@ -798,7 +811,7 @@ mod tests {
             [story]
             id = "test"
             title = "title"
-            area = "green"
+            area = "clubhouse"
             start = "one"
 
             [roles.host]
@@ -825,7 +838,7 @@ mod tests {
             [[scenes]]
             id = "one"
             beats = [
-              { walk = "host", to = "blanket" },
+              { walk = "host", to = "rug" },
               { walk = "friend", to = "beside:host", meanwhile = true },
               { react = "all", feeling = "joy" },
               { pose = "shy", as = "peek", when = "present:shy" },
@@ -910,7 +923,7 @@ mod tests {
             [story]
             id = "t"
             title = "title"
-            area = "green"
+            area = "clubhouse"
             start = "one"
             [roles.brave]
             select = ["trait:Brave"]

@@ -378,7 +378,7 @@ mod tests {
                 [story]
                 id = "tiny"
                 title = "title"
-                area = "green"
+                area = "clubhouse"
                 start = "only"
 
                 [roles.anyone]

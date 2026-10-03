@@ -1,4 +1,4 @@
-//! Plays a story on the green with the colony as its cast.
+//! Plays a story in the Clubhouse with the colony as its cast.
 //!
 //! The director works through a scene's beats in order. A beat starts once everyone busy with the
 //! beats before it has finished, unless it is marked `meanwhile`, and never while anyone it is
@@ -110,7 +110,7 @@ impl Director {
     }
 
     /// Plays as far as the story can go at `now`.
-    pub fn run(&mut self, green: &mut Playground, cast: &Cast, now: f32) {
+    pub fn run(&mut self, room: &mut Playground, cast: &Cast, now: f32) {
         for _ in 0..MAX_INSTANT_BEATS {
             if self.finished || self.shown.is_some() || !self.choices.is_empty() {
                 return;
@@ -127,18 +127,18 @@ impl Director {
             // whatever is still going on in the background that involves anyone it is about, which
             // starting it would cut short.
             let involved = self.involved(&beat.action);
-            let waiting = (!beat.meanwhile && self.busy.iter().any(|id| green.busy(*id)))
+            let waiting = (!beat.meanwhile && self.busy.iter().any(|id| room.busy(*id)))
                 || self
                     .background
                     .iter()
-                    .any(|id| involved.contains(id) && green.busy(*id));
+                    .any(|id| involved.contains(id) && room.busy(*id));
             if waiting {
                 return;
             }
             if !beat.meanwhile {
                 self.busy.clear();
             }
-            self.background.retain(|id| green.busy(*id));
+            self.background.retain(|id| room.busy(*id));
             self.in_background = beat.meanwhile;
             self.beat += 1;
             if beat
@@ -148,7 +148,7 @@ impl Director {
             {
                 continue;
             }
-            self.play(&beat.action, green, cast, now);
+            self.play(&beat.action, room, cast, now);
         }
         // A story that never waits for anything has looped; end it rather than hang.
         self.finished = true;
@@ -188,8 +188,8 @@ impl Director {
         fill(line.for_kind(kind), |name| self.name_of(cast, name))
     }
 
-    fn perform(&mut self, green: &mut Playground, id: Id, steps: Vec<Step>, now: f32) {
-        green.direct(id, steps, now);
+    fn perform(&mut self, room: &mut Playground, id: Id, steps: Vec<Step>, now: f32) {
+        room.direct(id, steps, now);
         if self.in_background {
             self.background.push(id);
         } else {
@@ -219,45 +219,45 @@ impl Director {
         }
     }
 
-    fn play(&mut self, action: &Action, green: &mut Playground, cast: &Cast, now: f32) {
+    fn play(&mut self, action: &Action, room: &mut Playground, cast: &Cast, now: f32) {
         match action {
             Action::Walk { who, to } => {
                 for (slot, id) in self.who(*who).into_iter().enumerate() {
                     let spot = match to {
-                        Place::Named(place) => Some(green.spot(place, slot)),
+                        Place::Named(place) => Some(room.spot(place, slot)),
                         Place::Beside(role) => {
-                            self.player(*role).map(|other| green.beside_of(id, other))
+                            self.player(*role).map(|other| room.beside_of(id, other))
                         }
                     };
                     if let Some(to) = spot {
-                        self.perform(green, id, vec![Step::Stride { to }], now);
+                        self.perform(room, id, vec![Step::Stride { to }], now);
                     }
                 }
             }
             Action::Face { who, to } => {
                 if let Some(other) = self.player(*to) {
                     for id in self.who(*who) {
-                        green.direct(id, vec![Step::Face(other)], now);
+                        room.direct(id, vec![Step::Face(other)], now);
                     }
                 }
             }
             Action::React { who, feeling } => {
                 for id in self.who(*who) {
-                    let beats = green
+                    let beats = room
                         .character(id)
                         .map(|c| feel(c, *feeling))
                         .unwrap_or_default();
-                    self.perform(green, id, beats.into_iter().map(Step::Beat).collect(), now);
+                    self.perform(room, id, beats.into_iter().map(Step::Beat).collect(), now);
                 }
             }
             Action::Pose { who, pose } => {
                 for id in self.who(*who) {
-                    self.perform(green, id, vec![Step::Beat(strike(*pose))], now);
+                    self.perform(room, id, vec![Step::Beat(strike(*pose))], now);
                 }
             }
             Action::Eat { who } => {
                 for id in self.who(*who) {
-                    let mut beats: Vec<ActorBeat> = green
+                    let mut beats: Vec<ActorBeat> = room
                         .character(id)
                         .and_then(|c| c.flourish(formiga_core::HabitCue::Meal))
                         .into_iter()
@@ -267,12 +267,12 @@ impl Director {
                         ExpressionKind::Content,
                         2.4,
                     ));
-                    self.perform(green, id, beats.into_iter().map(Step::Beat).collect(), now);
+                    self.perform(room, id, beats.into_iter().map(Step::Beat).collect(), now);
                 }
             }
             Action::Nap { who } => {
                 for id in self.who(*who) {
-                    let mut beats: Vec<ActorBeat> = green
+                    let mut beats: Vec<ActorBeat> = room
                         .character(id)
                         .and_then(|c| c.flourish(formiga_core::HabitCue::Nap))
                         .into_iter()
@@ -285,27 +285,27 @@ impl Director {
                     let mut sleep = ActorBeat::new(ActionKind::Sleep, ExpressionKind::Sleepy, 4.0);
                     sleep.cue = Some(Cue::Sleep);
                     beats.push(sleep);
-                    self.perform(green, id, beats.into_iter().map(Step::Beat).collect(), now);
+                    self.perform(room, id, beats.into_iter().map(Step::Beat).collect(), now);
                 }
             }
             Action::Celebrate { who } => {
                 for id in self.who(*who) {
-                    if let Some(beat) = green.character(id).map(|c| c.celebrate(1.0)) {
-                        self.perform(green, id, vec![Step::Beat(beat)], now);
+                    if let Some(beat) = room.character(id).map(|c| c.celebrate(1.0)) {
+                        self.perform(room, id, vec![Step::Beat(beat)], now);
                     }
                 }
             }
             Action::Play { who, with } => {
                 if let (Some(a), Some(b)) = (self.player(*who), self.player(*with)) {
                     for (id, other) in [(a, b), (b, a)] {
-                        let beats = green
+                        let beats = room
                             .character(id)
                             .map(|c| c.play_together())
                             .unwrap_or_default();
                         let steps = std::iter::once(Step::Face(other))
                             .chain(beats.into_iter().map(Step::Beat))
                             .collect();
-                        self.perform(green, id, steps, now);
+                        self.perform(room, id, steps, now);
                     }
                 }
             }
@@ -473,7 +473,7 @@ mod tests {
             [story]
             id = "test"
             title = "title"
-            area = "green"
+            area = "clubhouse"
             start = "one"
             [roles.host]
             select = ["any"]
@@ -489,18 +489,19 @@ mod tests {
         )
         .unwrap();
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
-        let mut green = crate::green::open(&cast, 0.0);
+        let mut room =
+            crate::clubhouse::Clubhouse::open(&cast, 0.0, &Default::default(), Vec::new());
         let mut director = Director::new(story, &cast, 1).unwrap();
         let host = director.players()[0];
-        green.reserve(director.players());
+        room.ground().reserve(director.players());
         let mut now = 0.0;
         while !director.finished() && now < 60.0 {
             now += 1.0 / 30.0;
-            green.tick(&cast, now);
-            director.run(&mut green, &cast, now);
+            room.tick(&cast, now);
+            director.run(room.ground(), &cast, now);
         }
-        let (x, _) = green.head(host, now).unwrap();
-        let left = green.spot("left", 0).0;
+        let (x, _) = room.ground().head(host, now).unwrap();
+        let left = room.ground().spot("left", 0).0;
         assert!(
             (x - left).abs() < 12.0,
             "the walk to {left} was cut short at {x}"

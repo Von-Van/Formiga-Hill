@@ -1,6 +1,6 @@
-//! The Village Green: the first place the colony goes from the station, for free play, and where
-//! stories are staged for now. The playground engine does the playing; this is the ground it is
-//! played on.
+//! The Village Green: the first place the colony goes from the station, for free play. (Stories
+//! are staged indoors, in the Clubhouse.) The playground engine does the playing; this is the
+//! ground it is played on.
 
 mod scenery;
 
@@ -11,7 +11,7 @@ use scenery::{BLANKET, SHADE, WALK_BOTTOM, WALK_LEFT, WALK_RIGHT, WALK_TOP, walk
 
 pub use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 
-/// The green's named spots, as a story's `walk … to = "…"` names them.
+/// The green's named spots, for anyone sent somewhere in particular.
 const SPOTS: [(&str, (f32, f32)); 10] = [
     ("blanket", (266.0, 166.0)),
     ("well", (232.0, 102.0)),
@@ -65,16 +65,9 @@ pub fn open(cast: &Cast, now: f32) -> Playground {
 mod tests {
     use super::*;
     use crate::paint::blit;
-    use crate::story::script::PLACES;
 
     #[test]
-    fn every_place_a_story_can_name_is_on_the_green() {
-        for place in PLACES {
-            assert!(
-                SPOTS.iter().any(|(name, _)| *name == place),
-                "no {place} on the green"
-            );
-        }
+    fn every_named_spot_is_somewhere_to_stand() {
         for (name, (x, y)) in SPOTS {
             assert!(walkable(x, y), "{name} is somewhere nobody can stand");
         }

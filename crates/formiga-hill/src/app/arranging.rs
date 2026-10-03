@@ -47,6 +47,9 @@ impl HillApp {
         if let Some(green) = &mut self.green {
             crate::green::show_hilltop(green, &arrangement);
         }
+        if let Some(room) = &mut self.clubhouse {
+            room.show_hilltop(&arrangement);
+        }
     }
 
     /// The spot under a point: a piece standing there, front-most first, or an open spot.

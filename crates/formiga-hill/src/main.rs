@@ -5,6 +5,7 @@ mod app;
 mod cast;
 mod character;
 mod clearing;
+mod clubhouse;
 mod cues;
 mod dice;
 mod fairground;
@@ -47,6 +48,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --from-save <FILE>       Development only: board a Desktop colony file, which is only ever read
   --render-station <PNG>   Draw the station to a PNG and exit without opening a window
   --render-green <PNG>     Draw the Village Green to a PNG and exit without opening a window
+  --render-clubhouse <PNG> Draw the Clubhouse to a PNG and exit without opening a window
   --render-fairground <PNG>
                            Draw the Fairground to a PNG and exit without opening a window
   --render-hide-and-seek <PNG>
@@ -59,13 +61,13 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-fish <PNG>      Draw every fish as it is held up, and its icon, for review
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
-  --render-story <PNG>     Draw a story on the green --at seconds after it starts, reading each
+  --render-story <PNG>     Draw a story in the Clubhouse --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
   --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
   --sample-hilltop         Draw the station's skyline with a sample of finds on the Hilltop
-  --at <SECONDS>           Draw that far into the arrival, or into free play on the green or
-                           at the Fairground
+  --at <SECONDS>           Draw that far into the arrival, or into free play on the green, in
+                           the Clubhouse or at the Fairground
 ";
 
 enum Source {
@@ -78,6 +80,7 @@ enum Source {
 enum Area {
     Station,
     Green,
+    Clubhouse,
     Fairground,
     /// The Fairground, a game of hide-and-seek under way.
     HideAndSeek,
@@ -93,7 +96,7 @@ enum Area {
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
     Reactions,
-    /// The green, a story under way on it.
+    /// The Clubhouse, a story under way in it.
     Story,
 }
 
@@ -151,6 +154,23 @@ fn main() -> Result<()> {
                     green.tick(&arrival.cast, now);
                 }
                 green.compose(now)
+            }
+            Area::Clubhouse => {
+                let until = args.at.unwrap_or(20.0);
+                let library = story::Library::load(&args.packages);
+                let pinned = library
+                    .stories()
+                    .enumerate()
+                    .map(|(index, _)| index == 0)
+                    .collect();
+                let mut room =
+                    clubhouse::Clubhouse::open(&arrival.cast, 0.0, &sample_arrangement(), pinned);
+                let mut now = 0.0;
+                while now < until {
+                    now += 1.0 / 30.0;
+                    room.tick(&arrival.cast, now);
+                }
+                room.compose(now)
             }
             Area::Fairground => {
                 let until = args.at.unwrap_or(20.0);
@@ -243,6 +263,9 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Station, value("--render-station")?));
             }
             Some("--render-green") => render = Some((Area::Green, value("--render-green")?)),
+            Some("--render-clubhouse") => {
+                render = Some((Area::Clubhouse, value("--render-clubhouse")?));
+            }
             Some("--render-fairground") => {
                 render = Some((Area::Fairground, value("--render-fairground")?));
             }
@@ -343,26 +366,26 @@ fn story_to_draw(library: &story::Library) -> Result<&story::Story> {
 /// A story `at` seconds in, with each line read after two and a half seconds and the first choice
 /// always taken, for seeing how it is staged.
 fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
-    // The colony arrives and settles on the green first, as it would before anyone opens a story.
+    // The colony comes in and settles first, as it would before anyone opens a story.
     const SETTLE: f32 = 12.0;
-    let mut green = green::open(cast, 0.0);
+    let mut room = clubhouse::Clubhouse::open(cast, 0.0, &sample_arrangement(), vec![false]);
     let mut now = 0.0;
     while now < SETTLE {
         now += 1.0 / 30.0;
-        green.tick(cast, now);
+        room.tick(cast, now);
     }
     let mut director = story::Director::new(chosen.clone(), cast, 1).map_err(anyhow::Error::msg)?;
-    green.reserve(director.players());
+    room.ground().reserve(director.players());
     let at = SETTLE + at;
     let mut shown_since = None;
     while now < at && !director.finished() {
         now += 1.0 / 30.0;
-        green.tick(cast, now);
-        director.run(&mut green, cast, now);
+        room.tick(cast, now);
+        director.run(room.ground(), cast, now);
         let speaker = director
             .shown()
             .and_then(|shown| shown.speaker.as_ref().map(|(id, _)| *id));
-        green.set_speaker(speaker);
+        room.ground().set_speaker(speaker);
         if director.shown().is_some() {
             let since = *shown_since.get_or_insert(now);
             if now - since > 2.5 && now + 1.0 / 30.0 < at {
@@ -382,7 +405,7 @@ fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
             shown.text
         );
     }
-    Ok(green.compose(now))
+    Ok(room.compose(now))
 }
 
 /// A game of hide-and-seek `at` seconds into the search, once the colony has settled at the

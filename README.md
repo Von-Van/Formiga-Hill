@@ -20,9 +20,9 @@ owns only the destination.
 | Area | What happens there | State |
 | --- | --- | --- |
 | Station | The train in and out; the colony's display case of kept souvenirs | Built |
-| Village Green | Free play, pats, snacks and toys; stories are staged here for now | Built |
+| Village Green | Free play, pats, snacks and toys | Built |
 | Fairground | Games the colony plays among themselves while you watch, starting with hide-and-seek | Built |
-| Clubhouse | Authored scenes (DESIGN.md §2) | Later |
+| Clubhouse | Authored scenes, picked from the notice board and played out by the fire; free play between them | Built |
 | Woods | Activities you play yourself, with a companion or two, for finds to take home (DESIGN.md §2, the Woods → Hilltop loop): rummaging in the glade, fishing at the pool | Being built |
 | Hilltop | The colony's own place, empty at first, filled and arranged with what the Woods turns up | Being built |
 
@@ -35,8 +35,9 @@ owns only the destination.
 | Done | The train: it pulls in with everyone at a window, they hop down one by one, and it steams away; "Take the train home" runs it in reverse. Cuts instead of motion with reduced motion; a click or Space skips the arrival |
 | Elsewhere | Desktop's side is released in Formiga Desktop 0.66.4: the tray item, the train on the desktop, launching Hill, recall and recovery |
 | Done | The Village Green, painted to the station's standard: free play read from each traveller's temperament, habits, pace and bonds. Wandering, the blanket, naps in the oak's shade, visiting friends, playing with playmates, minis trailing parents, rivals keeping apart. A pat, a snack or a toy is answered in each one's own way, warming to the person over the visit |
-| Done | Stories as declarative content packages ([PACKAGES.md](docs/PACKAGES.md)): a strict, sandboxed loader; cast selectors with fallbacks; a beat vocabulary of walking, reactions, poses, lines, choices, branches and flags; lines that vary by temperament; a director that stages it on the green with a speech bubble over whoever is talking |
+| Done | Stories as declarative content packages ([PACKAGES.md](docs/PACKAGES.md)): a strict, sandboxed loader; cast selectors with fallbacks; a beat vocabulary of walking, reactions, poses, lines, choices, branches and flags; lines that vary by temperament; a director that stages it with a speech bubble over whoever is talking |
 | Done | *The First Picnic*, Hill's first story: three scenes, a choice and a branch, shipped as a package in exactly the community format |
+| Done | The Clubhouse, where stories moved indoors: a panelled room with a crackling fire (held steady with reduced motion), a braided rug, armchairs, a bookshelf, a gingham-covered table and a toy box, and the Hill through the window with whatever stands on it. The notice board pins up a card for each story and stars the finished ones; click it to pick one. Between stories the colony warms by the fire, browses the books and gazes out of the window. A second story, *The Book with No Ending*, with a choice between making up an ending and hunting for the missing page |
 | Done | Hill's own memories of each colony: stories finished, souvenirs kept, visits, each seeker's quickest game |
 | Done | The station's display case, showing each souvenir the colony has kept |
 | Done | The Village Green repainted from above, with no houses: lawn, gravel path, the old oak and its swing, the well, a flower bed, the toy chest and the picnic blanket, against the edge of the woods |
@@ -63,6 +64,7 @@ cargo run -p formiga-hill -- --from-save ~/path/to/colony.json
 cargo run -p formiga-hill -- --render-station station.png
 cargo run -p formiga-hill -- --render-station arriving.png --at 3.6
 cargo run -p formiga-hill -- --render-green green.png --at 25
+cargo run -p formiga-hill -- --render-clubhouse clubhouse.png --at 20
 cargo run -p formiga-hill -- --render-fairground fairground.png --at 25
 cargo run -p formiga-hill -- --render-hide-and-seek hiding.png --at 10
 cargo run -p formiga-hill -- --render-woods woods.png --at 30
@@ -78,7 +80,7 @@ cargo run -p formiga-hill -- --package path/to/my-story.formiga-hill
 ```
 
 The render options draw without a window: the station settled, or `--at` seconds into the
-arrival; the green `--at` seconds into free play; and a review sheet of every traveller answering
+arrival; the green or the Clubhouse `--at` seconds into free play; and a review sheet of every traveller answering
 a pat, a snack and a toy.
 
 For a real trip, run Desktop with `FORMIGA_HILL_PATH` pointing at Hill's binary and choose "Go to
@@ -98,6 +100,7 @@ crates/
     src/kit.rs        pieces areas are built from: walls, roofs, windows, stonework, bushes
     src/station/      the station: scenery, the train, and the timeline of its comings and goings
     src/green/        the Village Green: scenery and free play
+    src/clubhouse/    the Clubhouse: the room where stories are staged, and its fire
     src/character.rs  who each traveller is, turned into what it does
     src/actor.rs      a traveller performing on a stage: steps, beats, cached frames, gaze
     src/cues.rs       hearts, notes and other signs over a creature's head
