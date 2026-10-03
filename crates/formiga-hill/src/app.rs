@@ -10,6 +10,7 @@ mod storytelling;
 use crate::cast::{Cast, Id};
 use crate::character::Offer;
 use crate::clubhouse::{self, Clubhouse};
+use crate::daylight::{Clock, Daylight};
 use crate::fairground::{self, Event, HideAndSeek, Phase};
 use crate::memories::Memories;
 use crate::playground::{Playground, Trust};
@@ -38,6 +39,8 @@ pub enum Visit {
 
 /// How often Hill looks for Desktop calling the colony home.
 const RECALL_CHECK_SECS: f32 = 1.0;
+/// How often Hill looks at the clock for the light of the hour.
+const HOUR_CHECK_SECS: f32 = 10.0;
 /// How long moving between areas takes, as a pixel dissolve.
 const DISSOLVE_SECS: f32 = 0.5;
 
@@ -107,6 +110,10 @@ pub struct HillApp {
     departed: bool,
     last_recall_check: f32,
     library: Library,
+    /// Where the hours come from, the light of the one it is, and when Hill last looked.
+    clock: Clock,
+    daylight: Daylight,
+    last_hour_check: Option<f32>,
     /// The story being played in the Clubhouse, if any, and the package it came from.
     story: Option<(String, Director)>,
     memories: Memories,
@@ -123,7 +130,12 @@ const LETTERBOX: egui::Color32 = egui::Color32::from_rgb(0x2f, 0x3b, 0x2c);
 const TAG: egui::Color32 = egui::Color32::from_rgba_unmultiplied_const(0xf6, 0xee, 0xd8, 0xe0);
 
 impl HillApp {
-    pub fn new(cc: &eframe::CreationContext<'_>, arrival: Arrival, library: Library) -> Self {
+    pub fn new(
+        cc: &eframe::CreationContext<'_>,
+        arrival: Arrival,
+        library: Library,
+        clock: Clock,
+    ) -> Self {
         let presentation = arrival.cast.snapshot.presentation;
         cc.egui_ctx.set_theme(match presentation.theme {
             Theme::System => egui::ThemePreference::System,
@@ -173,6 +185,9 @@ impl HillApp {
             departed: false,
             last_recall_check: 0.0,
             library,
+            clock,
+            daylight: clock.daylight(),
+            last_hour_check: None,
             story: None,
             memories,
             notice: None,
@@ -202,6 +217,41 @@ impl HillApp {
         }
         self.last_recall_check = now;
         trip.recalled()
+    }
+
+    /// Looks at the clock now and then, and lights everywhere for the hour it is: everywhere
+    /// the colony has been, so a place gone back to is already in the right light.
+    fn keep_hours(&mut self, now: f32) {
+        if self
+            .last_hour_check
+            .is_none_or(|since| now - since >= HOUR_CHECK_SECS)
+        {
+            self.daylight = self.clock.daylight();
+            self.last_hour_check = Some(now);
+        }
+        let daylight = self.daylight;
+        self.station.set_daylight(daylight);
+        if let Some(room) = &mut self.clubhouse {
+            room.set_daylight(daylight);
+        }
+        let grounds = [
+            self.green.as_mut(),
+            self.fairground.as_mut().map(|(ground, _)| ground),
+            self.hilltop.as_mut(),
+            self.woods.empty.as_mut(),
+            self.woods.pool.as_mut(),
+        ];
+        for ground in grounds.into_iter().flatten() {
+            ground.set_daylight(daylight);
+        }
+        if let Some((ground, rummage)) = &mut self.woods.outing {
+            ground.set_daylight(daylight);
+            rummage.set_hour_dark(daylight.darkness());
+        }
+        if let Some((ground, trip)) = &mut self.woods.fishing {
+            ground.set_daylight(daylight);
+            trip.set_hour_dark(daylight.darkness());
+        }
     }
 
     /// Seconds since the window opened: the clock the whole visit runs on.
@@ -343,9 +393,13 @@ impl HillApp {
     }
 
     fn refresh_scene(&mut self, ctx: &egui::Context, now: f32) -> egui::TextureId {
-        // The green is always on the move; the station only when its key says so.
+        // The green is always on the move; the station only when its key says so, or the hour.
         let frames = match self.area {
-            Area::Station if self.leaving.is_none() => self.station.frame_key(now),
+            Area::Station if self.leaving.is_none() => {
+                let mut key = self.station.frame_key(now);
+                key.push((self.daylight.hour() * 60.0) as usize);
+                key
+            }
             _ => Vec::new(),
         };
         if self.texture.is_none() || frames.is_empty() || frames != self.shown_frames {
@@ -523,6 +577,7 @@ impl eframe::App for HillApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let now = self.now();
+        self.keep_hours(now);
         self.station.update(now);
         if !self.departed && self.recalled(now) {
             // Desktop has the colony already: close, and write nothing.

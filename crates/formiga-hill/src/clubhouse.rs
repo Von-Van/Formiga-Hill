@@ -6,6 +6,7 @@
 mod scenery;
 
 use crate::cast::Cast;
+use crate::daylight::{Daylight, Nightlights};
 use crate::finds::Use;
 use crate::hilltop::Arrangement;
 use crate::playground::{Attraction, Layout, Patch, Playground};
@@ -120,13 +121,16 @@ pub struct Clubhouse {
     /// The room once for each flicker of the fire, and which is on show.
     flickers: Vec<Canvas>,
     shown: usize,
+    /// The hour the window was last painted for.
+    outside: Daylight,
 }
 
 impl Clubhouse {
     /// The room with the colony coming in, the Hilltop through the window, and a card on the
     /// board for each story, `true` where it has been finished.
     pub fn open(cast: &Cast, now: f32, hilltop: &Arrangement, pinned: Vec<bool>) -> Self {
-        let flickers = paint(hilltop, &pinned);
+        let outside = Daylight::default();
+        let flickers = paint(hilltop, &pinned, outside);
         let mut ground = Playground::new(
             cast,
             now,
@@ -136,12 +140,32 @@ impl Clubhouse {
             scenery::props(),
         );
         ground.set_attractions(attractions());
+        ground.set_nightlights(Nightlights {
+            lamps: scenery::lamplight(),
+            sky: Canvas::new(1, 1),
+            indoors: true,
+        });
         Self {
             ground,
             hilltop: hilltop.clone(),
             pinned,
             flickers,
             shown: 0,
+            outside,
+        }
+    }
+
+    /// The hour: the room dims only to lamplight, and the window shows the Hill outside as it is
+    /// now, repainted whenever the light out there has noticeably changed.
+    pub fn set_daylight(&mut self, daylight: Daylight) {
+        self.ground.set_daylight(daylight);
+        let look = |day: Daylight| {
+            let [r, g, b] = day.ambient();
+            [r, g, b, day.stars(), day.lamps()].map(|value| (value * 40.0).round() as i32)
+        };
+        if look(daylight) != look(self.outside) {
+            self.outside = daylight;
+            self.repaint();
         }
     }
 
@@ -166,7 +190,7 @@ impl Clubhouse {
     }
 
     fn repaint(&mut self) {
-        self.flickers = paint(&self.hilltop, &self.pinned);
+        self.flickers = paint(&self.hilltop, &self.pinned, self.outside);
         self.ground.set_backdrop(self.flickers[self.shown].clone());
     }
 
@@ -189,8 +213,8 @@ impl Clubhouse {
     }
 }
 
-fn paint(hilltop: &Arrangement, pinned: &[bool]) -> Vec<Canvas> {
-    let room = scenery::room(hilltop, pinned);
+fn paint(hilltop: &Arrangement, pinned: &[bool], outside: Daylight) -> Vec<Canvas> {
+    let room = scenery::room(hilltop, pinned, outside);
     (0..FLICKERS)
         .map(|flicker| scenery::with_fire(&room, flicker))
         .collect()

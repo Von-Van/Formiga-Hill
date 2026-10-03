@@ -15,6 +15,7 @@ use crate::actor::{Actor, Step, Whereabouts};
 use crate::cast::{Cast, Id};
 use crate::character::{Character, Company, Cue, Idea, Offer};
 use crate::cues::draw_cue;
+use crate::daylight::{Daylight, Nightlights};
 use crate::dice::Dice;
 use crate::finds::Use;
 use crate::paint::blit;
@@ -143,6 +144,12 @@ pub struct Playground {
     reserved: Vec<Id>,
     /// Whoever's line is on show, with a speech bubble over their head.
     speaker: Option<Id>,
+    /// What shines here after dark, and the hour's light, laid over everything composed.
+    nightlights: Option<Nightlights>,
+    daylight: Daylight,
+    /// The backdrop with the props standing on it: the place with nobody in it, which is where a
+    /// lamp may shine.
+    still: Canvas,
 }
 
 impl Playground {
@@ -217,21 +224,58 @@ impl Playground {
             reduce_motion,
             reserved: Vec::new(),
             speaker: None,
+            nightlights: None,
+            daylight: Daylight::default(),
+            still: Canvas::new(1, 1),
         }
+        .stilled()
+    }
+
+    /// Paints the place as it stands with nobody in it.
+    fn stilled(mut self) -> Self {
+        self.still_life();
+        self
+    }
+
+    fn still_life(&mut self) {
+        let mut still = self.backdrop.clone();
+        let mut props: Vec<&Prop> = self.props.iter().collect();
+        props.sort_by(|a, b| a.base.total_cmp(&b.base));
+        for prop in props {
+            blit(&mut still, &prop.sprite, prop.at.0, prop.at.1);
+        }
+        self.still = still;
     }
 
     pub fn reduce_motion(&self) -> bool {
         self.reduce_motion
     }
 
+    /// What shines here after dark: without it, the place is always as painted.
+    pub fn set_nightlights(&mut self, nightlights: Nightlights) {
+        self.nightlights = Some(nightlights);
+    }
+
+    /// The hour's light, laid over everything this place composes.
+    pub fn set_daylight(&mut self, daylight: Daylight) {
+        self.daylight = daylight;
+    }
+
+    /// What lies behind everyone: the place as painted, with nobody in it.
+    pub fn backdrop(&self) -> &Canvas {
+        &self.backdrop
+    }
+
     /// Repaints what lies behind everyone, as when the Hilltop seen on the skyline changes.
     pub fn set_backdrop(&mut self, backdrop: Canvas) {
         self.backdrop = backdrop;
+        self.still_life();
     }
 
     /// Changes what stands on the ground, as when something is placed on the Hilltop.
     pub fn set_props(&mut self, props: Vec<Prop>) {
         self.props = props;
+        self.still_life();
     }
 
     /// Changes what is worth going over to.
@@ -499,6 +543,9 @@ impl Playground {
             );
         }
         blit(&mut scene, &self.foreground, 0, 0);
+        if let Some(nightlights) = &self.nightlights {
+            nightlights.light(&mut scene, &self.still, self.daylight);
+        }
         scene
     }
 

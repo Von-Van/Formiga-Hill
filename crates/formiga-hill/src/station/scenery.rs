@@ -2022,6 +2022,53 @@ fn potted_fern(scene: &mut Canvas, x: i32) {
     hline(scene, x, PLATFORM_BACK, 7, rgba(0x2a2226, 80));
 }
 
+// ---------------------------------------------------------------------------------------------
+// After dark
+// ---------------------------------------------------------------------------------------------
+
+/// Where the moon rides, between the chimney and the clouds.
+const MOON: (i32, i32) = (132, 20);
+
+/// What shines after dark: the platform lamp and the pool of light it throws on the boards, the
+/// clerk's lamp in the ticket office, and the display case, lit for the night.
+pub fn lamplight() -> Canvas {
+    let mut lamps = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    let x = 356;
+    crate::daylight::glow(&mut lamps, (x + 1, 94), 40, rgb(0xffd77a));
+    ellipse(
+        &mut lamps,
+        x + 1,
+        PLATFORM_BACK + 6,
+        30,
+        7,
+        rgba(0xffd77a, 46),
+    );
+    let (lx, ly) = (x - 4, 86);
+    for (pane, glow) in [(lx + 1, GLOW[1]), (lx + 6, GLOW[0])] {
+        rect(&mut lamps, pane, ly + 1, 4, 10, glow);
+        vline(&mut lamps, pane, ly + 1, 10, GLOW[2]);
+    }
+    rect(&mut lamps, 100, 112, 18, 13, rgba(0xffc860, 140));
+    crate::daylight::glow(&mut lamps, (109, 118), 20, rgba(0xffc860, 200));
+    let (left, top, right, bottom) = CASE;
+    rect(
+        &mut lamps,
+        left + 2,
+        top + 2,
+        right - left - 4,
+        bottom - top - 4,
+        rgba(0xffe2a0, 96),
+    );
+    lamps
+}
+
+/// The sky after dark, deepened, with its stars and the moon.
+pub fn night_sky(painted: &Canvas) -> Canvas {
+    let mut only = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    sky(&mut only);
+    crate::daylight::night_sky(painted, &only, HORIZON, Some(MOON))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

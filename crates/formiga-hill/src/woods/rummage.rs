@@ -184,6 +184,9 @@ const GLINT: Spot = Spot {
 const GLINT_LIGHT: f32 = 0.2;
 
 pub struct Rummage {
+    /// How dark the hour has made the glade already, so the outing's own dusk only darkens it
+    /// past that.
+    hour_dark: f32,
     /// Whether the glint may show, and where among the spots it is once it has.
     beckons: bool,
     glint: Option<usize>,
@@ -335,6 +338,7 @@ impl Rummage {
             events,
             dice,
             reduce_motion: ground.reduce_motion(),
+            hour_dark: 0.0,
             from: (-24.0, 192.0),
             knack: knack_by_kind,
             help,
@@ -749,9 +753,14 @@ impl Rummage {
             .collect()
     }
 
+    /// How dark the hour has made the glade already: the outing's dusk adds only what is more.
+    pub fn set_hour_dark(&mut self, darkness: f32) {
+        self.hour_dark = darkness;
+    }
+
     /// The glade darkening as the light goes, the signs, the ring, a find held up, the basket.
     pub fn draw(&self, scene: &mut Canvas, now: f32) {
-        dim(scene, self.light);
+        dim(scene, self.light, self.hour_dark);
         if let Some(index) = self.glint {
             draw_glint(scene, self.spots[index].sign, now, self.reduce_motion);
         }
@@ -1004,8 +1013,8 @@ fn empty_handed(character: &Character) -> Vec<Beat> {
 }
 
 /// The glade darkening towards dusk as the light runs out.
-pub(crate) fn dim(scene: &mut Canvas, light: f32) {
-    let amount = ((DIMMING - light) / DIMMING).clamp(0.0, 1.0) * 0.45;
+pub(crate) fn dim(scene: &mut Canvas, light: f32, already: f32) {
+    let amount = ((DIMMING - light) / DIMMING).clamp(0.0, 1.0) * 0.45 - already;
     if amount <= 0.0 {
         return;
     }

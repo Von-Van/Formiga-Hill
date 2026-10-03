@@ -189,8 +189,16 @@ fn far_brow(x: i32) -> i32 {
 /// What shows through the gap in the trees: sky with a cloud in it, and the Hill some way off,
 /// its path winding up to the old tree on its summit.
 fn beyond_the_gap(scene: &mut Canvas) {
+    sky(scene);
+    downs(scene);
+    hill(scene);
+    hill_path(scene);
+    old_tree(scene);
+}
+
+/// The sky, in bands, paling towards the horizon behind the Hill, and a cloud.
+fn sky(scene: &mut Canvas) {
     let width = SCENE_WIDTH as i32;
-    // The sky, in bands, paling towards the horizon behind the Hill.
     for x in 0..width {
         for y in 0..far_brow(x) {
             let band = mix(SKY_TOP, SKY_LOW, (y * 5 / 26).min(4) as f32 / 7.0);
@@ -198,10 +206,6 @@ fn beyond_the_gap(scene: &mut Canvas) {
         }
     }
     cloud(scene, (324, 5));
-    downs(scene);
-    hill(scene);
-    hill_path(scene);
-    old_tree(scene);
 }
 
 /// A small fair-weather cloud, lit from above and greying a little underneath.
@@ -1342,6 +1346,34 @@ fn bunting(scene: &mut Canvas) {
         });
         put(scene, x - 2, y, mix(color, rgb(0xffffff), 0.4));
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// After dark
+// ---------------------------------------------------------------------------------------------
+
+/// Fireflies: along the hedge, round the oak and over the flower bed, each a point of green-gold
+/// light with a little glow about it.
+pub fn lamplight() -> Canvas {
+    let mut lights = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    crate::daylight::fireflies(
+        &mut lights,
+        &[
+            (60, 40, 300, 20, 14),
+            (40, 70, 130, 60, 10),
+            (150, 66, 60, 26, 5),
+            (330, 60, 40, 60, 5),
+        ],
+        900,
+    );
+    lights
+}
+
+/// The sky through the gap after dark, with its stars and the moon.
+pub fn night_sky(painted: &Canvas) -> Canvas {
+    let mut only = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    sky(&mut only);
+    crate::daylight::night_sky(painted, &only, 40, Some((328, 13)))
 }
 
 #[cfg(test)]

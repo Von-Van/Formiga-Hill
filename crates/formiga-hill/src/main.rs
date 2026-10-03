@@ -7,6 +7,7 @@ mod character;
 mod clearing;
 mod clubhouse;
 mod cues;
+mod daylight;
 mod dice;
 mod fairground;
 mod finds;
@@ -66,6 +67,8 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
   --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
   --sample-hilltop         Draw the station's skyline with a sample of finds on the Hilltop
+  --hour <HOUR>            Draw at that hour of the day, from 0 to 24, rather than at midday;
+                           with a window, hold the Hill at that hour rather than the clock's
   --at <SECONDS>           Draw that far into the arrival, or into free play on the green, in
                            the Clubhouse or at the Fairground
 ";
@@ -110,9 +113,13 @@ struct Args {
     check: Vec<PathBuf>,
     /// Draw the station with a sample of finds on the Hilltop, rather than the colony's own.
     sample_hilltop: bool,
+    /// The hour to draw at, rather than midday.
+    hour: Option<f32>,
 }
 
 fn main() -> Result<()> {
+    // Before anything starts a thread: see `daylight::Clock`.
+    let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
     let Some(args) = parse_args(std::env::args_os().skip(1))? else {
         print!("{USAGE}");
         return Ok(());
@@ -123,6 +130,7 @@ fn main() -> Result<()> {
     let arrival = arrive(args.source)?;
 
     if let Some((area, path)) = args.render {
+        let daylight = daylight::Daylight::at_hour(args.hour.unwrap_or(12.0));
         let canvas = match area {
             Area::Station => {
                 let (journey, now) = match args.at {
@@ -141,6 +149,7 @@ fn main() -> Result<()> {
                 } else {
                     station.show_hilltop(&memories.colony().hilltop);
                 }
+                station.set_daylight(daylight);
                 station.compose(now)
             }
             Area::Green => {
@@ -148,6 +157,7 @@ fn main() -> Result<()> {
                 let until = args.at.unwrap_or(20.0);
                 let mut green = green::open(&arrival.cast, 0.0);
                 green::show_hilltop(&mut green, &sample_arrangement());
+                green.set_daylight(daylight);
                 let mut now = 0.0;
                 while now < until {
                     now += 1.0 / 30.0;
@@ -165,6 +175,7 @@ fn main() -> Result<()> {
                     .collect();
                 let mut room =
                     clubhouse::Clubhouse::open(&arrival.cast, 0.0, &sample_arrangement(), pinned);
+                room.set_daylight(daylight);
                 let mut now = 0.0;
                 while now < until {
                     now += 1.0 / 30.0;
@@ -184,10 +195,11 @@ fn main() -> Result<()> {
                 fairground.compose(now)
             }
             Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0)),
-            Area::Woods => woods_moment(&arrival.cast, args.at.unwrap_or(12.0)),
+            Area::Woods => woods_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Hilltop => {
                 let until = args.at.unwrap_or(20.0);
                 let mut hilltop = hilltop::open(&arrival.cast, 0.0, &sample_arrangement());
+                hilltop.set_daylight(daylight);
                 let mut now = 0.0;
                 while now < until {
                     now += 1.0 / 30.0;
@@ -196,7 +208,7 @@ fn main() -> Result<()> {
                 hilltop.compose(now)
             }
             Area::Finds => finds_sheet(),
-            Area::Fishing => fishing_moment(&arrival.cast, args.at.unwrap_or(12.0)),
+            Area::Fishing => fishing_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Fish => fish_sheet(),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
@@ -230,7 +242,11 @@ fn main() -> Result<()> {
         options,
         Box::new(|cc| {
             let library = story::Library::load(&args.packages);
-            Ok(Box::new(HillApp::new(cc, arrival, library)))
+            let clock = match args.hour {
+                Some(hour) => daylight::Clock::Held(hour),
+                None => daylight::Clock::Local(offset),
+            };
+            Ok(Box::new(HillApp::new(cc, arrival, library, clock)))
         }),
     )
     .map_err(|error| anyhow::anyhow!("the Hill window could not open: {error}"))
@@ -243,6 +259,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut packages = Vec::new();
     let mut check = Vec::new();
     let mut sample_hilltop = false;
+    let mut hour = None;
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
             bail!("choose one of --sample, {LAUNCH_ARGUMENT}, or --from-save");
@@ -299,6 +316,18 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 );
             }
             Some("--sample-hilltop") => sample_hilltop = true,
+            Some("--hour") => {
+                let given = value("--hour")?;
+                hour = Some(
+                    given
+                        .to_str()
+                        .and_then(|text| text.parse::<f32>().ok())
+                        .filter(|hour| (0.0..=24.0).contains(hour))
+                        .with_context(|| {
+                            format!("--hour needs an hour from 0 to 24, not {given:?}")
+                        })?,
+                );
+            }
             Some("--package") => packages.push(value("--package")?),
             Some("--check-package") => check.push(value("--check-package")?),
             Some("-h" | "--help") => return Ok(None),
@@ -315,6 +344,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         packages,
         check,
         sample_hilltop,
+        hour,
     }))
 }
 
@@ -435,7 +465,7 @@ fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
 /// An outing to the Woods, `at` seconds in, played by a steady hand: it searches the spots in
 /// turn and catches each moment as the marker crosses the gold. A parent and its little one go if
 /// the colony has them, so the spots only some company opens show; otherwise the first two.
-fn woods_moment(cast: &Cast, at: f32) -> Canvas {
+fn woods_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     let family = cast
         .members
         .iter()
@@ -453,7 +483,9 @@ fn woods_moment(cast: &Cast, at: f32) -> Canvas {
         beckons: false,
         seed: 5,
     };
+    glade.set_daylight(daylight);
     let mut outing = woods::rummage::Rummage::new(&mut glade, outset, |_| false, 0.0);
+    outing.set_hour_dark(daylight.darkness());
     let mut now = 0.0;
     let mut next = 0;
     while now < at {
@@ -482,7 +514,7 @@ fn woods_moment(cast: &Cast, at: f32) -> Canvas {
 /// A fishing trip at the pool, `at` seconds in, played by a steady hand: it casts at each part of
 /// the pool in turn, strikes on the bite, reels in only while the fish isn't pulling, and tries
 /// somewhere else when nothing comes.
-fn fishing_moment(cast: &Cast, at: f32) -> Canvas {
+fn fishing_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     use fishing::angling::{Angling, Outset, Phase};
     let party: Vec<cast::Id> = cast.ids().take(2).collect();
     let mut pool = fishing::open(cast, &party, 0.0);
@@ -492,7 +524,9 @@ fn fishing_moment(cast: &Cast, at: f32) -> Canvas {
         influence: woods::influence(&sample_arrangement()),
         seed: 7,
     };
+    pool.set_daylight(daylight);
     let mut trip = Angling::new(&mut pool, outset, |_| false, |_| false, 0.0);
+    trip.set_hour_dark(daylight.darkness());
     let mut now = 0.0;
     let mut aim = 0;
     while now < at {

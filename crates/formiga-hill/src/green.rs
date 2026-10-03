@@ -5,6 +5,7 @@
 mod scenery;
 
 use crate::cast::Cast;
+use crate::daylight::Nightlights;
 use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Playground};
 use scenery::{BLANKET, SHADE, WALK_BOTTOM, WALK_LEFT, WALK_RIGHT, WALK_TOP, walkable};
@@ -51,14 +52,22 @@ pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
 
 /// The green, with the colony walking in.
 pub fn open(cast: &Cast, now: f32) -> Playground {
-    Playground::new(
+    let backdrop = scenery::backdrop(&Arrangement::new());
+    let nightlights = Nightlights {
+        lamps: scenery::lamplight(),
+        sky: scenery::night_sky(&backdrop),
+        indoors: false,
+    };
+    let mut green = Playground::new(
         cast,
         now,
         layout(),
-        scenery::backdrop(&Arrangement::new()),
+        backdrop,
         scenery::foreground(),
         Vec::new(),
-    )
+    );
+    green.set_nightlights(nightlights);
+    green
 }
 
 #[cfg(test)]

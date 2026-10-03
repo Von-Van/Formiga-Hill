@@ -50,6 +50,7 @@ owns only the destination.
 | Done | Spots only some company opens: a badger sett for an explorer, a crevice only a little one fits, a boulder a close pair can heave over. Extra chances, never the only way to anything |
 | Done | Fishing at the pool: eight kinds of fish, each keeping to its own part of the pool (trout under the falls, pike in the reeds, carp by the lilies). Cast where you think they are, but not on top of a wary one; tell a nibble from a bite, each kind nibbling its own number of times; reel in and ease off when it pulls, or the line snaps. The Old One only comes up at dusk. A patient angler gets a longer moment to strike, a playful one draws fish in, a strong one strains the line less, a dozing lazybones gets bolder bites, and a second companion lands fish with the net. Fish are let go and remembered: how many, the longest, and who caught the first. Now and then something snags and comes home for the Hilltop |
 | Done | A secret in the Woods (DESIGN.md §2, the Cursor Sovereign): an interactive cutscene played completely straight, with a menu of absurd attacks each acted out by the companion it belongs to, three phases, and the whole colony arriving for the finale. It leaves a relic for the Hilltop. How to find it is deliberately not written here; see CLAUDE.md |
+| Done | The Hill keeps your hours: its light follows your computer's clock, so a morning visit is morning everywhere and a late one is under the stars. Dawn comes up rose and evening goes down gold; after dark the station's lamp, ticket office and display case are lit, fireflies come out on the green and in the Woods, the Clubhouse dims only to lamp and firelight with the night in its window, and the Hilltop's lantern and fallen star glow, with the Fairground's bulbs far below. Nothing in play depends on the hour |
 | Next | More Woods activities (bug catching, longer expeditions); finds that open new Woods possibilities |
 
 ## Running it
@@ -65,6 +66,7 @@ cargo run -p formiga-hill -- --render-station station.png
 cargo run -p formiga-hill -- --render-station arriving.png --at 3.6
 cargo run -p formiga-hill -- --render-green green.png --at 25
 cargo run -p formiga-hill -- --render-clubhouse clubhouse.png --at 20
+cargo run -p formiga-hill -- --render-station night.png --hour 23
 cargo run -p formiga-hill -- --render-fairground fairground.png --at 25
 cargo run -p formiga-hill -- --render-hide-and-seek hiding.png --at 10
 cargo run -p formiga-hill -- --render-woods woods.png --at 30

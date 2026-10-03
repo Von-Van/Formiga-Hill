@@ -4,6 +4,7 @@
 //! scarves. Floorboards fill the rest, with the rag rug before the fire. The armchairs, the table
 //! and the toy box stand on the floor as props, so anyone can be behind them.
 
+use crate::daylight::{Daylight, glow, light, night_sky};
 use crate::hilltop::{Arrangement, Tint, Vista, skyline};
 use crate::materials::*;
 use crate::paint::{
@@ -89,19 +90,20 @@ const VISTA: Vista = Vista {
 };
 
 /// The room with everything that never moves, the fire out: the hearth is lit in `with_fire`.
-/// `pinned` has one card per story on the board, true where the colony has finished it.
-pub fn room(hilltop: &Arrangement, pinned: &[bool]) -> Canvas {
+/// `pinned` has one card per story on the board, true where the colony has finished it. The
+/// window shows the Hill at the hour `outside`, and the sun comes in only by day.
+pub fn room(hilltop: &Arrangement, pinned: &[bool], outside: Daylight) -> Canvas {
     let mut scene = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
     wall(&mut scene);
     lamp(&mut scene);
     bookshelf(&mut scene);
     hearth(&mut scene);
-    window(&mut scene, hilltop);
+    window(&mut scene, hilltop, outside);
     board(&mut scene, pinned);
     pegs(&mut scene);
     floor(&mut scene);
     hearthstone(&mut scene);
-    light_through_the_window(&mut scene);
+    light_through_the_window(&mut scene, 1.0 - outside.lamps());
     rug(&mut scene);
     log_basket(&mut scene, 82, WALL_FOOT + 2);
     // Where the furniture stands, soft shade on the boards.
@@ -600,17 +602,18 @@ fn fire(scene: &mut Canvas, flicker: usize) {
 }
 
 /// The window, and the Hill through it.
-fn window(scene: &mut Canvas, hilltop: &Arrangement) {
+fn window(scene: &mut Canvas, hilltop: &Arrangement, outside: Daylight) {
     let (x, y, wide, tall) = WINDOW;
     let (vw, vh) = (wide - SASH * 2, tall - SASH * 2);
-    let mut view = Canvas::new(vw as u32, vh as u32);
+    let mut sky = Canvas::new(vw as u32, vh as u32);
     for py in 0..vh {
         let band = mix(SKY_TOP, SKY_LOW, (py as f32 / vh as f32).powf(1.3));
-        hline(&mut view, 0, py, vw, band);
+        hline(&mut sky, 0, py, vw, band);
     }
-    ellipse(&mut view, 10, 7, 5, 2, CLOUD);
-    ellipse(&mut view, 14, 6, 4, 2, CLOUD);
-    ellipse(&mut view, 41, 10, 4, 1, rgba(0xfdfbf5, 200));
+    ellipse(&mut sky, 10, 7, 5, 2, CLOUD);
+    ellipse(&mut sky, 14, 6, 4, 2, CLOUD);
+    ellipse(&mut sky, 41, 10, 4, 1, rgba(0xfdfbf5, 200));
+    let mut view = sky.clone();
     for px in 0..vw {
         let crest = 26 + ((px as f32 / 7.0).sin() * 1.5) as i32;
         vline(&mut view, px, crest, vh - crest, FAR_HILL);
@@ -630,6 +633,15 @@ fn window(scene: &mut Canvas, hilltop: &Arrangement) {
             put(&mut view, px, top, LEAF.base);
         }
     }
+    // The hour outside, before the glass.
+    let painted = view.clone();
+    let night = night_sky(&painted, &sky, vh, Some((40, 7)));
+    light(
+        &mut view,
+        outside.ambient(),
+        &painted,
+        &[(&night, outside.stars())],
+    );
     // The glass: a little cooler at the bottom, with a glint across each pane.
     for py in 0..vh {
         hline(&mut view, 0, py, vw, rgba(0x7499a8, (py * 40 / vh) as u8));
@@ -1001,7 +1013,10 @@ fn hearthstone(scene: &mut Canvas) {
 }
 
 /// The patch of daylight from the window, falling down and to the right across the boards.
-fn light_through_the_window(scene: &mut Canvas) {
+fn light_through_the_window(scene: &mut Canvas, strength: f32) {
+    if strength <= 0.0 {
+        return;
+    }
     let (x, _, wide, _) = WINDOW;
     polygon(
         scene,
@@ -1015,7 +1030,7 @@ fn light_through_the_window(scene: &mut Canvas) {
             // Softer the further it falls, and crossed by the glazing bars' shadow.
             let bar = px - (py - WALL_FOOT) * 24 / 39 == x + wide / 2;
             let fade = 1.0 - (py - WALL_FOOT) as f32 / 40.0;
-            let alpha = if bar { 0.0 } else { 32.0 * fade };
+            let alpha = if bar { 0.0 } else { 32.0 * fade * strength };
             Some(rgba(0xfff3d0, alpha as u8))
         },
     );
@@ -1399,4 +1414,26 @@ fn outline(sprite: &mut Canvas, color: Rgba) {
     for (x, y) in edges {
         sprite.set(x, y, color);
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// After dark
+// ---------------------------------------------------------------------------------------------
+
+/// What keeps the room bright when it is dark outside: the hanging lamp, the fire and the
+/// firelight on the floor before it, and the candles on the mantel.
+pub fn lamplight() -> Canvas {
+    let mut lights = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    glow(&mut lights, (196, 24), 56, rgb(0xffdc96));
+    glow(&mut lights, (FIREBOX.0, FIREBOX.3 - 12), 70, rgb(0xffa04a));
+    glow(
+        &mut lights,
+        (FIREBOX.0, WALL_FOOT + 10),
+        84,
+        rgba(0xff9a40, 200),
+    );
+    for candle in [BREAST.0 + 6, BREAST.1 - 7] {
+        glow(&mut lights, (candle, 30), 10, rgb(0xffd77a));
+    }
+    lights
 }

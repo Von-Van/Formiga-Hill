@@ -1213,6 +1213,38 @@ fn limbs(layer: &mut Canvas) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// After dark
+// ---------------------------------------------------------------------------------------------
+
+/// The lights of the places below after dark: the station's lamp and windows, and the
+/// Fairground's bulbs strung round the big top.
+pub fn lamplight() -> Canvas {
+    let mut lights = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    let (sx, sy) = STATION;
+    for (dx, dy, color) in [(2, -8, 0xffd77a), (8, -8, 0xffc860), (20, -9, 0xfff0bd)] {
+        crate::daylight::glow(&mut lights, (sx + dx, sy + dy), 5, rgb(color));
+        put(&mut lights, sx + dx, sy + dy, rgb(color));
+    }
+    let (fx, fy) = FAIR;
+    for bulb in 0..9 {
+        let t = bulb as f32 / 8.0;
+        let x = fx - 10 + (t * 32.0) as i32;
+        let y = fy - 6 - ((t * std::f32::consts::PI).sin() * 6.0) as i32;
+        let color = [0xffd77a, 0xff8a7a, 0x9ad8ff][bulb as usize % 3];
+        crate::daylight::glow(&mut lights, (x, y), 4, rgb(color));
+        put(&mut lights, x, y, rgb(color));
+    }
+    lights
+}
+
+/// The sky over the summit after dark, with its stars and the moon.
+pub fn night_sky(painted: &Canvas) -> Canvas {
+    let mut only = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    sky(&mut only);
+    crate::daylight::night_sky(painted, &only, HORIZON + 6, Some((232, 13)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
