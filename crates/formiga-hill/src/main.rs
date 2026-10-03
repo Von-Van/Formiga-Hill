@@ -59,6 +59,9 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-hide-and-seek <PNG>
                            Draw a game of hide-and-seek at the Fairground, --at seconds into
                            the search
+  --render-sack-race <PNG> Draw a sack race at the Fairground, --at seconds after the off
+  --render-high-striker <PNG>
+                           Draw the colony at the high striker, --at seconds into the game
   --render-woods <PNG>     Draw a rummage in the Woods, --at seconds into it
   --render-hilltop <PNG>   Draw the Hilltop with a sample of finds placed on it
   --render-finds <PNG>     Draw every find's icon and Hilltop piece on one sheet, for review
@@ -99,6 +102,10 @@ enum Area {
     Fairground,
     /// The Fairground, a game of hide-and-seek under way.
     HideAndSeek,
+    /// The Fairground, a sack race under way.
+    SackRace,
+    /// The Fairground, the colony taking turns at the high striker.
+    HighStriker,
     Woods,
     Hilltop,
     /// Not an area: the review sheet of every find.
@@ -264,6 +271,8 @@ fn main() -> Result<()> {
                 fairground.compose(now)
             }
             Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0), daylight),
+            Area::SackRace => race_moment(&arrival.cast, args.at.unwrap_or(5.0), daylight),
+            Area::HighStriker => striker_moment(&arrival.cast, args.at.unwrap_or(9.0), daylight),
             Area::Woods => woods_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Hilltop => {
                 let until = args.at.unwrap_or(20.0);
@@ -386,6 +395,12 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             }
             Some("--render-hide-and-seek") => {
                 render = Some((Area::HideAndSeek, value("--render-hide-and-seek")?));
+            }
+            Some("--render-sack-race") => {
+                render = Some((Area::SackRace, value("--render-sack-race")?));
+            }
+            Some("--render-high-striker") => {
+                render = Some((Area::HighStriker, value("--render-high-striker")?));
             }
             Some("--render-woods") => render = Some((Area::Woods, value("--render-woods")?)),
             Some("--render-hilltop") => {
@@ -565,21 +580,74 @@ fn story_moment(
 /// Fairground and hidden.
 fn hiding_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     const SETTLE: f32 = 12.0;
-    let (mut ground, mut game) = fairground::open(cast, 0.0);
+    let (mut ground, mut games) = fairground::open(cast, 0.0);
     ground.set_daylight(daylight);
     let mut now = 0.0;
     let mut seeking_since = None;
     while seeking_since.is_none_or(|since| now < since + at) && now < 300.0 {
         now += 1.0 / 30.0;
         ground.tick(cast, now);
-        game.tick(&mut ground, now);
-        if now >= SETTLE && game.phase() == fairground::Phase::Ready && seeking_since.is_none() {
-            game.start(&mut ground, None, now);
+        games.tick(&mut ground, now);
+        if now >= SETTLE && games.playing().is_none() && seeking_since.is_none() {
+            let game = fairground::Game::HideAndSeek;
+            games.start(game, &mut ground, cast, &[], now);
         }
-        if let fairground::Phase::Seeking { since } = game.phase() {
+        if let fairground::Phase::Seeking { since } = games.hide_and_seek.phase() {
             seeking_since.get_or_insert(since);
         }
-        for event in game.take_events() {
+        for event in games.hide_and_seek.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    ground.compose(now)
+}
+
+/// A sack race at the Fairground with everyone running, `at` seconds after "go" (or as it ends,
+/// if it is over by then).
+fn race_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    use fairground::sack_race::Phase;
+    const SETTLE: f32 = 6.0;
+    let (mut ground, mut games) = fairground::open(cast, 0.0);
+    ground.set_daylight(daylight);
+    let mut now = 0.0;
+    let mut go = None;
+    let mut started = false;
+    while go.is_none_or(|since| now < since + at) && now < 400.0 {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        games.tick(&mut ground, now);
+        if now >= SETTLE && !started {
+            games.start(fairground::Game::SackRace, &mut ground, cast, &[], now);
+            started = true;
+        }
+        if let Phase::Racing { since } = games.sack_race.phase() {
+            go.get_or_insert(since);
+        }
+        for event in games.sack_race.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+        if started && games.playing().is_none() {
+            break;
+        }
+    }
+    ground.compose(now)
+}
+
+/// The colony taking turns at the high striker, `at` seconds after the game starts.
+fn striker_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    const SETTLE: f32 = 6.0;
+    let (mut ground, mut games) = fairground::open(cast, 0.0);
+    ground.set_daylight(daylight);
+    let mut now = 0.0;
+    games.tick(&mut ground, now);
+    while now < SETTLE + at {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        games.tick(&mut ground, now);
+        if now >= SETTLE && now - 1.0 / 30.0 < SETTLE {
+            games.start(fairground::Game::HighStriker, &mut ground, cast, &[], now);
+        }
+        for event in games.high_striker.take_events() {
             println!("{now:6.1}s  {event:?}");
         }
     }
@@ -1176,6 +1244,25 @@ mod tests {
         .unwrap();
         assert!(matches!(args.source, Source::Trip(ref path) if path == Path::new("/trips/ab")));
         assert_eq!(args.render, Some((Area::Station, PathBuf::from("out.png"))));
+    }
+
+    #[test]
+    fn each_fairground_game_can_be_drawn_partway_through() {
+        let args = parse(&["--render-sack-race", "race.png", "--at", "4"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            args.render,
+            Some((Area::SackRace, PathBuf::from("race.png")))
+        );
+        assert_eq!(args.at, Some(4.0));
+        let args = parse(&["--render-high-striker", "striker.png"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            args.render,
+            Some((Area::HighStriker, PathBuf::from("striker.png")))
+        );
     }
 
     #[test]

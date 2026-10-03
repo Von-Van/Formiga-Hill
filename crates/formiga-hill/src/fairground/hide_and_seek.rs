@@ -903,8 +903,14 @@ mod tests {
         events
     }
 
+    /// The fairground, and its game of hide-and-seek.
+    fn open(cast: &Cast) -> (Playground, HideAndSeek) {
+        let (ground, games) = fairground::open(cast, 0.0);
+        (ground, games.hide_and_seek)
+    }
+
     fn settled(cast: &Cast) -> (Playground, HideAndSeek) {
-        let (mut ground, mut game) = fairground::open(cast, 0.0);
+        let (mut ground, mut game) = open(cast);
         play(&mut ground, &mut game, cast, 0.0, 10.0);
         (ground, game)
     }
@@ -1060,7 +1066,7 @@ mod tests {
     #[test]
     fn stopping_lets_everyone_out() {
         let cast = sample();
-        let (mut ground, mut game) = fairground::open(&cast, 0.0);
+        let (mut ground, mut game) = open(&cast);
         game.start(&mut ground, None, 1.0);
         game.stop(&mut ground, 2.0);
         assert_eq!(game.phase(), Phase::Ready);

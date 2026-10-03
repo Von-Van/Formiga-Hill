@@ -143,6 +143,9 @@ pub struct Character {
     pub habits: Vec<Habit>,
     pub parent: Option<Id>,
     pub celebration: Celebration,
+    /// How big it is against an average adult, from Desktop: its stature times its share of an
+    /// adult's size, so a little one is small and a tall one tall.
+    pub size: f32,
 }
 
 impl Character {
@@ -167,6 +170,9 @@ impl Character {
                 .celebration
                 .map(Into::into)
                 .unwrap_or_else(|| Celebration::for_creature(&member.creature)),
+            size: f32::from(member.traveler.stature_percent) / 100.0
+                * f32::from(member.traveler.scale_percent)
+                / 100.0,
         }
     }
 

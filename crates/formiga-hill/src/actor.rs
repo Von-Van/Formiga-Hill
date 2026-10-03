@@ -80,6 +80,15 @@ pub struct Actor {
     costume: Option<&'static str>,
     /// Groomed till it shines, for the rest of the visit.
     shining: bool,
+    /// In a sack for the sack race, and which one: each racer's has its own coloured band.
+    sack: Option<u8>,
+    /// How far across its sack goes in a frame facing right, from its resting frame, so the
+    /// sack keeps its size whatever it does in it.
+    girth: Option<(i32, i32)>,
+    /// Tipped over on its side, as after a tumble in its sack.
+    tipped: bool,
+    /// The frame with its sack and costume on, turned on its side, as last drawn tipped over.
+    turned: Option<(FrameKey, Canvas)>,
     /// The frame row its feet rest on.
     foot_row: i32,
     pub pos: (f32, f32),
@@ -91,6 +100,8 @@ pub struct Actor {
     /// When the step at the front began.
     step_since: f32,
     frames: HashMap<FrameKey, Frame>,
+    /// Each frame's sack, by the frame and the sack, drawn on first use as frames are.
+    sacks: HashMap<(FrameKey, u8), Canvas>,
     /// Blinks come round every `period` seconds, offset by `phase`, so no two are in step.
     blink: (f32, f32),
     reduce_motion: bool,
@@ -118,6 +129,10 @@ impl Actor {
             face_below_crown,
             costume: None,
             shining: false,
+            sack: None,
+            girth: crate::fairground::gear::girth(&resting.canvas),
+            tipped: false,
+            turned: None,
             foot_row: FRAME_SIZE as i32 - 1 - baseline as i32,
             pos,
             facing_right,
@@ -126,6 +141,7 @@ impl Actor {
             steps: VecDeque::new(),
             step_since: 0.0,
             frames: HashMap::new(),
+            sacks: HashMap::new(),
             blink: (3.2 + seed * 2.4, seed * 5.0),
             reduce_motion,
         }
@@ -366,6 +382,14 @@ impl Actor {
     /// so a tall hat is pointed at, and tagged above, along with its wearer.
     pub fn bounds(&mut self, now: f32) -> (i32, i32, i32, i32) {
         let key = self.pose(now);
+        if self.tipped {
+            let (turned, (x, y)) = self.turned_over(key);
+            let (left, top, right, bottom) =
+                turned.alpha_bounds().map_or((0, 0, 0, 0), |(a, b, c, d)| {
+                    (a as i32, b as i32, c as i32, d as i32)
+                });
+            return (x + left, y + top, x + right, y + bottom);
+        }
         let (x, y) = self.origin();
         let frame = self.frame(key);
         let (left, top, right, bottom) = frame.bounds;
@@ -408,6 +432,11 @@ impl Actor {
 
     pub fn draw(&mut self, scene: &mut Canvas, now: f32) {
         let key = self.pose(now);
+        if self.tipped {
+            let (turned, (x, y)) = self.turned_over(key);
+            blit(scene, &turned, x, y);
+            return;
+        }
         let (x, y) = self.origin();
         let frame = self.frame(key);
         // `blit` takes the frame by reference while `self` is borrowed for the cache.
@@ -415,6 +444,9 @@ impl Actor {
         blit(scene, &canvas, x, y);
         if self.shining {
             draw_shine(scene, &canvas, (x, y), now, self.reduce_motion, self.id);
+        }
+        if let Some(sack) = self.sack_for(key) {
+            blit(scene, &sack, x, y);
         }
         if let Some(id) = self.costume {
             draw_costume(
@@ -436,6 +468,115 @@ impl Actor {
     pub fn shine(&mut self, shining: bool) {
         self.shining = shining;
     }
+
+    /// Climbs into a sack for the sack race, the one with this band, or out of it.
+    pub fn sack(&mut self, sack: Option<u8>) {
+        self.sack = sack;
+    }
+
+    /// Tips over on its side, or gets up again.
+    pub fn tip(&mut self, tipped: bool) {
+        self.tipped = tipped;
+        if !tipped {
+            self.turned = None;
+        }
+    }
+
+    /// The sack drawn over this frame, if it is in one.
+    fn sack_for(&mut self, key: FrameKey) -> Option<Canvas> {
+        let band = self.sack?;
+        if self.sacks.len() >= FRAME_CACHE_LIMIT {
+            self.sacks.clear();
+        }
+        if !self.sacks.contains_key(&(key, band)) {
+            let (from, to) = self.girth?;
+            // The renderer draws facing right and mirrors.
+            let girth = if key.facing_right {
+                (from, to)
+            } else {
+                (FRAME_SIZE as i32 - 1 - to, FRAME_SIZE as i32 - 1 - from)
+            };
+            let frame = self.frame(key).canvas.clone();
+            let sack = crate::fairground::gear::sack(&frame, band, girth);
+            self.sacks.insert((key, band), sack);
+        }
+        self.sacks.get(&(key, band)).cloned()
+    }
+
+    /// The frame with whatever it has on, turned on its side with its head the way it was
+    /// facing, as if it had fallen forward, and where its top-left goes in the scene: lying on
+    /// the ground where it stood.
+    fn turned_over(&mut self, key: FrameKey) -> (Canvas, (i32, i32)) {
+        if !matches!(&self.turned, Some((turned_key, _)) if *turned_key == key) {
+            let frame = self.frame(key);
+            let (mut whole, crown) = (frame.canvas.clone(), frame.crown);
+            if let Some(sack) = self.sack_for(key) {
+                blit(&mut whole, &sack, 0, 0);
+            }
+            if let Some(id) = self.costume {
+                draw_costume(
+                    &mut whole,
+                    id,
+                    crown,
+                    self.face_below_crown,
+                    key.facing_right,
+                );
+            }
+            // Anything longer than it is tall rolls onto its back instead, legs in the air.
+            let (left, top, right, bottom) = whole.alpha_bounds().unwrap_or((0, 0, 0, 0));
+            let fallen = if right - left > bottom - top {
+                upside_down(&whole)
+            } else {
+                turn(&whole, key.facing_right)
+            };
+            self.turned = Some((key, fallen));
+        }
+        let turned = self.turned.as_ref().map(|(_, canvas)| canvas.clone());
+        let turned = turned.unwrap_or_else(|| Canvas::new(1, 1));
+        let (left, _, right, bottom) =
+            turned.alpha_bounds().map_or((0, 0, 0, 0), |(a, b, c, d)| {
+                (a as i32, b as i32, c as i32, d as i32)
+            });
+        let at = (
+            self.pos.0.round() as i32 - (left + right) / 2,
+            (self.pos.1 - self.lift).round() as i32 - bottom,
+        );
+        (turned, at)
+    }
+}
+
+/// A picture turned upside down.
+fn upside_down(canvas: &Canvas) -> Canvas {
+    let height = canvas.height() as i32;
+    let mut turned = Canvas::new(canvas.width(), canvas.height());
+    for y in 0..height {
+        for x in 0..canvas.width() as i32 {
+            turned.set(x, height - 1 - y, canvas.get(x, y));
+        }
+    }
+    turned
+}
+
+/// A picture turned a quarter round: clockwise, so its top comes to the right, if `clockwise`;
+/// otherwise the other way. Pixel for pixel, as a quarter turn loses nothing.
+fn turn(canvas: &Canvas, clockwise: bool) -> Canvas {
+    let (width, height) = (canvas.width() as i32, canvas.height() as i32);
+    let mut turned = Canvas::new(canvas.height(), canvas.width());
+    for y in 0..height {
+        for x in 0..width {
+            let pixel = canvas.get(x, y);
+            if pixel.a == 0 {
+                continue;
+            }
+            let (tx, ty) = if clockwise {
+                (height - 1 - y, x)
+            } else {
+                (y, width - 1 - x)
+            };
+            turned.set(tx, ty, pixel);
+        }
+    }
+    turned
 }
 
 /// A freshly groomed coat: a few glints that come and go across it, each on a pixel of the
@@ -692,6 +833,57 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_sack_goes_over_its_lower_body_and_it_stands_where_it_did() {
+        let (mut plain, mut sacked) = (actor(), actor());
+        sacked.sack(Some(2));
+        let (mut without, mut with) = (Canvas::new(200, 216), Canvas::new(200, 216));
+        plain.draw(&mut without, 0.0);
+        sacked.draw(&mut with, 0.0);
+        assert_ne!(without, with);
+        let (_, top, _, bottom) = plain.bounds(0.0);
+        assert_eq!(
+            sacked.bounds(0.0).3,
+            bottom,
+            "standing in its sack where it stood"
+        );
+        // Its head and shoulders are its own.
+        for y in 0..top + (bottom - top) / 3 {
+            for x in 0..200 {
+                assert_eq!(without.get(x, y), with.get(x, y), "({x}, {y}) changed");
+            }
+        }
+        sacked.sack(None);
+        let mut again = Canvas::new(200, 216);
+        sacked.draw(&mut again, 0.0);
+        assert_eq!(again, without, "out of the sack again");
+    }
+
+    #[test]
+    fn tipped_over_it_lies_on_its_side_where_it_stood_and_gets_up_again() {
+        let mut actor = actor();
+        let (left, top, right, bottom) = actor.bounds(0.0);
+        actor.tip(true);
+        let lying = actor.bounds(0.0);
+        assert_eq!(lying.3, bottom, "on the ground where it stood");
+        let (wide, tall) = (right - left, bottom - top);
+        if wide > tall {
+            assert_eq!(
+                (lying.2 - lying.0, lying.3 - lying.1),
+                (wide, tall),
+                "on its back"
+            );
+        } else {
+            assert_eq!(
+                (lying.2 - lying.0, lying.3 - lying.1),
+                (tall, wide),
+                "on its side"
+            );
+        }
+        actor.tip(false);
+        assert_eq!(actor.bounds(0.0), (left, top, right, bottom));
     }
 
     #[test]
