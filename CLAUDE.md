@@ -34,6 +34,13 @@ side of it.
   person watches, choosing at most who plays what. Woods activities are played by the person,
   with a companion or two, for finds; finds fill the Hilltop, which the person arranges. The
   plan for the Woods → Hilltop loop is DESIGN.md §2; build it to that, and to the owner's go-ahead.
+- The Cursor Sovereign (`clearing/`) is the one secret, and stays first-party. In-game nothing
+  points to it: on a rummage below a fifth of the light, a colony that has found ten or more
+  finds and stands a sky-gazing piece (telescope, star stone, weathervane) on the Hilltop may
+  see a small white pointer glinting between the trees; following it leads to the clearing.
+  After the first victory (which leaves the relic) it comes back on every third outing only.
+  It is a cutscene, never a combat system: no stats, nothing lost, every choice lands. Keep its
+  trigger out of the README and any in-game hint.
 - Watching earns keepsakes for the display case at most: the finds that build the Hilltop come
   only from the Woods.
 - Every find and every kind of fish stays findable by any single companion: a companion's leanings and knacks weight
@@ -64,7 +71,8 @@ side of it.
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 - `--render-station`, `--render-green`, `--render-fairground`, `--render-hide-and-seek`,
   `--render-woods`, `--render-fishing`, `--render-hilltop` (each with `--at <seconds>`),
-  `--render-finds`, `--render-fish` and `--render-reactions` draw without a window; look at them, cropped and
+  `--render-finds`, `--render-fish`, `--render-sovereign` and `--render-reactions` draw
+  without a window; look at them, cropped and
   enlarged, after changing anything visual or any behaviour in `character.rs`.
 - Behaviour is never written for a particular creature: it is read from the snapshot (axes,
   kind, pace, habits, bonds, family) in `character.rs`, so every colony plays out differently.

@@ -271,6 +271,24 @@ impl HillApp {
                             }
                         }
                     }
+                    // Relics only appear once there is one to show: they are a secret until then.
+                    let relics: Vec<_> = crate::finds::RELICS
+                        .iter()
+                        .filter(|relic| colony.finds.contains_key(relic.id))
+                        .collect();
+                    if !relics.is_empty() {
+                        ui.add_space(6.0);
+                        ui.strong("Relics");
+                        for relic in relics {
+                            ui.label(egui::RichText::new(relic.name).strong());
+                            ui.label(egui::RichText::new(relic.blurb).small());
+                            ui.label(
+                                egui::RichText::new(format!("Becomes {}", relic.piece.to_lowercase()))
+                                    .small()
+                                    .italics(),
+                            );
+                        }
+                    }
                     let fish = &crate::fishing::fish::CATALOGUE;
                     let caught = fish.iter().filter(|kind| colony.fish.contains_key(kind.id)).count();
                     ui.add_space(6.0);

@@ -350,6 +350,12 @@ impl Actor {
         ellipse(scene, cx, cy, half - 3, 1, rgba(0x2c3a24, 40));
     }
 
+    /// What it shows at `now`, on its own canvas: for a close-up.
+    pub fn picture(&mut self, now: f32) -> Canvas {
+        let key = self.pose(now);
+        self.frame(key).canvas.clone()
+    }
+
     pub fn draw(&mut self, scene: &mut Canvas, now: f32) {
         let key = self.pose(now);
         let (x, y) = self.origin();

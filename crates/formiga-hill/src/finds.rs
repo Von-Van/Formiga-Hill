@@ -461,8 +461,29 @@ pub const CATALOGUE: [Find; 28] = [
     },
 ];
 
+/// Things the Woods never turns up, won some other way: kept secret, out of the journal's hints,
+/// until they are found.
+pub const RELICS: [Find; 1] = [Find {
+    id: "sovereign_arrow",
+    name: "The Sovereign's arrow",
+    piece: "The fallen cursor",
+    kind: Reach,
+    tier: Exceptional,
+    leanings: &[Odd],
+    use_: Use::Gaze,
+    blurb: "A great white arrow, still faintly warm. Yes, that really happened.",
+}];
+
 pub fn find(id: &str) -> Option<&'static Find> {
-    CATALOGUE.iter().find(|find| find.id == id)
+    CATALOGUE
+        .iter()
+        .chain(RELICS.iter())
+        .find(|find| find.id == id)
+}
+
+/// Whether a find is one of the secret relics.
+pub fn is_relic(id: &str) -> bool {
+    RELICS.iter().any(|relic| relic.id == id)
 }
 
 /// How likely `find` is to turn up for this party, before rarity.

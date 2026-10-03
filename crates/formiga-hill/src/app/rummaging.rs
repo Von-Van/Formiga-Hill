@@ -80,6 +80,7 @@ impl HillApp {
             drought: colony.drought,
             close_pair,
             influence,
+            beckons: crate::clearing::sovereign::may_beckon(colony),
             seed,
         };
         let found = |id: &str| colony.finds.contains_key(id);
@@ -139,11 +140,21 @@ impl HillApp {
                 Event::Leaving(Ending::Dusk) => "The light's going. Time to head home.".to_owned(),
                 Event::Leaving(Ending::Full) => "The basket's full! Home we go.".to_owned(),
                 Event::Leaving(Ending::Chose) => "Heading home.".to_owned(),
+                Event::Glint => {
+                    "Something is glinting between the trees, far off. It doesn't look like \
+                                 it belongs here."
+                        .to_owned()
+                }
+                Event::Beckoned => {
+                    "Through the trees, into a clearing that isn't on any map\u{2026}".to_owned()
+                }
             };
             self.notice = Some((line, now));
         }
-        if rummage.phase() == Phase::Over {
-            self.finish_outing(now);
+        match rummage.phase() {
+            Phase::Over => self.finish_outing(now),
+            Phase::Beckoned => self.follow_the_glint(now),
+            _ => {}
         }
     }
 

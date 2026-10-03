@@ -234,6 +234,14 @@ pub fn influence(arrangement: &Arrangement) -> Influence {
                     &mut influence.notes,
                 );
             }
+            "sovereign_arrow" => {
+                influence.light += 5.0;
+                influence.earlier += 5.0;
+                note(
+                    "The fallen cursor on the Hilltop points the way: a little more light, and rare things show sooner.",
+                    &mut influence.notes,
+                );
+            }
             "brass_lens" => {
                 influence.earlier += 10.0;
                 note(
