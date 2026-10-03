@@ -138,13 +138,28 @@ order, and the first that finds someone not already cast wins. Roles are cast in
 | `random` | someone left, the same one each time for the same colony |
 | `most:<scale>`, `least:<scale>` | the highest or lowest on a temperament scale: `social`, `energy`, `boldness`, `playfulness`, `curiosity`, `feistiness`, `impulsiveness`, `suspicion`, `affection` |
 | `kind:<temperament>` | `sweetheart`, `troublemaker`, `grump`, `explorer`, `wallflower`, `showoff`, `scholar`, `oddball`, `lazybones`, `guardian` |
-| `trait:<Trait>` | a traveller whose profile names that trait, such as `trait:Brave` |
+| `trait:<trait>` | a traveller whose profile shows that trait, such as `trait:brave` or `trait:night_owl` (see below) |
 | `habit:<habit>` | `looks_food_over`, `stretches_before_naps`, `circles_before_naps`, `waves_hello`, `play_bows` |
 | `friend_of:<role>` | that role's closest friend |
 | `playmate_of:<role>` | someone that role plays with |
 | `rival_of:<role>` | someone that role doesn't get on with |
 | `parent_of:<role>`, `mini_of:<role>` | family |
 | `mini`, `adult` | any little one, or any grown one |
+
+Traits are named by Desktop's identifiers, which stay the same however Desktop words or
+translates them. The way a profile spells one (`trait:Brave`, `trait:Night owl`) is still
+accepted, so older stories keep working. The traits are:
+
+`outgoing`, `chatty`, `clingy`, `loner`, `energetic`, `excitable`, `restless`, `mellow`,
+`sleepy`, `lazy`, `brave`, `confident`, `reckless`, `cautious`, `shy`, `nervous`, `cowardly`,
+`playful`, `mischievous`, `silly`, `serious`, `stoic`, `grumpy`, `feisty`, `stubborn`, `bossy`,
+`irritable`, `competitive`, `gentle`, `sweet`, `easygoing`, `impulsive`, `impatient`,
+`distractible`, `spontaneous`, `patient`, `steady`, `particular`, `picky`, `suspicious`, `wary`,
+`watchful`, `trusting`, `friendly`, `affectionate`, `loyal`, `jealous`, `protective`,
+`nurturing`, `independent`, `aloof`, `curious`, `nosy`, `obsessive`, `observant`, `unbothered`,
+`dramatic`, `vain`, `attention_seeking`, `food_motivated`, `messy`, `eccentric`,
+`unpredictable`, `night_owl`, `early_riser`, `easily_embarrassed`, `secretly_affectionate`,
+`deeply_loyal`
 
 A role must either end its list with `any` or `random`, or be `optional = true`. An optional
 role nobody fits is left empty, and every beat about it is quietly skipped. That includes any
@@ -189,7 +204,7 @@ Add `when = "<condition>"` to any beat to play it only when the condition holds.
 | `present:<role>` | someone was cast in that role |
 | `mini:<role>` | that role is played by a little one |
 | `kind:<role>=<temperament>` | that role has that temperament |
-| `trait:<role>=<Trait>`, `habit:<role>=<habit>` | that role has that trait or habit |
+| `trait:<role>=<trait>`, `habit:<role>=<habit>` | that role has that trait or habit |
 | `high:<role>.<scale>`, `low:<role>.<scale>` | that role is high (at least 0.65) or low (at most 0.35) on a scale |
 | `close:<role>,<role>` | the two are close friends |
 | `rivals:<role>,<role>` | the two don't get on |

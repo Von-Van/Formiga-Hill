@@ -3,7 +3,7 @@
 
 use formiga_art::AccessoryArt;
 use formiga_core::{AppearanceGenome, Creature};
-use formiga_travel::{Band, TravelError, TravelRole, TravelSnapshot, Traveler, TravelerId};
+use formiga_travel::{Band, Trait, TravelError, TravelRole, TravelSnapshot, Traveler, TravelerId};
 
 /// A traveller's id, as the rest of Hill passes it about.
 pub type Id = u64;
@@ -45,14 +45,45 @@ impl Member {
             .any(|own| formiga_core::Habit::from(*own) == habit)
     }
 
-    /// Whether Desktop's notebook names this trait for it, whatever the capitals.
-    pub fn has_trait(&self, label: &str) -> bool {
-        self.traveler
-            .character
-            .traits
-            .iter()
-            .any(|own| own.eq_ignore_ascii_case(label))
+    /// Whether its profile shows this trait. Matched on Desktop's identifiers, which stay the
+    /// same however Desktop words or translates a trait; a snapshot from a Desktop older than
+    /// travel version 2 has only the words, and those are read back into identifiers.
+    pub fn has_trait(&self, wanted: Trait) -> bool {
+        let character = &self.traveler.character;
+        if character.trait_ids.is_empty() {
+            character
+                .traits
+                .iter()
+                .any(|word| trait_named(word) == Some(wanted))
+        } else {
+            character.trait_ids.contains(&wanted)
+        }
     }
+}
+
+/// A trait by its identifier (`night_owl`), or by Desktop's words for it (`Night owl`, `Brave`), as
+/// packages written before identifiers name them; nothing, if it is no trait Hill knows.
+pub fn trait_named(name: &str) -> Option<Trait> {
+    let wanted: String = name
+        .trim()
+        .chars()
+        .map(|c| match c {
+            ' ' | '-' => '_',
+            c => c.to_ascii_lowercase(),
+        })
+        .collect();
+    Trait::ALL
+        .iter()
+        .copied()
+        .find(|known| trait_id(*known) == wanted)
+}
+
+/// A trait's identifier, as packages write it.
+pub fn trait_id(known: Trait) -> String {
+    serde_json::to_value(known)
+        .ok()
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_default()
 }
 
 /// How one pair gets on, under Hill's names for Desktop's bands.
@@ -149,6 +180,60 @@ impl Cast {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_trait_is_named_by_its_identifier_or_by_desktops_words() {
+        for name in ["night_owl", "Night owl", " NIGHT-OWL "] {
+            assert_eq!(trait_named(name), Some(Trait::NightOwl), "{name}");
+        }
+        assert_eq!(trait_named("Brave"), Some(Trait::Brave));
+        assert_eq!(trait_named("food_motivated"), Some(Trait::FoodMotivated));
+        assert_eq!(trait_named("Nonexistent"), None);
+        for known in Trait::ALL {
+            assert_eq!(trait_named(&trait_id(known)), Some(known));
+        }
+    }
+
+    /// PACKAGES.md lists every trait a story can name: exactly Desktop's, in Desktop's order.
+    #[test]
+    fn the_package_guide_lists_every_trait() {
+        let guide = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/PACKAGES.md"),
+        )
+        .unwrap()
+        .replace("\r\n", "\n");
+        let start = guide.find("The traits are:").expect("no list of traits");
+        let list: String = guide[start..]
+            .lines()
+            .skip(2)
+            .take_while(|line| !line.is_empty())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let listed: Vec<&str> = list
+            .split(", ")
+            .map(|name| name.trim().trim_matches('`'))
+            .collect();
+        let known: Vec<String> = Trait::ALL.iter().map(|known| trait_id(*known)).collect();
+        assert_eq!(listed, known);
+    }
+
+    #[test]
+    fn traits_match_on_identifiers_and_on_words_from_an_older_desktop() {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        let character = &mut snapshot.travelers[0].character;
+        // Identifiers win: the words are only for showing, and may be worded any way.
+        character.traits = vec!["Shy".into()];
+        character.trait_ids = vec![Trait::Brave];
+        let cast = Cast::new(snapshot.clone()).unwrap();
+        assert!(cast.members[0].has_trait(Trait::Brave));
+        assert!(!cast.members[0].has_trait(Trait::Shy));
+        // A Desktop before travel version 2 sends only the words.
+        let character = &mut snapshot.travelers[0].character;
+        character.traits = vec!["Night owl".into()];
+        character.trait_ids = Vec::new();
+        let cast = Cast::new(snapshot).unwrap();
+        assert!(cast.members[0].has_trait(Trait::NightOwl));
+    }
 
     #[test]
     fn everyone_in_the_sample_can_be_drawn() {

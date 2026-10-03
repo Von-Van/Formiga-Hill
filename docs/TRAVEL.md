@@ -7,7 +7,8 @@ the `formiga-travel` crate, and that crate's documentation is the authority: sta
 code. The founding brief is [DESIGN.md §8](DESIGN.md#8-inter-app-travel-contract).
 
 Hill takes `formiga-core`, `formiga-art` and `formiga-travel` from the same Desktop source, so
-their types agree: a Desktop release tag, now `v0.66.4`; see the root `Cargo.toml`.
+their types agree, pinned in the root `Cargo.toml`. That is now Desktop's travel version 2,
+from a commit on its `work/hill-follow-up` branch until Desktop releases it with a tag.
 
 ## Who owns what
 
@@ -52,7 +53,9 @@ colony home exactly as it left. Hill never relies on Desktop noticing anything e
   wears, already in Desktop's inks. These are what `formiga-art` draws, so each traveller is the
   same individual, not a lookalike.
 - The character holds the temperament kind, nine axes, tension, the traits and phrase in
-  Desktop's words, and the habits. `motion` holds the companion's own pace.
+  Desktop's words, and the habits. Since travel version 2 it also holds `trait_ids`, the same
+  traits as identifiers, and stories match on those (`cast::Member::has_trait`), reading the
+  words back into identifiers only for a snapshot from an older Desktop that sends none. `motion` holds the companion's own pace.
 - Relationships come as banded `affinity`, `familiarity`, `playfulness` and `avoidance`. Hill
   calls affinity *warmth* and avoidance *friction* (`cast::Bond`).
 - `presentation` holds reduce motion, theme and text size.
