@@ -8,9 +8,9 @@ mod departures;
 mod encounter;
 mod finery;
 mod fishing_trip;
+mod foraging;
 mod games;
 mod plans;
-mod foraging;
 mod rummaging;
 mod storytelling;
 
