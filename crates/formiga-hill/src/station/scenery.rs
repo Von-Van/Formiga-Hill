@@ -1643,12 +1643,22 @@ fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
         hline(scene, inner_left, shelf, inner_width, PLANK.light);
         hline(scene, inner_left, shelf + 1, inner_width, PLANK.shadow);
     }
-    let pitch = crate::keepsake_art::ICON + 1;
+    // The pictures are formiga-art's, so a souvenir looks the same here and in Desktop's journal.
+    let icon = formiga_art::SOUVENIR_ICON as i32;
+    let pitch = icon + 1;
     for (index, id) in crate::story::souvenirs::ids().into_iter().enumerate() {
         let shelf = shelves[index / PER_SHELF];
         let x = inner_left + (index % PER_SHELF) as i32 * pitch;
         if keepsakes.iter().any(|kept| kept == id) {
-            crate::keepsake_art::draw_souvenir(scene, id, x, shelf - crate::keepsake_art::ICON);
+            match formiga_core::Souvenir::from_id(id) {
+                Some(souvenir) => formiga_art::draw_souvenir(scene, souvenir, x, shelf - icon),
+                // One Hill has and Desktop doesn't draw yet: wrapped up as a little parcel.
+                None => {
+                    rect(scene, x + 1, shelf - 5, 5, 5, rgb(0xd8b26a));
+                    vline(scene, x + 3, shelf - 5, 5, rgb(0xc04a40));
+                    hline(scene, x + 1, shelf - 3, 5, rgb(0xc04a40));
+                }
+            }
         } else {
             // An empty cushion, waiting.
             ellipse(scene, x + 3, shelf - 1, 3, 1, rgb(0x5c2030));

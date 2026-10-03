@@ -17,7 +17,6 @@ mod green;
 mod hilltop;
 mod hosting;
 mod icon;
-mod keepsake_art;
 mod kit;
 mod materials;
 mod meadow;
