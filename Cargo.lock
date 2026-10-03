@@ -1190,8 +1190,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.66.4"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.4#58407ac9345e06728dc5294245e97ade638ffcea"
+version = "0.66.5"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.5#e18b463e5bdc02ba027548541abdf57ebadb5c62"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1203,8 +1203,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.66.4"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.4#58407ac9345e06728dc5294245e97ade638ffcea"
+version = "0.66.5"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.5#e18b463e5bdc02ba027548541abdf57ebadb5c62"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1236,8 +1236,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.66.4"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.4#58407ac9345e06728dc5294245e97ade638ffcea"
+version = "0.66.5"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.66.5#e18b463e5bdc02ba027548541abdf57ebadb5c62"
 dependencies = [
  "formiga-art",
  "formiga-core",

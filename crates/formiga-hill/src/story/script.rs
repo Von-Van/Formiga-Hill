@@ -22,6 +22,7 @@
 
 use super::lines::{Lines, fill};
 use formiga_core::{Habit, TemperamentKind};
+use formiga_travel::Trait;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
@@ -152,8 +153,8 @@ pub enum Selector {
     Most(Axis),
     Least(Axis),
     Kind(TemperamentKind),
-    /// One of the traits Desktop's notebook names, such as "Brave".
-    Trait(String),
+    /// One of the traits a profile shows, by Desktop's identifier, such as `night_owl`.
+    Trait(Trait),
     Habit(Habit),
     FriendOf(usize),
     PlaymateOf(usize),
@@ -250,7 +251,7 @@ pub enum Condition {
     Present(usize),
     Mini(usize),
     Kind(usize, TemperamentKind),
-    Trait(usize, String),
+    Trait(usize, Trait),
     Habit(usize, Habit),
     High(usize, Axis),
     Low(usize, Axis),
@@ -707,7 +708,7 @@ fn parse_selector(text: &str, earlier: &[String]) -> Result<Selector, String> {
             }
         }
         "kind" => Selector::Kind(parse_kind(argument)?),
-        "trait" if !argument.trim().is_empty() => Selector::Trait(argument.trim().to_owned()),
+        "trait" => Selector::Trait(parse_trait(argument)?),
         "habit" => Selector::Habit(parse_habit(argument)?),
         "friend_of" => Selector::FriendOf(named(argument)?),
         "playmate_of" => Selector::PlaymateOf(named(argument)?),
@@ -766,7 +767,7 @@ fn parse_plain_condition(
         }
         "trait" => {
             let (who, label) = assignment(argument)?;
-            Condition::Trait(who, label)
+            Condition::Trait(who, parse_trait(&label)?)
         }
         "habit" => {
             let (who, habit) = assignment(argument)?;
@@ -802,6 +803,17 @@ fn parse_kind(name: &str) -> Result<TemperamentKind, String> {
                 super::lines::KINDS.join(", ")
             )
         })
+}
+
+/// A trait by its identifier, `night_owl`, or as packages written before identifiers spell it,
+/// `Night owl`.
+fn parse_trait(name: &str) -> Result<Trait, String> {
+    crate::cast::trait_named(name).ok_or_else(|| {
+        format!(
+            "\"{}\" is not a trait; traits are named like brave or night_owl",
+            name.trim()
+        )
+    })
 }
 
 fn parse_habit(name: &str) -> Result<Habit, String> {

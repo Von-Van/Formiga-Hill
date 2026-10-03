@@ -371,7 +371,7 @@ impl Director {
             Condition::Present(role) => self.player(*role).is_some(),
             Condition::Mini(role) => member(role).is_some_and(|m| m.parent().is_some()),
             Condition::Kind(role, kind) => member(role).is_some_and(|m| m.kind() == *kind),
-            Condition::Trait(role, label) => member(role).is_some_and(|m| m.has_trait(label)),
+            Condition::Trait(role, wanted) => member(role).is_some_and(|m| m.has_trait(*wanted)),
             Condition::Habit(role, habit) => member(role).is_some_and(|m| m.has_habit(*habit)),
             Condition::High(role, axis) => member(role).is_some_and(|m| axis.of(&m.axes()) >= 0.65),
             Condition::Low(role, axis) => member(role).is_some_and(|m| axis.of(&m.axes()) <= 0.35),

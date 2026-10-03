@@ -64,7 +64,7 @@ fn choose(
             })
         }
         Selector::Kind(kind) => first(&|id| member(&id).is_some_and(|m| m.kind() == *kind)),
-        Selector::Trait(label) => first(&|id| member(&id).is_some_and(|m| m.has_trait(label))),
+        Selector::Trait(wanted) => first(&|id| member(&id).is_some_and(|m| m.has_trait(*wanted))),
         Selector::Habit(habit) => first(&|id| member(&id).is_some_and(|m| m.has_habit(*habit))),
         Selector::FriendOf(role) => cast.closest_friend(player(*role)?, free.iter().copied()),
         Selector::PlaymateOf(role) => cast.playmate(player(*role)?, free.iter().copied()),
@@ -95,6 +95,16 @@ mod tests {
         Cast::new(formiga_travel::sample::snapshot()).unwrap()
     }
 
+    /// A trait nobody in the sample colony has, for a selector that finds no one.
+    fn nobodys_trait(cast: &Cast) -> String {
+        let absent = formiga_travel::Trait::ALL
+            .iter()
+            .copied()
+            .find(|wanted| !cast.members.iter().any(|member| member.has_trait(*wanted)))
+            .unwrap();
+        crate::cast::trait_id(absent)
+    }
+
     fn story(roles: &str) -> Story {
         let text = format!(
             "[story]\nid = \"t\"\ntitle = \"title\"\narea = \"clubhouse\"\nstart = \"one\"\n{roles}\n[[scenes]]\nid = \"one\"\n"
@@ -118,9 +128,10 @@ mod tests {
     #[test]
     fn nobody_plays_two_roles_and_fallbacks_fill_the_rest() {
         let cast = sample();
-        let story = story(
-            "[roles.a]\norder = 1\nselect = [\"any\"]\n[roles.b]\norder = 2\nselect = [\"kind:grump\", \"trait:Nonexistent\", \"any\"]",
-        );
+        let story = story(&format!(
+            "[roles.a]\norder = 1\nselect = [\"any\"]\n[roles.b]\norder = 2\nselect = [\"kind:grump\", \"trait:{}\", \"any\"]",
+            nobodys_trait(&cast)
+        ));
         let ids = cast_roles(&story, &cast, 1).unwrap();
         assert!(ids[0].is_some() && ids[1].is_some());
         assert_ne!(ids[0], ids[1]);
@@ -129,7 +140,10 @@ mod tests {
     #[test]
     fn an_optional_role_can_go_uncast_but_a_required_one_cannot() {
         let cast = sample();
-        let optional = story("[roles.ghost]\nselect = [\"trait:Nonexistent\"]\noptional = true");
+        let optional = story(&format!(
+            "[roles.ghost]\nselect = [\"trait:{}\"]\noptional = true",
+            nobodys_trait(&cast)
+        ));
         assert_eq!(cast_roles(&optional, &cast, 1).unwrap(), vec![None]);
         let mut too_big = optional.clone();
         too_big.min_cast = 99;

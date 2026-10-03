@@ -121,8 +121,8 @@ The design's `formiga-hill-runtime` (cast resolution, scenes, packages, the Hill
 ## Formiga Desktop's crates
 
 `formiga-core`, `formiga-art` and `formiga-travel` all come from Formiga Desktop, from one source
-so their types agree: a release tag on GitHub, now `v0.66.4`. To move to a newer release, change
-the tag on all three in the root `Cargo.toml` together.
+so their types agree: a release tag on GitHub, now `v0.66.5` (travel version 2). To move to a
+newer release, change the tag on all three in the root `Cargo.toml` together.
 
 ### Working against a Desktop checkout
 
