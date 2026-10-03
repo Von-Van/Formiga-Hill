@@ -16,7 +16,7 @@ impl HillApp {
     }
 
     /// The stories pinned up: every one, but for those in packages the person has set aside.
-    fn on_the_board(&self) -> impl Iterator<Item = (&Package, &Story)> {
+    pub(super) fn on_the_board(&self) -> impl Iterator<Item = (&Package, &Story)> {
         self.library
             .stories()
             .filter(|(package, _)| !self.set_aside.contains(&package.id))
@@ -118,6 +118,8 @@ impl HillApp {
 
     pub(super) fn clubhouse_bar(&mut self, ui: &mut egui::Ui, now: f32) {
         if self.story.is_some() {
+            // The camera is to hand during a story too: what is played out is worth a photo.
+            self.camera_buttons(ui);
             self.story_panel(ui);
             return;
         }

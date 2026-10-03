@@ -35,6 +35,12 @@ const CHIMNEY_TOP: (i32, i32) = (109, 52);
 /// The display case of kept souvenirs, set into the station house's left wall: its left, top,
 /// right and bottom edges, for knowing when the pointer is over it.
 pub const CASE: (i32, i32, i32, i32) = (15, 101, 51, 134);
+/// The notice board on the wall by the door, the same way.
+pub const NOTICES: (i32, i32, i32, i32) = (84, 107, 103, 128);
+/// The departures board, hung under the canopy, the same way.
+pub const DEPARTURES: (i32, i32, i32, i32) = (182, 113, 224, 126);
+/// The most notes the notice board has room to show.
+pub const NOTES_SHOWN: usize = 6;
 
 /// The Hill as the station sees it: the old tree at the left of its broad summit, which is wide
 /// enough for everything on the Hilltop to stand along it to the tree's right, drawn a little
@@ -61,6 +67,7 @@ pub fn backdrop(keepsakes: &[String], hilltop: &Arrangement) -> Canvas {
     canopy_shade(&mut scene);
     station_house(&mut scene);
     canopy(&mut scene);
+    departures_board(&mut scene);
     nameboard(&mut scene);
     lamp(&mut scene, 356);
     display_case(&mut scene, keepsakes);
@@ -1390,7 +1397,7 @@ fn station_house(scene: &mut Canvas) {
 
     flower_box(scene, 16, 136, 34);
     door(scene, 60, 106);
-    timetable(scene, 84, 109);
+    notice_board(scene);
     ticket_window(scene, TICKET_WINDOW.0, TICKET_WINDOW.1);
 
     let plinth = (
@@ -1531,17 +1538,93 @@ fn door(scene: &mut Canvas, x: i32, y: i32) {
     bevel(scene, x - 2, PLINTH - 1, width + 4, 3, STONE);
 }
 
-/// A board of departures: illegible at this size, as a real one is from across the platform.
-fn timetable(scene: &mut Canvas, x: i32, y: i32) {
-    let (width, height) = (14, 18);
-    bevel(scene, x, y, width, height, TIMBER);
-    rect(scene, x + 2, y + 2, width - 4, height - 4, rgb(0x2a3532));
-    hline(scene, x + 2, y + 3, width - 4, CREAM);
-    for row in 0..5 {
-        let line_y = y + 6 + row * 2;
-        let length = 4 + (noise(row, x, 111) % 5) as i32;
-        hline(scene, x + 3, line_y, length, rgba(0xf3e9cf, 190));
-        put(scene, x + width - 4, line_y, rgb(0xf5d25e));
+const CORK: Ramp = Ramp::new(0x6a4529, 0x8f6039, 0xae7b4a, 0xc4935f, 0xd9ab78);
+
+/// The notice board: cork in a timber frame, bare until notes are pinned to it.
+fn notice_board(scene: &mut Canvas) {
+    let (left, top, right, bottom) = NOTICES;
+    bevel(scene, left, top, right - left, bottom - top, TIMBER);
+    for y in top + 2..bottom - 2 {
+        for x in left + 2..right - 2 {
+            let color = match noise(x, y, 131) % 9 {
+                0 | 1 => CORK.shadow,
+                2 => CORK.light,
+                3 => mix(CORK.base, CORK.shadow, 0.5),
+                _ => CORK.base,
+            };
+            scene.set(x, y, color);
+        }
+    }
+    // The frame's top edge throws a little shade down the cork.
+    hline(
+        scene,
+        left + 2,
+        top + 2,
+        right - left - 4,
+        rgba(0x3a2418, 90),
+    );
+}
+
+/// The notes on the board, overlapping as notes do: where each sits on the cork, its size, its
+/// paper and its pin.
+const NOTES: [(i32, i32, i32, i32, u32, u32); NOTES_SHOWN] = [
+    (1, 1, 7, 8, 0xf3e9cf, 0xc75a4a),
+    (8, 0, 6, 7, 0xcfe1ea, 0xe0b443),
+    (0, 9, 6, 7, 0xf2cdc4, 0x4f7cb5),
+    (7, 8, 7, 8, 0xf6e9a8, 0xc75a4a),
+    (11, 5, 4, 6, 0xd8ebc8, 0x4f7cb5),
+    (4, 5, 5, 6, 0xffffff, 0xe0b443),
+];
+
+/// Pins up to [`NOTES_SHOWN`] notes on the notice board, one for each notice.
+pub fn pin_notes(scene: &mut Canvas, notes: usize) {
+    let (left, top, _, _) = NOTICES;
+    let (cork_x, cork_y) = (left + 2, top + 2);
+    for &(dx, dy, width, height, paper, pin) in NOTES.iter().take(notes) {
+        let (x, y) = (cork_x + dx, cork_y + dy);
+        let paper = rgb(paper);
+        // A shadow on the cork below and to the right, as the light comes from the upper left.
+        hline(scene, x + 1, y + height, width, rgba(0x3a2418, 90));
+        vline(scene, x + width, y + 1, height, rgba(0x3a2418, 90));
+        rect(scene, x, y, width, height, paper);
+        // Edged in a darker shade of its own paper.
+        let edge = mix(paper, rgb(0x5a4632), 0.35);
+        hline(scene, x, y + height - 1, width, edge);
+        vline(scene, x + width - 1, y, height, edge);
+        // Lines of writing, too small to read from across the platform.
+        for row in (y + 3..y + height - 1).step_by(2) {
+            let length = (width - 3).min(2 + (noise(row, x, 17) % 4) as i32);
+            hline(scene, x + 1, row, length, rgba(0x4a3c34, 150));
+        }
+        let pin = rgb(pin);
+        put(scene, x + width / 2, y + 1, pin);
+        put(scene, x + width / 2 - 1, y, mix(pin, rgb(0xffffff), 0.5));
+    }
+}
+
+/// The departures board, hung from the canopy: every place the colony could go next, too small
+/// to read from across the platform, so a click brings it close.
+fn departures_board(scene: &mut Canvas) {
+    let (left, top, right, bottom) = DEPARTURES;
+    let (width, height) = (right - left, bottom - top);
+    // Two short hangers from the valance.
+    for x in [left + 5, right - 6] {
+        vline(scene, x, VALANCE + 6, top - VALANCE - 6, IRON.edge);
+    }
+    bevel(scene, left, top, width, height, IRON);
+    let face = rgb(0x1d2826);
+    rect(scene, left + 2, top + 2, width - 4, height - 4, face);
+    // The heading, and under it a row for each place.
+    hline(scene, left + 3, top + 3, width - 6, mix(CREAM, face, 0.15));
+    for row in 0..3 {
+        let y = top + 6 + row * 2;
+        let length = 10 + (noise(row, left, 111) % 9) as i32;
+        hline(scene, left + 4, y, length, rgba(0xf3e9cf, 200));
+        hline(scene, right - 9, y, 4, rgb(0xf5d25e));
+    }
+    // A glint on the glass.
+    for (dx, dy) in [(2, 0), (1, 1)] {
+        put(scene, right - 6 + dx, top + 2 + dy, rgba(0xffffff, 90));
     }
 }
 

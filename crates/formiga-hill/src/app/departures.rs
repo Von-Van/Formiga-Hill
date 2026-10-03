@@ -1,0 +1,628 @@
+//! The station's two boards. The notice board by the door has whatever is new at the Hill for
+//! this colony; the departures board under the canopy has every place to go, what is on there,
+//! and who would like to go. Both are read from the snapshot and Hill's own memories, and neither
+//! asks anything of anyone: a notice is news or an invitation, never a chore or a reminder of
+//! time away.
+
+use super::{Area, HillApp, Visit, clock};
+use crate::character::Character;
+use crate::station::Fixture;
+use eframe::egui;
+use formiga_core::TemperamentKind;
+
+/// Something a companion would like to do at the Hill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(super) enum Outing {
+    Picnic,
+    Stories,
+    HideAndSeek,
+    Rummaging,
+    Fishing,
+    BugCatching,
+    Hilltop,
+}
+
+impl Outing {
+    const ALL: [Self; 7] = [
+        Self::Picnic,
+        Self::Stories,
+        Self::HideAndSeek,
+        Self::Rummaging,
+        Self::Fishing,
+        Self::BugCatching,
+        Self::Hilltop,
+    ];
+
+    /// Where it happens.
+    fn area(self) -> Area {
+        match self {
+            Self::Picnic => Area::Green,
+            Self::Stories => Area::Clubhouse,
+            Self::HideAndSeek => Area::Fairground,
+            Self::Rummaging | Self::Fishing | Self::BugCatching => Area::Woods,
+            Self::Hilltop => Area::Hilltop,
+        }
+    }
+
+    /// As a notice puts it, after "would like to".
+    fn wish(self) -> &'static str {
+        match self {
+            Self::Picnic => "lie about on the picnic blanket",
+            Self::Stories => "hear a story by the Clubhouse fire",
+            Self::HideAndSeek => "play hide-and-seek at the Fairground",
+            Self::Rummaging => "go rummaging in the Woods",
+            Self::Fishing => "go fishing at the pool",
+            Self::BugCatching => "go bug catching in the meadow",
+            Self::Hilltop => "sit up on the Hilltop",
+        }
+    }
+
+    /// For the departures board, where a place offers more than one thing.
+    fn short(self) -> Option<&'static str> {
+        match self {
+            Self::Rummaging => Some("rummaging"),
+            Self::Fishing => Some("fishing"),
+            Self::BugCatching => Some("bugs"),
+            _ => None,
+        }
+    }
+
+    /// How much a companion would like it, from its axes, and a little more from its kind.
+    fn appeal(self, character: &Character) -> f32 {
+        use TemperamentKind::*;
+        let a = character.axes;
+        let kind = |kinds: &[TemperamentKind]| {
+            if kinds.contains(&character.kind) {
+                0.25
+            } else {
+                0.0
+            }
+        };
+        match self {
+            Self::Picnic => {
+                0.5 * (1.0 - a.energy)
+                    + 0.3 * a.affection
+                    + 0.2 * a.social
+                    + kind(&[Lazybones, Sweetheart])
+            }
+            Self::Stories => {
+                0.4 * a.curiosity + 0.3 * (1.0 - a.energy) + 0.3 * a.social + kind(&[Scholar])
+            }
+            Self::HideAndSeek => {
+                0.5 * a.playfulness
+                    + 0.3 * a.social
+                    + 0.2 * a.impulsiveness
+                    + kind(&[Troublemaker, Showoff])
+            }
+            Self::Rummaging => 0.5 * a.curiosity + 0.5 * a.boldness + kind(&[Explorer]),
+            Self::Fishing => {
+                0.6 * (1.0 - a.impulsiveness) + 0.4 * (1.0 - a.social) + kind(&[Wallflower, Grump])
+            }
+            Self::BugCatching => {
+                0.5 * a.energy + 0.3 * a.impulsiveness + 0.2 * a.playfulness + kind(&[Oddball])
+            }
+            Self::Hilltop => {
+                0.4 * (1.0 - a.energy)
+                    + 0.3 * a.curiosity
+                    + 0.3 * (1.0 - a.social)
+                    + kind(&[Guardian])
+            }
+        }
+    }
+}
+
+/// What a companion would most like to do: the Hilltop only once something stands there.
+pub(super) fn keen_on(character: &Character, hilltop_stands: bool) -> Outing {
+    Outing::ALL
+        .into_iter()
+        .filter(|outing| hilltop_stands || *outing != Outing::Hilltop)
+        .max_by(|a, b| a.appeal(character).total_cmp(&b.appeal(character)))
+        .unwrap_or(Outing::Picnic)
+}
+
+/// Everything the two boards read, gathered once.
+#[derive(Clone, Debug, Default)]
+pub(super) struct Board {
+    /// Each traveller, and what it would most like to do.
+    pub wishes: Vec<(String, Outing)>,
+    pub visits: u32,
+    /// Stories on the Clubhouse board, and the titles of those not yet told.
+    pub stories: usize,
+    pub untold: Vec<String>,
+    /// Finds waiting in the satchel, and pieces standing on the Hilltop.
+    pub satchel: u32,
+    pub standing: usize,
+    /// The quickest hide-and-seek among those here: who, and in how long.
+    pub record: Option<(String, f32)>,
+    /// Souvenirs that go home on the train to this Desktop.
+    pub going_home: usize,
+    /// Community packages that could not be read.
+    pub problems: usize,
+}
+
+/// A note on the notice board.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Notice {
+    pub heading: String,
+    pub text: String,
+}
+
+/// A row on the departures board.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct Departure {
+    pub area: Area,
+    pub to: &'static str,
+    pub on: String,
+    /// Who would like to go, with what for where a place has more than one thing.
+    pub keen: Vec<String>,
+}
+
+fn notice(heading: &str, text: String) -> Notice {
+    Notice {
+        heading: heading.to_owned(),
+        text,
+    }
+}
+
+/// "Pip", "Pip and Moss", "Pip, Moss and Fern".
+fn listed(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [only] => (*only).to_owned(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+    }
+}
+
+/// "1st", "2nd", "11th", "23rd".
+fn ordinal(n: u32) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
+}
+
+fn plural(n: usize, one: &str, many: &str) -> String {
+    if n == 1 {
+        format!("1 {one}")
+    } else {
+        format!("{n} {many}")
+    }
+}
+
+/// The notice board's notes, most welcoming first.
+pub(super) fn notices(board: &Board) -> Vec<Notice> {
+    let mut notes = vec![if board.visits <= 1 {
+        notice(
+            "Welcome to Formiga Hill",
+            "The train comes and goes whenever you like, and everything here keeps until you \
+             are back."
+                .to_owned(),
+        )
+    } else {
+        notice(
+            "Welcome back",
+            format!(
+                "The colony's {} visit. Everything is where it was left.",
+                ordinal(board.visits)
+            ),
+        )
+    }];
+
+    let mut wishes = Vec::new();
+    for outing in Outing::ALL {
+        let names: Vec<&str> = board
+            .wishes
+            .iter()
+            .filter(|(_, wish)| *wish == outing)
+            .map(|(name, _)| name.as_str())
+            .collect();
+        if !names.is_empty() {
+            wishes.push(format!(
+                "{} would like to {}.",
+                listed(&names),
+                outing.wish()
+            ));
+        }
+    }
+    if !wishes.is_empty() {
+        notes.push(notice("Wishes", wishes.join("\n")));
+    }
+
+    let untold: Vec<&str> = board.untold.iter().map(String::as_str).collect();
+    let pinned = match untold.as_slice() {
+        [] => None,
+        [one] => Some(format!("{one} is")),
+        [one, two] => Some(format!("{one} and {two} are")),
+        [one, two, rest @ ..] => Some(format!("{one}, {two} and {} more are", rest.len())),
+    };
+    if let Some(pinned) = pinned {
+        notes.push(notice(
+            "At the Clubhouse",
+            format!("{pinned} pinned up by the fire, not yet told."),
+        ));
+    }
+    if board.satchel > 0 {
+        notes.push(notice(
+            "From the Woods",
+            format!(
+                "{} in the satchel, waiting for a spot on the Hilltop.",
+                plural(board.satchel as usize, "find", "finds")
+            ),
+        ));
+    }
+    if let Some((name, seconds)) = &board.record {
+        notes.push(notice(
+            "Fairground record",
+            format!(
+                "{name} found everyone at hide-and-seek in {}, the quickest yet.",
+                clock(*seconds)
+            ),
+        ));
+    }
+    if board.going_home > 0 {
+        notes.push(notice(
+            "Souvenirs",
+            format!(
+                "The colony's {} will go home on the train too, to the Journal in Formiga \
+                 Desktop.",
+                plural(board.going_home, "souvenir", "souvenirs")
+            ),
+        ));
+    }
+    if board.problems > 0 {
+        notes.push(notice(
+            "Story packages",
+            format!(
+                "{} could not be read. The Clubhouse's package list says why.",
+                plural(board.problems, "package", "packages")
+            ),
+        ));
+    }
+    notes
+}
+
+/// The departures board: every other place, what is on there, and who would like to go.
+pub(super) fn departures(board: &Board) -> Vec<Departure> {
+    let keen = |area: Area| -> Vec<String> {
+        board
+            .wishes
+            .iter()
+            .filter(|(_, wish)| wish.area() == area)
+            .map(|(name, wish)| match wish.short() {
+                Some(what) => format!("{name} ({what})"),
+                None => name.clone(),
+            })
+            .collect()
+    };
+    let stories = match (board.stories, board.untold.len()) {
+        (0, _) => "Free play by the fire".to_owned(),
+        (all, 0) => format!(
+            "{} by the fire, every one told",
+            plural(all, "story", "stories")
+        ),
+        (all, untold) => format!(
+            "{} by the fire, {untold} not yet told",
+            plural(all, "story", "stories")
+        ),
+    };
+    let fair = match &board.record {
+        Some((name, seconds)) => format!(
+            "Hide-and-seek, for the colony to play. Record: {name}, {}",
+            clock(*seconds)
+        ),
+        None => "Hide-and-seek, for the colony to play".to_owned(),
+    };
+    let mut hilltop = if board.standing == 0 {
+        "Bare for now, for whatever the Woods turns up".to_owned()
+    } else {
+        format!("{} standing", plural(board.standing, "piece", "pieces"))
+    };
+    if board.satchel > 0 {
+        hilltop.push_str(&format!(", {} in the satchel", board.satchel));
+    }
+    [
+        (
+            Area::Green,
+            "The Village Green",
+            "Free play, a brush, and the dress-up box".to_owned(),
+        ),
+        (Area::Clubhouse, "The Clubhouse", stories),
+        (Area::Fairground, "The Fairground", fair),
+        (
+            Area::Woods,
+            "The Woods",
+            "Rummaging in the glade, fishing at the pool, bugs in the meadow".to_owned(),
+        ),
+        (Area::Hilltop, "The Hilltop", hilltop),
+    ]
+    .into_iter()
+    .map(|(area, to, on)| Departure {
+        area,
+        to,
+        on,
+        keen: keen(area),
+    })
+    .collect()
+}
+
+impl HillApp {
+    /// What the boards read, from the snapshot and Hill's memories of this colony.
+    pub(super) fn board(&self) -> Board {
+        let colony = self.memories.colony();
+        let hilltop_stands = !colony.hilltop.is_empty();
+        let cast = &self.arrival.cast;
+        let wishes = cast
+            .members
+            .iter()
+            .map(|member| {
+                let character = Character::of(member);
+                (member.name.clone(), keen_on(&character, hilltop_stands))
+            })
+            .collect();
+        let mut stories = 0;
+        let mut untold = Vec::new();
+        for (package, story) in self.on_the_board() {
+            stories += 1;
+            if !colony
+                .stories
+                .contains(&format!("{}/{}", package.id, story.id))
+            {
+                untold.push(story.title.clone());
+            }
+        }
+        let record = cast
+            .members
+            .iter()
+            .filter_map(|member| {
+                let best = colony.quickest_seekers.get(&member.id.to_string())?;
+                Some((member.name.clone(), *best))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1));
+        let going_home = match &self.arrival.visit {
+            Visit::Trip(trip) => trip.souvenirs_going_home(&colony.souvenirs).len(),
+            Visit::Rehearsal(_) => 0,
+        };
+        Board {
+            wishes,
+            visits: colony.visits,
+            stories,
+            untold,
+            satchel: colony.satchel.values().sum(),
+            standing: colony.hilltop.len(),
+            record,
+            going_home,
+            problems: self.library.problems.len(),
+        }
+    }
+
+    /// Pins a note on the station's notice board for each notice.
+    pub(super) fn pin_notices(&mut self) {
+        let notes = notices(&self.board()).len();
+        self.station.show_notices(notes);
+    }
+
+    /// Opens the board the person clicked on, once everyone is on the platform.
+    pub(super) fn look_at(&mut self, fixture: Fixture) {
+        match fixture {
+            Fixture::Notices => self.notices_open = true,
+            Fixture::Departures => self.departures_open = true,
+            Fixture::Case => {}
+        }
+    }
+
+    pub(super) fn notices_window(&mut self, ctx: &egui::Context) {
+        if !self.notices_open || self.area != Area::Station {
+            return;
+        }
+        let notes = notices(&self.board());
+        let mut open = true;
+        egui::Window::new("Notices")
+            .open(&mut open)
+            .default_width(300.0)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                for (index, note) in notes.iter().enumerate() {
+                    if index > 0 {
+                        ui.separator();
+                    }
+                    ui.strong(&note.heading);
+                    ui.label(&note.text);
+                }
+            });
+        self.notices_open = open;
+    }
+
+    pub(super) fn departures_window(&mut self, ctx: &egui::Context, now: f32) {
+        if !self.departures_open || self.area != Area::Station {
+            return;
+        }
+        let rows = departures(&self.board());
+        let ready = self.station.is_settled() && self.leaving.is_none();
+        let mut target = None;
+        let mut open = true;
+        egui::Window::new("Departures")
+            .open(&mut open)
+            .default_width(420.0)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                egui::Grid::new("departures")
+                    .num_columns(2)
+                    .spacing([12.0, 8.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        for row in &rows {
+                            ui.vertical(|ui| {
+                                ui.strong(row.to);
+                                ui.label(&row.on);
+                                if !row.keen.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "Keen: {}",
+                                            row.keen.join(", ")
+                                        ))
+                                        .italics()
+                                        .small(),
+                                    );
+                                }
+                            });
+                            if ui.add_enabled(ready, egui::Button::new("Go")).clicked() {
+                                target = Some(row.area);
+                            }
+                            ui.end_row();
+                        }
+                    });
+            });
+        self.departures_open = open && target.is_none();
+        if let Some(area) = target {
+            self.go_to(area, now);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cast::Cast;
+
+    fn sample() -> Vec<Character> {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        cast.members.iter().map(Character::of).collect()
+    }
+
+    #[test]
+    fn what_a_companion_would_like_comes_from_its_temperament_and_differs() {
+        let wishes: std::collections::BTreeSet<Outing> =
+            sample().iter().map(|c| keen_on(c, true)).collect();
+        assert!(wishes.len() >= 2, "everyone in the sample wants {wishes:?}");
+    }
+
+    #[test]
+    fn every_outing_is_someones_favourite() {
+        let mut character = sample().remove(0);
+        let mut seen = std::collections::BTreeSet::new();
+        for kind in [
+            TemperamentKind::Lazybones,
+            TemperamentKind::Scholar,
+            TemperamentKind::Troublemaker,
+            TemperamentKind::Explorer,
+            TemperamentKind::Wallflower,
+            TemperamentKind::Oddball,
+            TemperamentKind::Guardian,
+        ] {
+            for level in [0.0, 0.5, 1.0] {
+                character.kind = kind;
+                character.axes.energy = level;
+                character.axes.curiosity = 1.0 - level;
+                character.axes.impulsiveness = level;
+                character.axes.social = 0.5;
+                seen.insert(keen_on(&character, true));
+            }
+        }
+        assert_eq!(seen.len(), Outing::ALL.len(), "only {seen:?}");
+    }
+
+    #[test]
+    fn nobody_longs_for_a_bare_hilltop() {
+        let mut character = sample().remove(0);
+        character.kind = TemperamentKind::Guardian;
+        character.axes.energy = 0.0;
+        character.axes.social = 0.0;
+        assert_eq!(keen_on(&character, true), Outing::Hilltop);
+        assert_ne!(keen_on(&character, false), Outing::Hilltop);
+    }
+
+    #[test]
+    fn a_first_visit_is_welcomed_and_a_later_one_counted() {
+        let first = notices(&Board {
+            visits: 1,
+            ..Board::default()
+        });
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].heading, "Welcome to Formiga Hill");
+        let later = notices(&Board {
+            visits: 22,
+            ..Board::default()
+        });
+        assert!(later[0].text.contains("22nd"));
+    }
+
+    #[test]
+    fn notices_tell_only_what_there_is_to_tell() {
+        let board = Board {
+            visits: 3,
+            wishes: vec![
+                ("Pip".into(), Outing::Fishing),
+                ("Moss".into(), Outing::Fishing),
+                ("Fern".into(), Outing::Stories),
+            ],
+            stories: 3,
+            untold: vec!["The Last Bun".into()],
+            satchel: 1,
+            record: Some(("Fern".into(), 42.0)),
+            going_home: 2,
+            ..Board::default()
+        };
+        let notes = notices(&board);
+        let headings: Vec<&str> = notes.iter().map(|n| n.heading.as_str()).collect();
+        assert_eq!(
+            headings,
+            [
+                "Welcome back",
+                "Wishes",
+                "At the Clubhouse",
+                "From the Woods",
+                "Fairground record",
+                "Souvenirs"
+            ]
+        );
+        assert_eq!(
+            notes[1].text,
+            "Fern would like to hear a story by the Clubhouse fire.\n\
+             Pip and Moss would like to go fishing at the pool."
+        );
+        assert!(notes[2].text.starts_with("The Last Bun is pinned up"));
+        assert!(notes[3].text.starts_with("1 find in the satchel"));
+        assert!(notes[4].text.contains("0:42"));
+    }
+
+    #[test]
+    fn the_departures_board_lists_every_other_place_with_who_would_like_to_go() {
+        let board = Board {
+            wishes: vec![
+                ("Pip".into(), Outing::Fishing),
+                ("Fern".into(), Outing::Picnic),
+            ],
+            ..Board::default()
+        };
+        let rows = departures(&board);
+        let areas: Vec<Area> = rows.iter().map(|row| row.area).collect();
+        assert_eq!(
+            areas,
+            [
+                Area::Green,
+                Area::Clubhouse,
+                Area::Fairground,
+                Area::Woods,
+                Area::Hilltop
+            ]
+        );
+        assert_eq!(rows[0].keen, ["Fern"]);
+        assert_eq!(rows[3].keen, ["Pip (fishing)"]);
+        assert!(rows[4].on.starts_with("Bare"));
+    }
+
+    #[test]
+    fn ordinals_read_as_spoken() {
+        let read: Vec<String> = [1, 2, 3, 4, 11, 12, 13, 21, 102, 111].map(ordinal).into();
+        assert_eq!(
+            read,
+            [
+                "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "102nd", "111th"
+            ]
+        );
+    }
+}

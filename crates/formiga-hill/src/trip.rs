@@ -114,6 +114,17 @@ impl Trip {
         self.dir.join(RECALL_FILE).exists() || !self.dir.join(SNAPSHOT_FILE).exists()
     }
 
+    /// The souvenirs the colony has `kept` that this Desktop keeps, in the order of Hill's
+    /// catalogue: those the receipt takes home.
+    pub fn souvenirs_going_home(&self, kept: &[String]) -> Vec<&'static str> {
+        crate::story::souvenirs::ids()
+            .into_iter()
+            .filter(|id| {
+                kept.iter().any(|own| own == id) && self.accepts_souvenirs.iter().any(|ok| ok == id)
+            })
+            .collect()
+    }
+
     /// The receipt for the way home. Written once, and only ever with things Desktop offered to
     /// take: the visit, and every souvenir the colony has `kept` at the Hill that this Desktop
     /// can keep. Every one kept, not just this visit's, so one whose trip ended without a
@@ -127,14 +138,11 @@ impl Trip {
                 left_at_utc,
             });
         }
-        for id in crate::story::souvenirs::ids() {
+        for id in self.souvenirs_going_home(kept) {
             if effects.len() >= limits::MAX_EFFECTS {
                 break;
             }
-            if kept.iter().any(|own| own == id) && self.accepts_souvenirs.iter().any(|ok| ok == id)
-            {
-                effects.push(ReturnEffect::Souvenir { id: id.to_owned() });
-            }
+            effects.push(ReturnEffect::Souvenir { id: id.to_owned() });
         }
         write_document(
             &self.dir.join(RECEIPT_FILE),

@@ -3,7 +3,10 @@
 
 mod arranging;
 mod bug_hunt;
+mod camera;
+mod departures;
 mod encounter;
+mod finery;
 mod fishing_trip;
 mod rummaging;
 mod storytelling;
@@ -15,7 +18,7 @@ use crate::daylight::{Clock, Daylight};
 use crate::fairground::{self, Event, HideAndSeek, Phase};
 use crate::memories::Memories;
 use crate::playground::{Playground, Trust};
-use crate::station::{Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
+use crate::station::{Fixture, Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
 use crate::story::shelf::SetAside;
 use crate::story::{Director, Library, souvenirs};
 use crate::trip::Trip;
@@ -79,6 +82,9 @@ pub struct HillApp {
     /// Whether the notice board of stories is open, and the list of packages behind it.
     board: bool,
     shelf: bool,
+    /// Whether the station's notices, or its departures board, are open.
+    notices_open: bool,
+    departures_open: bool,
     /// The packages the person has set aside, and where community packages go.
     set_aside: SetAside,
     packages_folder: Option<std::path::PathBuf>,
@@ -105,6 +111,20 @@ pub struct HillApp {
     area: Area,
     /// What the person is holding out on the green.
     tool: Offer,
+    /// What everyone has on from the dress-up box, and who is groomed till they shine: for the
+    /// visit only.
+    costumes: std::collections::HashMap<Id, &'static str>,
+    groomed: std::collections::HashSet<Id>,
+    /// Whether the dress-up box is open, what has been picked out of it, and its pictures.
+    dress_up: bool,
+    picked: Option<finery::Pick>,
+    costume_icons: Vec<egui::TextureHandle>,
+    /// Where the brush last was, over whom, and who the pointer is over this frame.
+    stroke: Option<(Id, (f32, f32))>,
+    hovered: Option<Id>,
+    /// The camera and the album, and the scene as last composed, for photos.
+    camera: camera::Camera,
+    last_scene: Option<Canvas>,
     /// How each traveller has warmed to the person, wherever they have met this visit.
     trust: Trust,
     /// The last picture of the area just left, dissolving into the new one.
@@ -165,13 +185,15 @@ impl HillApp {
         for problem in &library.problems {
             eprintln!("formiga-hill: a package was not loaded: {problem}");
         }
-        Self {
+        let mut app = Self {
             arrival,
             station,
             green: None,
             clubhouse: None,
             board: false,
             shelf: false,
+            notices_open: false,
+            departures_open: false,
             set_aside: SetAside::open(Memories::folder().as_deref()),
             packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
             fairground: None,
@@ -186,6 +208,15 @@ impl HillApp {
             last_frame: 0.0,
             area: Area::Station,
             tool: Offer::Pet,
+            costumes: std::collections::HashMap::new(),
+            groomed: std::collections::HashSet::new(),
+            dress_up: false,
+            picked: None,
+            costume_icons: Vec::new(),
+            stroke: None,
+            hovered: None,
+            camera: camera::Camera::default(),
+            last_scene: None,
             trust: Trust::default(),
             leaving: None,
             texture: None,
@@ -200,7 +231,9 @@ impl HillApp {
             story: None,
             memories,
             notice: None,
-        }
+        };
+        app.pin_notices();
+        app
     }
 
     /// The way home. Writes the receipt once, however the visit ends.
@@ -310,6 +343,11 @@ impl HillApp {
             self.finish_bug_hunt(now);
         }
         self.placing = None;
+        self.notices_open = false;
+        self.departures_open = false;
+        if area == Area::Station {
+            self.pin_notices();
+        }
         // Walking away calls a game off.
         if let Some((ground, game)) = &mut self.fairground
             && game.phase() != Phase::Ready
@@ -349,6 +387,7 @@ impl HillApp {
         if let Some(area) = target {
             self.go_to(area, now);
         }
+        self.camera_buttons(ui);
     }
 
     /// Tells the person what is happening in the game, and remembers how it went once it is over.
@@ -421,6 +460,7 @@ impl HillApp {
         };
         if self.texture.is_none() || frames.is_empty() || frames != self.shown_frames {
             let mut canvas = self.compose(now);
+            self.last_scene = Some(canvas.clone());
             if let Some((before, since)) = &self.leaving {
                 let progress = (now - since) / DISSOLVE_SECS;
                 if progress >= 1.0 {
@@ -465,6 +505,14 @@ impl HillApp {
             }
             Area::Green => {
                 tools(ui, &mut self.tool);
+                ui.separator();
+                if ui
+                    .selectable_label(self.dress_up, "The dress-up box")
+                    .clicked()
+                {
+                    self.dress_up = !self.dress_up;
+                    self.picked = None;
+                }
                 if let Some((notice, _)) = &self.notice {
                     ui.label(egui::RichText::new(notice).italics());
                 }
@@ -567,10 +615,11 @@ impl HillApp {
     }
 }
 
-const TOOLS: [(Offer, &str, &str); 3] = [
+const TOOLS: [(Offer, &str, &str); 4] = [
     (Offer::Pet, "A pat", "1"),
     (Offer::Snack, "A snack", "2"),
     (Offer::Toy, "A toy", "3"),
+    (Offer::Brush, "A brush", "4"),
 ];
 
 /// What the person can hold out, to choose from.
@@ -608,6 +657,13 @@ impl eframe::App for HillApp {
         ctx.input(|input| {
             let onwards =
                 input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Enter);
+            // The camera comes out, and goes away, wherever the person is, a story included.
+            if input.key_pressed(egui::Key::C) {
+                self.camera.out = !self.camera.out;
+            }
+            if input.key_pressed(egui::Key::Escape) {
+                self.camera.out = false;
+            }
             match &mut self.story {
                 Some((_, director)) if self.area == Area::Clubhouse => {
                     if onwards && director.shown().is_some() {
@@ -658,9 +714,14 @@ impl eframe::App for HillApp {
                     {
                         game.stop(ground, now);
                     }
-                    for (key, (offer, _, _)) in [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3]
-                        .into_iter()
-                        .zip(TOOLS)
+                    for (key, (offer, _, _)) in [
+                        egui::Key::Num1,
+                        egui::Key::Num2,
+                        egui::Key::Num3,
+                        egui::Key::Num4,
+                    ]
+                    .into_iter()
+                    .zip(TOOLS)
                     {
                         if input.key_pressed(key) {
                             self.tool = offer;
@@ -712,6 +773,10 @@ impl eframe::App for HillApp {
 
         egui::Panel::bottom("platform").show(ui, |ui| self.bottom_bar(ui, now));
 
+        // Whoever the person clicks with something picked out of the dress-up box, and whether
+        // a click took a photo.
+        let mut dress_on = None;
+        let mut camera_click = false;
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(LETTERBOX))
             .show(ui, |ui| {
@@ -739,158 +804,220 @@ impl eframe::App for HillApp {
                     painter.galley(label.center() - galley.size() / 2.0, galley, INK);
                 };
 
-                let mut on_case = false;
+                let mut fixture = None;
+                let mut on_box = false;
                 self.pointer = pointer;
-                let hovered = match (self.area, &mut self.green, &mut self.fairground) {
-                    (Area::Woods, _, _) => {
-                        let mut hovered = None;
-                        if let Some((ground, _)) = &mut self.woods.outing {
-                            ground.set_pointer(pointer);
-                            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
-                        }
-                        let spot = self.woods_hover(pointer);
-                        if let Some((label, (x, y))) = &spot {
-                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-                            tag(label, to_screen(*x, *y));
-                        }
-                        if response.clicked() {
-                            self.woods_click(pointer, now);
-                        }
-                        hovered.filter(|_| spot.is_none())
-                    }
-                    (Area::Clearing, _, _) => {
-                        // A click on the scene reads on.
-                        if response.clicked() {
-                            self.clearing_read_on();
-                        }
-                        None
-                    }
-                    (Area::Hilltop, _, _) => {
-                        let mut hovered = None;
-                        if let Some(ground) = &mut self.hilltop {
-                            ground.set_pointer(pointer);
-                            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
-                        }
-                        let piece = self.hilltop_hover(pointer);
-                        if let Some((label, (x, y))) = &piece {
-                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-                            tag(label, to_screen(*x, *y));
-                        } else if hovered.is_some() {
-                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-                        }
-                        if response.clicked()
-                            && !self.hilltop_click(pointer)
-                            && self.placing.is_none()
-                            && let (Some(id), Some(ground)) = (hovered, &mut self.hilltop)
-                        {
-                            ground.offer(id, self.tool, &mut self.trust, now);
-                        }
-                        hovered.filter(|_| piece.is_none())
-                    }
-                    (Area::Fairground, _, Some((ground, game))) => {
-                        ground.set_pointer(pointer);
-                        let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
-                        let playing = game.phase() != Phase::Ready;
-                        // During a game the person only watches; otherwise, as on the green.
-                        if let (false, Some(id)) = (playing, hovered) {
-                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-                            if response.clicked() {
-                                ground.offer(id, self.tool, &mut self.trust, now);
+                // With the camera out, the scene is only for framing photos.
+                camera_click = self.camera.out && response.clicked();
+                let hovered = if self.camera.out {
+                    None
+                } else {
+                    match (self.area, &mut self.green, &mut self.fairground) {
+                        (Area::Woods, _, _) => {
+                            let mut hovered = None;
+                            if let Some((ground, _)) = &mut self.woods.outing {
+                                ground.set_pointer(pointer);
+                                hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
                             }
+                            let spot = self.woods_hover(pointer);
+                            if let Some((label, (x, y))) = &spot {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                                tag(label, to_screen(*x, *y));
+                            }
+                            if response.clicked() {
+                                self.woods_click(pointer, now);
+                            }
+                            hovered.filter(|_| spot.is_none())
                         }
-                        // "It" wears its name all game, so the watcher can follow it about.
-                        let tagged = hovered.into_iter().chain(game.seeker()).collect::<Vec<_>>();
-                        for id in tagged {
-                            if let (Some((x, y)), Some(member)) =
-                                (ground.head(id, now), self.arrival.cast.member(id))
+                        (Area::Clearing, _, _) => {
+                            // A click on the scene reads on.
+                            if response.clicked() {
+                                self.clearing_read_on();
+                            }
+                            None
+                        }
+                        (Area::Hilltop, _, _) => {
+                            let mut hovered = None;
+                            if let Some(ground) = &mut self.hilltop {
+                                ground.set_pointer(pointer);
+                                hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                            }
+                            let piece = self.hilltop_hover(pointer);
+                            if let Some((label, (x, y))) = &piece {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                                tag(label, to_screen(*x, *y));
+                            } else if hovered.is_some() {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                            }
+                            if response.clicked()
+                                && !self.hilltop_click(pointer)
+                                && self.placing.is_none()
+                                && let (Some(id), Some(ground)) = (hovered, &mut self.hilltop)
                             {
-                                let label = if game.seeker() == Some(id) {
-                                    format!("{} \u{b7} it", member.name)
-                                } else {
-                                    member.name.clone()
-                                };
-                                tag(&label, to_screen(x, y - 6.0));
-                            }
-                        }
-                        hovered
-                    }
-                    (Area::Clubhouse, _, _) => {
-                        let Some(room) = &mut self.clubhouse else {
-                            return;
-                        };
-                        let ground = room.ground();
-                        ground.set_pointer(pointer);
-                        let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
-                        let on_board = self.story.is_none()
-                            && hovered.is_none()
-                            && pointer.is_some_and(|(x, y)| clubhouse::on_board(x, y));
-                        if let Some((_, director)) = &mut self.story {
-                            // During a story, a click on the scene reads on.
-                            if response.clicked() && director.shown().is_some() {
-                                director.read_on();
-                            }
-                        } else if on_board {
-                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-                            let (x, y) = clubhouse::board_label();
-                            tag("The notice board", to_screen(x, y));
-                            if response.clicked() {
-                                self.board = !self.board;
-                            }
-                        } else if let Some(id) = hovered {
-                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-                            if response.clicked() {
                                 ground.offer(id, self.tool, &mut self.trust, now);
                             }
+                            hovered.filter(|_| piece.is_none())
                         }
-                        if let Some(id) = hovered
-                            && let (Some((x, y)), Some(member)) =
-                                (ground.head(id, now), self.arrival.cast.member(id))
-                        {
-                            tag(&member.name, to_screen(x, y - 6.0));
-                        }
-                        hovered
-                    }
-                    (Area::Green, Some(green), _) => {
-                        green.set_pointer(pointer);
-                        let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
-                        if let Some(id) = hovered {
-                            ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
-                            if response.clicked() {
-                                green.offer(id, self.tool, &mut self.trust, now);
+                        (Area::Fairground, _, Some((ground, game))) => {
+                            ground.set_pointer(pointer);
+                            let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                            let playing = game.phase() != Phase::Ready;
+                            // During a game the person only watches; otherwise, as on the green.
+                            if let (false, Some(id)) = (playing, hovered) {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if response.clicked() {
+                                    ground.offer(id, self.tool, &mut self.trust, now);
+                                }
                             }
+                            // "It" wears its name all game, so the watcher can follow it about.
+                            let tagged =
+                                hovered.into_iter().chain(game.seeker()).collect::<Vec<_>>();
+                            for id in tagged {
+                                if let (Some((x, y)), Some(member)) =
+                                    (ground.head(id, now), self.arrival.cast.member(id))
+                                {
+                                    let label = if game.seeker() == Some(id) {
+                                        format!("{} \u{b7} it", member.name)
+                                    } else {
+                                        member.name.clone()
+                                    };
+                                    tag(&label, to_screen(x, y - 6.0));
+                                }
+                            }
+                            hovered
                         }
-                        if let Some(id) = hovered {
-                            // Only the one under the pointer wears a name on the green.
-                            if let (Some((x, y)), Some(member)) =
-                                (green.head(id, now), self.arrival.cast.member(id))
+                        (Area::Clubhouse, _, _) => {
+                            let Some(room) = &mut self.clubhouse else {
+                                return;
+                            };
+                            let ground = room.ground();
+                            ground.set_pointer(pointer);
+                            let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                            let on_board = self.story.is_none()
+                                && hovered.is_none()
+                                && pointer.is_some_and(|(x, y)| clubhouse::on_board(x, y));
+                            if let Some((_, director)) = &mut self.story {
+                                // During a story, a click on the scene reads on.
+                                if response.clicked() && director.shown().is_some() {
+                                    director.read_on();
+                                }
+                            } else if on_board {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                                let (x, y) = clubhouse::board_label();
+                                tag("The notice board", to_screen(x, y));
+                                if response.clicked() {
+                                    self.board = !self.board;
+                                }
+                            } else if let Some(id) = hovered {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if response.clicked() {
+                                    ground.offer(id, self.tool, &mut self.trust, now);
+                                }
+                            }
+                            if let Some(id) = hovered
+                                && let (Some((x, y)), Some(member)) =
+                                    (ground.head(id, now), self.arrival.cast.member(id))
                             {
                                 tag(&member.name, to_screen(x, y - 6.0));
                             }
+                            hovered
                         }
-                        hovered
-                    }
-                    _ => {
-                        if response.clicked() {
-                            // A click on the station skips the arrival.
-                            self.station.skip_arrival();
-                        }
-                        // Name tags on little cream labels, so they read over boards and stone
-                        // alike, once everyone is standing still to wear them.
-                        if self.station.is_settled() && self.leaving.is_none() {
-                            for traveler in self.station.travelers() {
-                                let (left, _, right, _) = traveler.bounds;
-                                let centre = to_screen(
-                                    (left + right + 1) as f32 / 2.0,
-                                    STAND_Y as f32 + 11.0,
-                                );
-                                tag(&traveler.name, centre);
+                        (Area::Green, Some(green), _) => {
+                            green.set_pointer(pointer);
+                            let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
+                            if let Some(id) = hovered {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if response.clicked() {
+                                    if self.picked.is_some() {
+                                        dress_on = Some(id);
+                                    } else {
+                                        green.offer(id, self.tool, &mut self.trust, now);
+                                    }
+                                }
                             }
+                            if let Some(id) = hovered {
+                                // Only the one under the pointer wears a name on the green.
+                                if let (Some((x, y)), Some(member)) =
+                                    (green.head(id, now), self.arrival.cast.member(id))
+                                {
+                                    tag(&member.name, to_screen(x, y - 6.0));
+                                }
+                            }
+                            // The dress-up box opens with a click, as well as from the bar.
+                            let (left, top, right, bottom) = crate::green::DRESS_UP;
+                            on_box = hovered.is_none()
+                                && pointer.is_some_and(|(x, y)| {
+                                    (left as f32..right as f32).contains(&x)
+                                        && (top as f32..bottom as f32).contains(&y)
+                                });
+                            if on_box {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if response.clicked() {
+                                    self.dress_up = !self.dress_up;
+                                    self.picked = None;
+                                }
+                            }
+                            hovered
                         }
-                        on_case = pointer.is_some_and(|(x, y)| self.station.on_display_case(x, y));
-                        pointer.and_then(|(x, y)| self.station.traveler_at(x, y).map(|t| t.id))
+                        _ => {
+                            let settled = self.area == Area::Station
+                                && self.station.is_settled()
+                                && self.leaving.is_none();
+                            fixture = pointer
+                                .filter(|_| settled)
+                                .and_then(|(x, y)| self.station.fixture_at(x, y));
+                            let over_someone = pointer
+                                .is_some_and(|(x, y)| self.station.traveler_at(x, y).is_some());
+                            if response.clicked() {
+                                // A click on the station skips the arrival; once everyone is
+                                // down, a click on a board brings it close.
+                                self.station.skip_arrival();
+                                if let Some(fixture) = fixture.filter(|_| !over_someone) {
+                                    self.look_at(fixture);
+                                }
+                            }
+                            // Name tags on little cream labels, so they read over boards and stone
+                            // alike, once everyone is standing still to wear them.
+                            if self.station.is_settled() && self.leaving.is_none() {
+                                for traveler in self.station.travelers() {
+                                    let (left, _, right, _) = traveler.bounds;
+                                    let centre = to_screen(
+                                        (left + right + 1) as f32 / 2.0,
+                                        STAND_Y as f32 + 11.0,
+                                    );
+                                    tag(&traveler.name, centre);
+                                }
+                            }
+                            pointer.and_then(|(x, y)| self.station.traveler_at(x, y).map(|t| t.id))
+                        }
                     }
                 };
-                if on_case && hovered.is_none() {
+                self.hovered = hovered;
+                if on_box {
+                    let open = self.dress_up;
+                    response.on_hover_ui_at_pointer(|ui| {
+                        ui.strong("The dress-up box");
+                        ui.label(if open {
+                            "Click to close it."
+                        } else {
+                            "Click to open it and dress someone up."
+                        });
+                    });
+                } else if fixture == Some(Fixture::Notices) && hovered.is_none() {
+                    let notes = departures::notices(&self.board()).len();
+                    response.on_hover_ui_at_pointer(|ui| {
+                        ui.strong("The notice board");
+                        ui.label(format!(
+                            "{notes} pinned up. Click to read {}.",
+                            if notes == 1 { "it" } else { "them" }
+                        ));
+                    });
+                } else if fixture == Some(Fixture::Departures) && hovered.is_none() {
+                    response.on_hover_ui_at_pointer(|ui| {
+                        ui.strong("Departures");
+                        ui.label("Where to go, and who would like to. Click to look closer.");
+                    });
+                } else if fixture == Some(Fixture::Case) && hovered.is_none() {
                     let kept: Vec<&str> = self
                         .memories
                         .colony()
@@ -921,11 +1048,24 @@ impl eframe::App for HillApp {
                         }
                     });
                 }
+                self.draw_camera(&painter, to_screen, rect, now);
             });
 
+        if let Some(id) = dress_on {
+            self.dress(id, now);
+        }
+        let scroll = ctx.input(|input| input.smooth_scroll_delta.y);
+        self.use_camera(camera_click, scroll, now);
+        let held = ctx.input(|input| input.pointer.primary_down()) && !self.camera.out;
+        self.groom(held, now);
+        self.dress_everyone();
+        self.dress_up_window(&ctx);
+        self.album_window(&ctx, now);
         self.journal_window(&ctx);
         self.board_window(&ctx, now);
         self.shelf_window(&ctx);
+        self.notices_window(&ctx);
+        self.departures_window(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));

@@ -55,6 +55,9 @@ struct Frame {
     canvas: Canvas,
     /// The opaque part, inclusive, in the frame's own pixels.
     bounds: (i32, i32, i32, i32),
+    /// The top of its head above its face, between its ears, in the frame's own pixels: where a
+    /// hat sits.
+    crown: (i32, i32),
 }
 
 /// Frames are drawn on first use and kept; this many is a generous visit's worth.
@@ -69,6 +72,14 @@ pub struct Actor {
     pub character: Character,
     appearance: AppearanceGenome,
     dress: Option<AccessoryArt>,
+    /// Where its face is in a resting frame facing right, and how far below its crown: where a
+    /// costume piece is placed.
+    face: (i32, i32),
+    face_below_crown: i32,
+    /// A piece from the Green's dress-up box, worn for the visit, if it has one on.
+    costume: Option<&'static str>,
+    /// Groomed till it shines, for the rest of the visit.
+    shining: bool,
     /// The frame row its feet rest on.
     foot_row: i32,
     pub pos: (f32, f32),
@@ -89,11 +100,24 @@ impl Actor {
     pub fn new(member: &Member, pos: (f32, f32), facing_right: bool, reduce_motion: bool) -> Self {
         let baseline = CreatureRenderer::resting_baseline(member.genome(), reduce_motion);
         let seed = (member.id % 1009) as f32 / 1009.0;
+        let resting = CreatureRenderer::render_dressed_body_frame(
+            member.genome(),
+            member.dress,
+            ActionKind::Idle,
+            0,
+            reduce_motion,
+        );
+        let face = (resting.face_anchor.x, resting.face_anchor.y);
+        let face_below_crown = face.1 - crown_of(&resting.canvas, face.0).unwrap_or(face.1);
         Self {
             id: member.id,
             character: Character::of(member),
             appearance: member.genome().clone(),
             dress: member.dress,
+            face,
+            face_below_crown,
+            costume: None,
+            shining: false,
             foot_row: FRAME_SIZE as i32 - 1 - baseline as i32,
             pos,
             facing_right,
@@ -302,6 +326,7 @@ impl Actor {
             self.frames.clear();
         }
         let (appearance, dress, reduce_motion) = (&self.appearance, self.dress, self.reduce_motion);
+        let face_x = face_x(self.face.0, key.facing_right);
         self.frames.entry(key).or_insert_with(|| {
             let canvas = CreatureRenderer::render_dressed_composited_frame(
                 appearance,
@@ -321,7 +346,12 @@ impl Actor {
                 .alpha_bounds()
                 .map(|(a, b, c, d)| (a as i32, b as i32, c as i32, d as i32))
                 .unwrap_or((0, 0, size - 1, size - 1));
-            Frame { canvas, bounds }
+            let crown = (face_x, crown_of(&canvas, face_x).unwrap_or(bounds.1));
+            Frame {
+                canvas,
+                bounds,
+                crown,
+            }
         })
     }
 
@@ -332,18 +362,38 @@ impl Actor {
         )
     }
 
-    /// The opaque part of what it shows at `now`, in scene pixels, inclusive.
+    /// The opaque part of what it shows at `now`, in scene pixels, inclusive: what it wears too,
+    /// so a tall hat is pointed at, and tagged above, along with its wearer.
     pub fn bounds(&mut self, now: f32) -> (i32, i32, i32, i32) {
         let key = self.pose(now);
         let (x, y) = self.origin();
-        let (left, top, right, bottom) = self.frame(key).bounds;
-        (x + left, y + top, x + right, y + bottom)
+        let frame = self.frame(key);
+        let (left, top, right, bottom) = frame.bounds;
+        let crown = (x + frame.crown.0, y + frame.crown.1);
+        let body = (x + left, y + top, x + right, y + bottom);
+        let worn = self.costume.and_then(|id| {
+            let (sprite, at) = placed_costume(id, crown, self.face_below_crown, key.facing_right)?;
+            let (l, t, r, b) = sprite.alpha_bounds()?;
+            Some((
+                at.0 + l as i32,
+                at.1 + t as i32,
+                at.0 + r as i32,
+                at.1 + b as i32,
+            ))
+        });
+        match worn {
+            Some((l, t, r, b)) => (body.0.min(l), body.1.min(t), body.2.max(r), body.3.max(b)),
+            None => body,
+        }
     }
 
-    /// The shade under its feet. Drawn for everyone before anyone, so nobody's shadow falls on
-    /// somebody else.
+    /// The shade under its feet, as wide as its body whatever it wears. Drawn for everyone
+    /// before anyone, so nobody's shadow falls on somebody else.
     pub fn draw_shadow(&mut self, scene: &mut Canvas, now: f32) {
-        let (left, _, right, _) = self.bounds(now);
+        let key = self.pose(now);
+        let (x, _) = self.origin();
+        let (left, _, right, _) = self.frame(key).bounds;
+        let (left, right) = (x + left, x + right);
         let half = ((right - left) / 2 - 2).max(4);
         let (cx, cy) = (self.pos.0.round() as i32, self.pos.1.round() as i32 + 1);
         ellipse(scene, cx, cy, half, 1, rgba(0x2c3a24, 60));
@@ -359,11 +409,158 @@ impl Actor {
     pub fn draw(&mut self, scene: &mut Canvas, now: f32) {
         let key = self.pose(now);
         let (x, y) = self.origin();
-        let frame = &self.frame(key).canvas;
+        let frame = self.frame(key);
         // `blit` takes the frame by reference while `self` is borrowed for the cache.
-        let frame = frame.clone();
-        blit(scene, &frame, x, y);
+        let (canvas, crown) = (frame.canvas.clone(), frame.crown);
+        blit(scene, &canvas, x, y);
+        if self.shining {
+            draw_shine(scene, &canvas, (x, y), now, self.reduce_motion, self.id);
+        }
+        if let Some(id) = self.costume {
+            draw_costume(
+                scene,
+                id,
+                (x + crown.0, y + crown.1),
+                self.face_below_crown,
+                key.facing_right,
+            );
+        }
     }
+
+    /// Puts on a piece from the dress-up box, or takes it off.
+    pub fn wear(&mut self, costume: Option<&'static str>) {
+        self.costume = costume;
+    }
+
+    /// Groomed till it shines, or not.
+    pub fn shine(&mut self, shining: bool) {
+        self.shining = shining;
+    }
+}
+
+/// A freshly groomed coat: a few glints that come and go across it, each on a pixel of the
+/// creature itself. With reduced motion they hold still.
+fn draw_shine(
+    scene: &mut Canvas,
+    frame: &Canvas,
+    (x, y): (i32, i32),
+    now: f32,
+    reduce_motion: bool,
+    id: Id,
+) {
+    let Some((left, top, right, bottom)) = frame.alpha_bounds() else {
+        return;
+    };
+    let (left, top, right, bottom) = (left as i32, top as i32, right as i32, bottom as i32);
+    let beat = if reduce_motion { 0 } else { (now * 2.5) as u32 };
+    for glint in 0..3u32 {
+        let salt = (id as u32).wrapping_add(glint * 97).wrapping_add(beat * 13);
+        let gx = left
+            + (crate::paint::noise(glint as i32, beat as i32, salt) % (right - left + 1) as u32)
+                as i32;
+        let gy = top
+            + (crate::paint::noise(beat as i32, glint as i32, salt)
+                % ((bottom - top) / 2 + 1) as u32) as i32;
+        if frame.get(gx, gy).a > 0 {
+            let at = (x + gx, y + gy);
+            crate::paint::put(
+                scene,
+                at.0,
+                at.1,
+                formiga_art::Rgba::new(255, 255, 255, 230),
+            );
+            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                crate::paint::put(
+                    scene,
+                    at.0 + dx,
+                    at.1 + dy,
+                    formiga_art::Rgba::new(255, 250, 220, 120),
+                );
+            }
+        }
+    }
+}
+
+/// Where the face is across a frame facing this way: the renderer draws facing right and mirrors.
+fn face_x(face_x: i32, facing_right: bool) -> i32 {
+    if facing_right {
+        face_x
+    } else {
+        FRAME_SIZE as i32 - 1 - face_x
+    }
+}
+
+/// The top of the head above `x`: the highest row where what is drawn across `x` is as wide as a
+/// head, so a hat sits on the head itself rather than on an ear tip, a tuft or an antenna.
+fn crown_of(frame: &Canvas, x: i32) -> Option<i32> {
+    let width = frame.width() as i32;
+    let solid = |cx: i32, y: i32| cx >= 0 && cx < width && frame.get(cx, y).a > 0;
+    let wide = |y: i32| {
+        (x - 1..=x + 1).filter(|&cx| solid(cx, y)).any(|start| {
+            let mut left = start;
+            while solid(left - 1, y) {
+                left -= 1;
+            }
+            let mut right = start;
+            while solid(right + 1, y) {
+                right += 1;
+            }
+            right - left + 1 >= HEAD_WIDE
+        })
+    };
+    (0..frame.height() as i32)
+        .find(|&y| wide(y))
+        .or_else(|| (0..frame.height() as i32).find(|&y| (x - 1..=x + 1).any(|cx| solid(cx, y))))
+}
+
+/// How far under the middle of the face the throat is, where a neck piece sits.
+const THROAT_BELOW_FACE: i32 = 6;
+/// How wide a row must be to count as the top of a head rather than an ear. Eight, not seven: a
+/// long ear with a speck beside it, as one shows between its ears mid-cheer, makes seven, and a
+/// hat put there sits on the ear tips.
+const HEAD_WIDE: i32 = 8;
+
+/// A costume piece on a companion whose crown is at `crown` in the scene, its throat
+/// `face_below_crown` and a little further down, facing the way it faces.
+fn draw_costume(
+    scene: &mut Canvas,
+    id: &str,
+    crown: (i32, i32),
+    face_below_crown: i32,
+    facing_right: bool,
+) {
+    if let Some((sprite, at)) = placed_costume(id, crown, face_below_crown, facing_right) {
+        blit(scene, &sprite, at.0, at.1);
+    }
+}
+
+/// A costume piece as it is drawn on its wearer, and where its top-left corner goes in the scene.
+fn placed_costume(
+    id: &str,
+    crown: (i32, i32),
+    face_below_crown: i32,
+    facing_right: bool,
+) -> Option<(Canvas, (i32, i32))> {
+    let piece = crate::costume::piece(id)?;
+    let mut sprite = crate::costume::art::sprite(id);
+    let (mut ax, ay) = crate::costume::art::anchor(id);
+    if !facing_right {
+        let (width, height) = (sprite.width() as i32, sprite.height() as i32);
+        let mut mirrored = Canvas::new(sprite.width(), sprite.height());
+        for py in 0..height {
+            for px in 0..width {
+                mirrored.set(width - 1 - px, py, sprite.get(px, py));
+            }
+        }
+        sprite = mirrored;
+        ax = width - 1 - ax;
+    }
+    let point = match piece.slot {
+        crate::costume::Slot::Crown => crown,
+        // The throat: just under the face, however tall the head above it.
+        crate::costume::Slot::Neck => (crown.0, crown.1 + face_below_crown + THROAT_BELOW_FACE),
+    };
+    Some((sprite, (point.0 - ax, point.1 - ay)))
 }
 
 fn frame_of(clip: BodyClip, elapsed: f32, still: bool) -> u8 {
@@ -466,6 +663,35 @@ mod tests {
             (bottom - 180).abs() <= 1,
             "feet at {bottom}, standing at 180"
         );
+    }
+
+    #[test]
+    fn what_it_wears_is_part_of_it() {
+        let mut actor = actor();
+        let bare = actor.bounds(0.0);
+        actor.wear(Some("top_hat"));
+        let hatted = actor.bounds(0.0);
+        assert!(
+            hatted.1 < bare.1,
+            "the hat rises above {bare:?}: {hatted:?}"
+        );
+        // Every pixel of the hat as drawn is within what can be pointed at.
+        let mut scene = Canvas::new(200, 216);
+        actor.draw(&mut scene, 0.0);
+        let mut bare_scene = Canvas::new(200, 216);
+        actor.wear(None);
+        actor.draw(&mut bare_scene, 0.0);
+        for y in 0..216 {
+            for x in 0..200 {
+                if scene.get(x, y) != bare_scene.get(x, y) {
+                    let (l, t, r, b) = hatted;
+                    assert!(
+                        (l..=r).contains(&x) && (t..=b).contains(&y),
+                        "({x}, {y}) of the hat is outside {hatted:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

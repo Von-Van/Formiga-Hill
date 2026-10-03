@@ -9,7 +9,8 @@ use crate::hilltop::{Arrangement, Tint, Vista, skyline};
 use crate::kit::{bush, roof};
 use crate::materials::*;
 use crate::paint::{
-    Ramp, bevel, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb, rgba, vline,
+    Ramp, bevel, blit, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb, rgba,
+    vline,
 };
 use formiga_art::{Canvas, Rgba};
 use std::f32::consts::TAU;
@@ -25,6 +26,9 @@ pub const BLANKET: (i32, i32, (i32, i32), (i32, i32)) = (148, 176, (238, 302), (
 pub const SHADE: (f32, f32, f32, f32) = (78.0, 120.0, 150.0, 134.0);
 /// The foot of the oak, which nobody walks through.
 const TRUNK_CLEAR: (f32, f32) = (86.0, 120.0);
+/// The dress-up box, at the back of the lawn between the well and the path: its left, top, right
+/// and bottom edges, lid and all, for knowing when the pointer is over it.
+pub const DRESS_UP: (i32, i32, i32, i32) = (264, 71, 299, 97);
 
 /// Whether a traveller can stand here: on the lawn, and not in the trunk of the oak.
 pub fn walkable(x: f32, y: f32) -> bool {
@@ -56,6 +60,15 @@ const CHECK_RED: Rgba = rgb(0xd0574a);
 const ROPE: Rgba = rgb(0xcbb38a);
 const BRASS_LIKE: Rgba = rgb(0xc9a14e);
 const SHADOW: Rgba = rgba(0x24452b, 64);
+/// The dress-up box: robin's-egg paint over its boards, cream trim, gilt corners, rose satin
+/// lining its lid, and what spills out of it, lilac tulle and a straw brim.
+const PAINT: Ramp = Ramp::new(0x2c4a5e, 0x3f6a80, 0x5a8ea4, 0x7cb0c2, 0xa8d2dc);
+const GILT: Ramp = Ramp::new(0x7a5a22, 0xa8802e, 0xc9a14e, 0xe6c46e, 0xf8e2a0);
+const SATIN: Ramp = Ramp::new(0x8a3a52, 0xb4566e, 0xd47a8e, 0xeaa0b0, 0xf8d0d8);
+const TULLE: Ramp = Ramp::new(0x6e4a86, 0x9a72b2, 0xc19ad4, 0xdcbce6, 0xf2e2f6);
+const STRAW: Ramp = Ramp::new(0x8c6a2c, 0xc29a4c, 0xdcbc6e, 0xeed492, 0xfaecc0);
+/// The dark inside a box, between the things in it.
+const INSIDE: Rgba = rgb(0x2e2430);
 
 /// The Hill's turf, and its old tree's leaves and bark, in the Hilltop's own tones.
 const TURF: Ramp = Ramp::new(0x55814c, 0x72a569, 0x86bb7c, 0x9ccb8b, 0xbadca4);
@@ -100,6 +113,7 @@ pub fn backdrop(hilltop: &Arrangement) -> Canvas {
     flower_bed(&mut scene, 176, 78);
     well(&mut scene, 232, 70);
     toy_chest(&mut scene, 322, 94);
+    dress_up_box(&mut scene);
     blanket(&mut scene);
     oak(&mut scene);
     bunting(&mut scene);
@@ -1097,6 +1111,199 @@ fn toy_chest(scene: &mut Canvas, left: i32, base: i32) {
     );
 }
 
+/// The dress-up box: a painted trunk, its lid thrown back on its quilted satin lining, the points
+/// of a crown and the tip of a wizard's hat poking up out of it, a frill of lilac tulle spilling
+/// over its front and a straw sun hat tipped off its corner.
+fn dress_up_box(scene: &mut Canvas) {
+    let (left, lid_top, _, base) = DRESS_UP;
+    let (width, front, deep) = (30, 11, 6);
+    // The front's top edge, and the back of the opening, where the lid is hinged.
+    let (rim, back) = (base - front, base - front - deep);
+    let lid = back - lid_top;
+    ellipse(scene, left + width / 2 + 5, base, width / 2 + 4, 3, SHADOW);
+    // The lid, open behind: its painted frame, and inside it the satin lining, quilted in
+    // diamonds with a button where the stitching crosses, catching the light towards the top.
+    let lid_at = |y: i32| {
+        let up = (back - y) as f32 / lid as f32;
+        let shift = (up * 2.0).round() as i32;
+        (left + 2 + shift, left + width + 1 + shift)
+    };
+    for y in lid_top..back {
+        let (from, to) = lid_at(y);
+        for x in from..=to {
+            let inset = (x - from).min(to - x).min(y - lid_top);
+            let color = if inset == 0 {
+                PAINT.edge
+            } else if inset == 1 {
+                if y == lid_top + 1 || x == from + 1 {
+                    PAINT.light
+                } else {
+                    PAINT.base
+                }
+            } else {
+                let (a, b) = ((x + y).rem_euclid(6), (x - y).rem_euclid(6));
+                if a == 0 && b == 0 {
+                    SATIN.shine
+                } else if a == 0 || b == 0 {
+                    SATIN.shadow
+                } else if y < lid_top + 4 && x < from + 9 {
+                    SATIN.light
+                } else {
+                    SATIN.base
+                }
+            };
+            scene.set(x, y, color);
+        }
+    }
+    for hinge in [left + 6, left + width - 6] {
+        hline(scene, hinge, back - 1, 3, GILT.base);
+        put(scene, hinge, back - 1, GILT.light);
+    }
+    // The opening, seen from above: the walls' painted tops round it, the dark inside, and the
+    // inside of the back wall in shade.
+    polygon(
+        scene,
+        &[
+            (left, rim),
+            (left + 2, back),
+            (left + width + 2, back),
+            (left + width, rim),
+        ],
+        |x, y| {
+            let wall_left = left + 2 - (y - back) * 2 / deep;
+            let wall_right = wall_left + width - 1;
+            Some(if y == back || x == wall_left {
+                PAINT.light
+            } else if x == wall_right {
+                PAINT.base
+            } else if y == back + 1 {
+                mix(PAINT.shadow, INSIDE, 0.4)
+            } else {
+                INSIDE
+            })
+        },
+    );
+    // Pieces from the box itself standing up in it, the paper crown at the back and the
+    // wizard's hat beside it, their lower halves hidden by the front.
+    for (id, x, sunk) in [("paper_crown", left + 4, 2), ("wizard_hat", left + 15, 3)] {
+        let piece = crate::costume::art::sprite(id);
+        blit(scene, &piece, x, rim + sunk - piece.height() as i32);
+    }
+    // The front: painted boards, a cream panel picked out on them with a gilt star in it, and
+    // gilt caps on the corners.
+    bevel(scene, left, rim, width, front, PAINT);
+    for y in rim + 2..base - 1 {
+        for x in left + 2..left + width - 2 {
+            if chance(x / 3, y, 551, 40) {
+                put(scene, x, y, mix(PAINT.base, PAINT.light, 0.35));
+            } else if chance(x / 3, y, 552, 24) {
+                put(scene, x, y, mix(PAINT.base, PAINT.shadow, 0.5));
+            }
+        }
+    }
+    let (panel_left, panel_top) = (left + 3, rim + 3);
+    let (panel_right, panel_bottom) = (left + width - 4, base - 3);
+    hline(
+        scene,
+        panel_left,
+        panel_top,
+        panel_right - panel_left,
+        CREAM,
+    );
+    vline(
+        scene,
+        panel_left,
+        panel_top,
+        panel_bottom - panel_top,
+        CREAM,
+    );
+    hline(
+        scene,
+        panel_left,
+        panel_bottom,
+        panel_right - panel_left + 1,
+        mix(CREAM, PAINT.shadow, 0.45),
+    );
+    vline(
+        scene,
+        panel_right,
+        panel_top,
+        panel_bottom - panel_top,
+        mix(CREAM, PAINT.shadow, 0.45),
+    );
+    let star = (left + width / 2 + 4, rim + front / 2 + 1);
+    for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
+        put(scene, star.0 + dx, star.1 + dy, GILT.base);
+    }
+    put(scene, star.0, star.1, GILT.shine);
+    put(scene, star.0 + 1, star.1 + 1, GILT.shadow);
+    for (x, y) in [
+        (left, rim),
+        (left + width - 2, rim),
+        (left, base - 2),
+        (left + width - 2, base - 2),
+    ] {
+        rect(scene, x, y, 2, 2, GILT.base);
+        put(scene, x, y, GILT.light);
+        put(scene, x + 1, y + 1, GILT.shadow);
+    }
+    // Tulle spilling over the front on the left: gathered at the rim, falling in folds to a
+    // scalloped hem, longest in the middle.
+    let (frill_from, frill_to) = (left + 2, left + 15);
+    for x in frill_from..=frill_to {
+        let across = (x - frill_from) as f32 / (frill_to - frill_from) as f32;
+        let hang = 2
+            + (3.5 * (across * std::f32::consts::PI).sin()).round() as i32
+            + i32::from((x - frill_from) % 3 == 1);
+        for y in rim - 2..=rim + hang {
+            let color = if y == rim + hang {
+                TULLE.edge
+            } else if y == rim - 2 {
+                TULLE.light
+            } else if (x - frill_from) % 3 == 2 {
+                TULLE.shadow
+            } else if (x - frill_from) % 3 == 0 && y < rim + 1 {
+                TULLE.light
+            } else {
+                TULLE.base
+            };
+            put(scene, x, y, color);
+        }
+        if chance(x, rim, 553, 90) {
+            put(scene, x, rim + 1 + (x % 2), TULLE.shine);
+        }
+    }
+    put(scene, frill_from - 1, rim - 1, TULLE.edge);
+    put(scene, frill_to + 1, rim - 1, TULLE.edge);
+    // A straw sun hat tipped off the corner on the right: its crown on the rim, its brim
+    // hanging over the front, a ribbon round it.
+    let (brim_x, brim_y) = (left + width - 2, rim + 2);
+    ellipse(scene, brim_x + 1, brim_y + 1, 6, 3, rgba(0x24452b, 50));
+    ellipse(scene, brim_x, brim_y, 6, 3, STRAW.edge);
+    ellipse(scene, brim_x, brim_y, 5, 2, STRAW.base);
+    for x in brim_x - 5..=brim_x + 5 {
+        for y in brim_y - 2..=brim_y + 2 {
+            if scene.get(x, y) != STRAW.base {
+                continue;
+            }
+            if y < brim_y && x < brim_x + 2 {
+                put(scene, x, y, STRAW.light);
+            } else if y > brim_y || x > brim_x + 3 {
+                put(scene, x, y, STRAW.shadow);
+            }
+            if chance(x, y, 554, 60) {
+                put(scene, x, y, mix(scene.get(x, y), STRAW.shine, 0.4));
+            }
+        }
+    }
+    ellipse(scene, brim_x - 1, brim_y - 2, 3, 2, STRAW.edge);
+    ellipse(scene, brim_x - 1, brim_y - 2, 2, 1, STRAW.light);
+    put(scene, brim_x - 2, brim_y - 3, STRAW.shine);
+    hline(scene, brim_x - 3, brim_y - 1, 5, SATIN.base);
+    put(scene, brim_x - 3, brim_y - 1, SATIN.light);
+    put(scene, brim_x + 1, brim_y - 1, SATIN.shadow);
+}
+
 fn blanket(scene: &mut Canvas) {
     let (back, front, (back_left, back_right), (front_left, front_right)) = BLANKET;
     let edge = |y: i32| {
@@ -1433,6 +1640,36 @@ mod tests {
                 find.id
             );
         }
+    }
+
+    #[test]
+    fn the_dress_up_box_is_where_pointing_finds_it() {
+        let mut alone = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+        dress_up_box(&mut alone);
+        let solid: Vec<(i32, i32)> = (0..SCENE_HEIGHT as i32)
+            .flat_map(|y| (0..SCENE_WIDTH as i32).map(move |x| (x, y)))
+            .filter(|&(x, y)| alone.get(x, y).a == 255)
+            .collect();
+        let left = solid.iter().map(|point| point.0).min().unwrap();
+        let right = solid.iter().map(|point| point.0).max().unwrap();
+        let top = solid.iter().map(|point| point.1).min().unwrap();
+        let bottom = solid.iter().map(|point| point.1).max().unwrap();
+        assert_eq!((left, top, right + 1, bottom + 1), DRESS_UP);
+    }
+
+    #[test]
+    fn the_dress_up_box_stands_clear_of_everyone() {
+        let (left, top, right, bottom) = DRESS_UP;
+        // At the back of the lawn, behind anywhere a companion's feet can be.
+        assert!(bottom as f32 <= WALK_TOP);
+        // Nobody standing at a named spot, about thirty pixels tall and as wide, overlaps it.
+        for (name, (x, y)) in super::super::SPOTS {
+            let (x, y) = (x as i32, y as i32);
+            let apart = x + 15 <= left || x - 15 >= right || y <= top || y - 32 >= bottom;
+            assert!(apart, "whoever stands at the {name} is in the dress-up box");
+        }
+        let (blanket_back, _, _, _) = BLANKET;
+        assert!(bottom < blanket_back);
     }
 
     #[test]
