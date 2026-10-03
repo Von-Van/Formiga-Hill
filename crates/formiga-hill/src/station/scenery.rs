@@ -28,12 +28,12 @@ const BANK_TOP: i32 = 206;
 const HORIZON: i32 = 132;
 
 /// Where the chimney breathes from, for the smoke.
-const CHIMNEY_TOP: (i32, i32) = (101, 52);
+const CHIMNEY_TOP: (i32, i32) = (109, 52);
 
 /// The fixed part of the scene.
 /// The display case of kept souvenirs, set into the station house's left wall: its left, top,
 /// right and bottom edges, for knowing when the pointer is over it.
-pub const CASE: (i32, i32, i32, i32) = (15, 101, 43, 134);
+pub const CASE: (i32, i32, i32, i32) = (15, 101, 51, 134);
 
 /// The Hill as the station sees it: the old tree at the left of its broad summit, which is wide
 /// enough for everything on the Hilltop to stand along it to the tree's right, drawn a little
@@ -64,7 +64,7 @@ pub fn backdrop(keepsakes: &[String], hilltop: &Arrangement) -> Canvas {
     lamp(&mut scene, 356);
     display_case(&mut scene, keepsakes);
     bench(&mut scene, 186);
-    planter(&mut scene, 130);
+    planter(&mut scene, 138);
     luggage(&mut scene, 284);
     potted_fern(&mut scene, 368);
     scene
@@ -1306,7 +1306,7 @@ fn bank(scene: &mut Canvas) {
 // ---------------------------------------------------------------------------------------------
 
 const HOUSE_LEFT: i32 = 10;
-const HOUSE_RIGHT: i32 = 126;
+const HOUSE_RIGHT: i32 = 134;
 const RIDGE: i32 = 70;
 const EAVES: i32 = 96;
 const WALL_TOP: i32 = 98;
@@ -1326,7 +1326,7 @@ fn station_house(scene: &mut Canvas) {
         EAVES,
     );
     ridge_tiles(scene, HOUSE_LEFT + 17, HOUSE_RIGHT - 17, RIDGE);
-    dormer(scene, 64);
+    dormer(scene, 72);
 
     // Fascia board under the eaves.
     rect(
@@ -1360,7 +1360,7 @@ fn station_house(scene: &mut Canvas) {
         PLINTH - WALL_TOP,
     );
     // The timber frame: posts, the top plate and the sill.
-    for post in [HOUSE_LEFT, 44, 92, HOUSE_RIGHT - 4] {
+    for post in [HOUSE_LEFT, 52, 100, HOUSE_RIGHT - 4] {
         timber(scene, post, WALL_TOP, 4, PLINTH - WALL_TOP, true);
     }
     timber(
@@ -1390,10 +1390,10 @@ fn station_house(scene: &mut Canvas) {
         );
     }
 
-    flower_box(scene, 16, 136, 26);
-    door(scene, 52, 106);
-    timetable(scene, 76, 109);
-    ticket_window(scene, 98, 110);
+    flower_box(scene, 16, 136, 34);
+    door(scene, 60, 106);
+    timetable(scene, 84, 109);
+    ticket_window(scene, 106, 110);
 
     let plinth = (
         HOUSE_LEFT - 2,
@@ -1412,7 +1412,7 @@ fn station_house(scene: &mut Canvas) {
 }
 
 fn chimney(scene: &mut Canvas) {
-    let (left, top, width, bottom): (i32, i32, i32, i32) = (95, 58, 12, 80);
+    let (left, top, width, bottom): (i32, i32, i32, i32) = (103, 58, 12, 80);
     for y in top..bottom {
         let row = (y - top) / 3;
         let within = (y - top) % 3;
@@ -1609,6 +1609,9 @@ fn ticket_window(scene: &mut Canvas, x: i32, y: i32) {
 /// A glass-fronted case in the wall, in the station's green enamel, lined in velvet, with a place
 /// on its two shelves for each of Hill's souvenirs. Those kept sit in their places; the rest are
 /// empty cushions, waiting, never a list of what is missing.
+/// How many places each of the display case's two shelves has.
+const PER_SHELF: usize = 4;
+
 fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
     let (left, top, right, bottom) = CASE;
     let width = right - left;
@@ -1636,15 +1639,16 @@ fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
             mix(rgb(0x7a2c3a), rgb(0x3e1620), t),
         );
     }
-    // Two shelves, three places on each, in the catalogue's order.
+    // Two shelves, four places on each, in the catalogue's order.
     let shelves = [inner_top + 8, inner_top + 20];
     for shelf in shelves {
         hline(scene, inner_left, shelf, inner_width, PLANK.light);
         hline(scene, inner_left, shelf + 1, inner_width, PLANK.shadow);
     }
+    let pitch = crate::keepsake_art::ICON + 1;
     for (index, id) in crate::story::souvenirs::ids().into_iter().enumerate() {
-        let shelf = shelves[index / 3];
-        let x = inner_left + (index % 3) as i32 * (crate::keepsake_art::ICON + 1);
+        let shelf = shelves[index / PER_SHELF];
+        let x = inner_left + (index % PER_SHELF) as i32 * pitch;
         if keepsakes.iter().any(|kept| kept == id) {
             crate::keepsake_art::draw_souvenir(scene, id, x, shelf - crate::keepsake_art::ICON);
         } else {
@@ -1662,13 +1666,9 @@ fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
         inner_height,
         rgba(0xa6c8d2, 26),
     );
-    vline(
-        scene,
-        left + width / 2,
-        glass_top + 1,
-        sill - glass_top - 1,
-        IRON.edge,
-    );
+    // Between the second and third places, so it never cuts across a souvenir.
+    let seam = inner_left + 2 * pitch - 1;
+    vline(scene, seam, glass_top + 1, sill - glass_top - 1, IRON.edge);
     for (dx, dy) in [(0, 2), (1, 1), (2, 0)] {
         put(
             scene,
@@ -1678,14 +1678,9 @@ fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
         );
     }
     for (dx, dy) in [(0, 2), (1, 1), (2, 0)] {
-        put(
-            scene,
-            left + width / 2 + 3 + dx,
-            inner_top + 9 + dy,
-            rgba(0xffffff, 90),
-        );
+        put(scene, seam + 4 + dx, inner_top + 9 + dy, rgba(0xffffff, 90));
     }
-    for handle in [left + width / 2 - 2, left + width / 2 + 1] {
+    for handle in [seam - 2, seam + 1] {
         put(scene, handle, glass_top + 12, rgb(0xf1d58a));
     }
 }
@@ -1829,7 +1824,9 @@ fn iron_column(scene: &mut Canvas, x: i32) {
 /// The station's name, in enamel, standing on the canopy against the sky.
 fn nameboard(scene: &mut Canvas) {
     const NAME: &str = "FORMIGA HILL";
-    let (left, top, width, height) = (143, 82, 86, 15);
+    // Centred over the canopy.
+    let (width, top, height) = (86, 82, 15);
+    let left = (CANOPY_LEFT + CANOPY_RIGHT - width) / 2;
     for leg in [left + 10, left + width - 13] {
         rect(
             scene,
@@ -2085,6 +2082,23 @@ mod tests {
             backdrop(&[], &Arrangement::new()),
             backdrop(&[], &Arrangement::new())
         );
+    }
+
+    #[test]
+    fn every_souvenir_has_a_place_of_its_own_in_the_case() {
+        let ids: Vec<String> = crate::story::souvenirs::ids()
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+        let all = backdrop(&ids, &Arrangement::new());
+        for id in &ids {
+            let others: Vec<String> = ids.iter().filter(|kept| *kept != id).cloned().collect();
+            assert_ne!(
+                all,
+                backdrop(&others, &Arrangement::new()),
+                "{id} doesn't show"
+            );
+        }
     }
 
     #[test]

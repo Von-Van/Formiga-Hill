@@ -212,8 +212,9 @@ sweetheart = "{helper}, you're the best."
 ## Souvenirs
 
 A story can give only Hill's own souvenirs, by id, and can't invent new ones. Those a story can
-give are `picnic_ribbon`, `pressed_daisy`, `well_penny`, `oak_acorn` and `swing_feather`. Some
-others, such as the Fairground's ticket, are only ever won at Hill's own games.
+give are `picnic_ribbon`, `pressed_daisy`, `well_penny`, `oak_acorn`, `swing_feather` and
+`chest_marble`. Some others, such as the Fairground's ticket, are only ever won at Hill's own
+games.
 Hill remembers which stories each colony has finished and what it has kept, and nothing is ever
 lost by staying away.
 

@@ -11,7 +11,7 @@ enum Giver {
 }
 
 /// Every souvenir: its id, what it is called, and who gives it.
-const CATALOGUE: [(&str, &str, Giver); 6] = [
+const CATALOGUE: [(&str, &str, Giver); 7] = [
     (
         "picnic_ribbon",
         "A gingham ribbon from the first picnic",
@@ -29,6 +29,7 @@ const CATALOGUE: [(&str, &str, Giver); 6] = [
         "A feather caught on the swing",
         Giver::Story,
     ),
+    ("chest_marble", "A marble from the toy chest", Giver::Story),
     (FAIR_TICKET, "A ticket from the Fairground", Giver::Game),
 ];
 
@@ -62,4 +63,27 @@ pub fn name(id: &str) -> Option<&'static str> {
         .iter()
         .find(|(known, _, _)| *known == id)
         .map(|(_, name, _)| *name)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Packages are written against this list and colonies keep what they were given, so nothing
+    /// a story could once give ever leaves it.
+    #[test]
+    fn every_souvenir_a_story_has_been_able_to_give_still_can() {
+        for id in [
+            "picnic_ribbon",
+            "pressed_daisy",
+            "well_penny",
+            "oak_acorn",
+            "swing_feather",
+            "chest_marble",
+        ] {
+            assert!(a_story_can_give(id), "{id}");
+            assert!(name(id).is_some(), "{id}");
+        }
+        assert!(!a_story_can_give(FAIR_TICKET));
+    }
 }
