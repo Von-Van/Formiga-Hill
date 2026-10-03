@@ -6,6 +6,7 @@ mod cast;
 mod character;
 mod clearing;
 mod clubhouse;
+mod costume;
 mod cues;
 mod daylight;
 mod dice;
@@ -67,6 +68,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-bug-hunt <PNG>  Draw a bug hunt in the meadow, --at seconds in, played by a patient hand
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
+  --render-costumes <PNG>  Draw everyone wearing every piece in the dress-up box, for review
   --render-story <PNG>     Draw a story in the Clubhouse --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
@@ -111,6 +113,8 @@ enum Area {
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
     Reactions,
+    /// Not an area: the review sheet of everyone in every costume.
+    Costumes,
     /// The Clubhouse, a story under way in it.
     Story,
 }
@@ -268,6 +272,7 @@ fn main() -> Result<()> {
             Area::BugHunt => bug_hunt_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
+            Area::Costumes => sheet::costumes(&arrival.cast),
             Area::Story => {
                 let library = story::Library::load(None, &args.packages);
                 story_moment(
@@ -389,6 +394,9 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             Some("--render-story") => render = Some((Area::Story, value("--render-story")?)),
             Some("--render-reactions") => {
                 render = Some((Area::Reactions, value("--render-reactions")?));
+            }
+            Some("--render-costumes") => {
+                render = Some((Area::Costumes, value("--render-costumes")?));
             }
             Some("--at") => {
                 let seconds = value("--at")?;

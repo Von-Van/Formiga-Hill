@@ -74,6 +74,53 @@ pub fn reactions(cast: &Cast) -> Canvas {
     sheet
 }
 
+/// Every traveller, a row each, trying on every piece in the dress-up box: facing right, then
+/// the first two again facing left, and once mid-cheer, so a piece can be seen sitting right on
+/// every body plan, both ways round, and in a pose that moves the head.
+pub fn costumes(cast: &Cast) -> Canvas {
+    let pieces = &crate::costume::PIECES;
+    let columns = pieces.len() as i32 + 3;
+    let (width, height) = (CELL.0 * columns, CELL.1 * cast.members.len() as i32);
+    let mut sheet = Canvas::new(width as u32, height as u32);
+    for (row, member) in cast.members.iter().enumerate() {
+        for column in 0..columns {
+            let (left, top) = (column * CELL.0, row as i32 * CELL.1);
+            let lawn = if (row as i32 + column) % 2 == 0 {
+                rgb(0x8cc178)
+            } else {
+                rgb(0x7db36c)
+            };
+            rect(&mut sheet, left, top, CELL.0, CELL.1, lawn);
+            let (piece, facing_right, cheering) = match column as usize {
+                index if index < pieces.len() => (pieces[index].id, true, false),
+                index if index < pieces.len() + 2 => {
+                    (pieces[index - pieces.len()].id, false, false)
+                }
+                _ => (pieces[0].id, true, true),
+            };
+            let feet = ((left + CELL.0 / 2) as f32, (top + CELL.1 - 6) as f32);
+            let mut actor = Actor::new(member, feet, facing_right, false);
+            actor.wear(Some(piece));
+            let mut now = 0.0;
+            if cheering {
+                let cheer = crate::character::Beat::new(
+                    formiga_core::Gesture::Cheer,
+                    formiga_art::ExpressionKind::Joy,
+                    5.0,
+                );
+                actor.begin(0.0, [Step::Beat(cheer)]);
+                while now < 0.4 {
+                    now += 1.0 / 30.0;
+                    actor.advance(now, 1.0 / 30.0, &[]);
+                }
+            }
+            actor.draw_shadow(&mut sheet, now);
+            actor.draw(&mut sheet, now);
+        }
+    }
+    sheet
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
