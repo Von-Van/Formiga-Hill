@@ -2,6 +2,7 @@
 //! Hilltop, the colony in them, and the way home.
 
 mod arranging;
+mod bug_hunt;
 mod encounter;
 mod fishing_trip;
 mod rummaging;
@@ -248,6 +249,7 @@ impl HillApp {
             self.hilltop.as_mut(),
             self.woods.empty.as_mut(),
             self.woods.pool.as_mut(),
+            self.woods.meadow.as_mut(),
         ];
         for ground in grounds.into_iter().flatten() {
             ground.set_daylight(daylight);
@@ -259,6 +261,10 @@ impl HillApp {
         if let Some((ground, trip)) = &mut self.woods.fishing {
             ground.set_daylight(daylight);
             trip.set_hour_dark(daylight.darkness());
+        }
+        if let Some((ground, hunt)) = &mut self.woods.hunt {
+            ground.set_daylight(daylight);
+            hunt.set_hour_dark(daylight.darkness());
         }
     }
 
@@ -299,6 +305,9 @@ impl HillApp {
         }
         if self.woods.fishing.is_some() {
             self.finish_fishing(now);
+        }
+        if self.woods.hunt.is_some() {
+            self.finish_bug_hunt(now);
         }
         self.placing = None;
         // Walking away calls a game off.
@@ -682,6 +691,12 @@ impl eframe::App for HillApp {
             // With reduced motion, the catching marker turns while the pointer or Space is held.
             let holding =
                 ctx.input(|input| input.pointer.primary_down() || input.key_down(egui::Key::Space));
+            // Creeping up on a bug is the pointer held down, or an arrow key or W; Space swings.
+            self.woods.creeping = ctx.input(|input| {
+                input.pointer.primary_down()
+                    || input.key_down(egui::Key::ArrowUp)
+                    || input.key_down(egui::Key::W)
+            });
             let dt = (now - self.last_frame).clamp(0.0, 0.1);
             self.tick_woods(now, holding, dt);
         }

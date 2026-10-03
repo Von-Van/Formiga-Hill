@@ -134,6 +134,9 @@ pub struct Playground {
     backdrop: Canvas,
     foreground: Canvas,
     props: Vec<Prop>,
+    /// Small things that move about on their own, drawn in depth order with everyone but never
+    /// part of the place with nobody in it: bugs in the meadow.
+    fliers: Vec<Prop>,
     attractions: Vec<Attraction>,
     actors: Vec<Actor>,
     dice: Dice,
@@ -216,6 +219,7 @@ impl Playground {
             backdrop,
             foreground,
             props,
+            fliers: Vec::new(),
             attractions: Vec::new(),
             actors,
             dice: Dice::new(seed),
@@ -276,6 +280,11 @@ impl Playground {
     pub fn set_props(&mut self, props: Vec<Prop>) {
         self.props = props;
         self.still_life();
+    }
+
+    /// Places what is flying about this moment, each standing on its own row.
+    pub fn set_fliers(&mut self, fliers: Vec<Prop>) {
+        self.fliers = fliers;
     }
 
     /// Changes what is worth going over to.
@@ -490,7 +499,7 @@ impl Playground {
         for &index in &order {
             self.actors[index].draw_shadow(&mut scene, now);
         }
-        // Travellers and props together, back to front.
+        // Travellers, props and anything flying about together, back to front.
         let mut layers: Vec<(f32, Option<usize>, Option<usize>)> = order
             .iter()
             .map(|&index| (self.actors[index].pos.1, Some(index), None))
@@ -500,9 +509,20 @@ impl Playground {
                     .enumerate()
                     .map(|(index, prop)| (prop.base, None, Some(index))),
             )
+            .chain(
+                self.fliers
+                    .iter()
+                    .enumerate()
+                    .map(|(index, flier)| (flier.base, None, Some(self.props.len() + index))),
+            )
             .collect();
         layers.sort_by(|a, b| a.0.total_cmp(&b.0));
         for (_, actor, prop) in layers {
+            if let Some(index) = prop.and_then(|index| index.checked_sub(self.props.len())) {
+                let flier = &self.fliers[index];
+                blit(&mut scene, &flier.sprite, flier.at.0, flier.at.1);
+                continue;
+            }
             if let Some(index) = actor {
                 self.actors[index].draw(&mut scene, now);
             }

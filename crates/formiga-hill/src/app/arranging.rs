@@ -52,6 +52,9 @@ impl HillApp {
         if let Some(room) = &mut self.clubhouse {
             room.show_hilltop(&arrangement);
         }
+        if let Some(meadow) = &mut self.woods.meadow {
+            crate::meadow::show_hilltop(meadow, &arrangement);
+        }
     }
 
     /// The spot under a point: a piece standing there, front-most first, or an open spot.
@@ -321,6 +324,39 @@ impl HillApp {
                                 ui.label(
                                     egui::RichText::new(format!(
                                         "??? \u{b7} something {} in {}",
+                                        kind.tier.label(),
+                                        kind.haunt.name()
+                                    ))
+                                    .weak(),
+                                );
+                            }
+                        }
+                    }
+                    let bugs = &crate::meadow::bugs::CATALOGUE;
+                    let caught = bugs.iter().filter(|kind| colony.bugs.contains_key(kind.id)).count();
+                    ui.add_space(6.0);
+                    ui.strong(format!("Caught in the meadow ({caught} of {})", bugs.len()));
+                    for kind in bugs {
+                        match colony.bugs.get(kind.id) {
+                            Some(record) => {
+                                ui.label(egui::RichText::new(kind.name).strong());
+                                ui.label(egui::RichText::new(kind.blurb).small());
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "Caught {}\u{d7}, biggest {:.0} mm across \u{b7} first caught by {}",
+                                        record.count,
+                                        record.biggest,
+                                        who(&record.first_by)
+                                    ))
+                                    .small()
+                                    .italics(),
+                                );
+                            }
+                            None => {
+                                let when = if kind.dusk { " at dusk" } else { "" };
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "??? \u{b7} something {} in {}{when}",
                                         kind.tier.label(),
                                         kind.haunt.name()
                                     ))

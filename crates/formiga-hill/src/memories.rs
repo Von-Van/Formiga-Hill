@@ -56,6 +56,14 @@ pub struct ColonyMemories {
     /// How many times the colony has seen off the Cursor Sovereign.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub sovereign_bested: u32,
+    /// Every kind of bug the colony has caught in the meadow, by id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub bugs: BTreeMap<String, BugRecord>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub bug_hunts: u32,
+    /// Hunts in a row that caught no new kind of bug.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub bug_drought: u32,
 }
 
 fn is_zero(count: &u32) -> bool {
@@ -73,8 +81,19 @@ pub struct FishRecord {
     pub first_by: String,
 }
 
-/// What a fishing trip brought: kinds caught for the first time, kinds caught longer than ever
-/// before, and finds that snagged on the line and are new to the journal.
+/// One kind of bug in the journal.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct BugRecord {
+    /// How many have been caught, and let go again.
+    pub count: u32,
+    /// The biggest caught, in millimetres across.
+    pub biggest: f32,
+    /// Who had the net when the first was caught, by Desktop id.
+    pub first_by: String,
+}
+
+/// What a fishing trip or a bug hunt brought: kinds caught for the first time, kinds caught
+/// longer or bigger than ever before, and finds that came home and are new to the journal.
 #[derive(Debug, Default, PartialEq)]
 pub struct Haul {
     pub new_kinds: Vec<&'static str>,
@@ -228,6 +247,42 @@ impl Memories {
             0
         };
         haul.new_finds = keep_finds(colony, party, snagged);
+        self.keep();
+        haul
+    }
+
+    /// Remembers a bug hunt: the bugs caught and their sizes go into the journal (they were let
+    /// go), and anything else the net brought up into the journal and the satchel.
+    pub fn back_from_the_meadow(
+        &mut self,
+        party: &[u64],
+        jar: &[(&str, f32)],
+        netted: &[&str],
+    ) -> Haul {
+        let colony = self.colony_mut();
+        colony.bug_hunts += 1;
+        let netter = party.first().map(u64::to_string).unwrap_or_default();
+        let mut haul = Haul::default();
+        for (id, size) in jar {
+            let Some(bug) = crate::meadow::bugs::bug(id) else {
+                continue;
+            };
+            let record = colony.bugs.entry(bug.id.to_owned()).or_default();
+            if record.count == 0 {
+                record.first_by.clone_from(&netter);
+                haul.new_kinds.push(bug.id);
+            } else if *size > record.biggest && !haul.longest_yet.contains(&bug.id) {
+                haul.longest_yet.push(bug.id);
+            }
+            record.count += 1;
+            record.biggest = record.biggest.max(*size);
+        }
+        colony.bug_drought = if haul.new_kinds.is_empty() {
+            colony.bug_drought + 1
+        } else {
+            0
+        };
+        haul.new_finds = keep_finds(colony, party, netted);
         self.keep();
         haul
     }
@@ -454,6 +509,29 @@ mod tests {
         assert!(haul.new_kinds.is_empty() && haul.longest_yet.is_empty());
         assert_eq!(memories.colony().fish_drought, 1);
         assert_eq!(memories.colony().fishing_trips, 2);
+    }
+
+    #[test]
+    fn bugs_are_remembered_and_let_go_and_whatever_else_was_netted_comes_home() {
+        let mut memories = Memories::open(None, "c");
+        let haul = memories.back_from_the_meadow(
+            &[7, 9],
+            &[("ladybird", 6.0), ("ladybird", 7.5), ("moon_moth", 110.0)],
+            &["jay_feather"],
+        );
+        assert_eq!(haul.new_kinds, vec!["ladybird", "moon_moth"]);
+        assert_eq!(haul.longest_yet, vec!["ladybird"]);
+        assert_eq!(haul.new_finds, vec!["jay_feather"]);
+        let colony = memories.colony();
+        assert_eq!(colony.bugs["ladybird"].count, 2);
+        assert_eq!(colony.bugs["ladybird"].biggest, 7.5);
+        assert_eq!(colony.bugs["moon_moth"].first_by, "7");
+        assert_eq!(colony.satchel["jay_feather"], 1);
+        assert_eq!(colony.bug_drought, 0);
+        let haul = memories.back_from_the_meadow(&[9], &[("ladybird", 5.0)], &[]);
+        assert!(haul.new_kinds.is_empty() && haul.longest_yet.is_empty());
+        assert_eq!(memories.colony().bug_drought, 1);
+        assert_eq!(memories.colony().bug_hunts, 2);
     }
 
     #[test]
