@@ -77,6 +77,11 @@ changes how it goes and what turns up, but never rules anything out.
   The Old One comes up only at dusk.
 - **Bug catching in the meadow.** Eleven bugs. Creep up and keep still, then swing when each one's
   own way leaves it open.
+- **Foraging along the hedgerow.** Everything ripens and goes over through the outing on its own
+  plant's rhythm, read by its look: blackberries go red, then glossy black; a mushroom opens its
+  cap. Pick it ripe, and choose what is worth a place in a small basket. The rarest are ripe only
+  briefly, and late. A food-inspector knows ripe at a glance, a little one reaches the tucked-in
+  places, a bold one climbs for the high branches, and a sweetheart leaves some for the birds.
 
 And somewhere in the Woods there is a secret, played completely straight. How to find it isn't
 written here.
@@ -121,8 +126,8 @@ written here.
 ### Coming next
 
 - **The Fairground:** hoopla, and a tug-of-war for co-op and competitive play.
-- **The Woods:** foraging, scavenging and treasure routes, and longer expeditions that combine
-  activities.
+- **The Woods:** scavenging and treasure routes, longer expeditions that combine activities, and
+  growing the hedgerow's seeds and cuttings on the Hilltop.
 
 ## Getting there
 
@@ -189,6 +194,8 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | `--render-hide-and-seek`, `--render-sack-race`, `--render-high-striker` | A game at the Fairground, `--at` seconds in |
 | `--render-woods`, `--render-fishing`, `--render-bug-hunt` | A Woods outing, `--at` seconds in |
 | `--render-meadow` | The meadow |
+| `--render-hedgerow` | A foray along the hedgerow, `--at` seconds in |
+| `--render-produce` | Everything the hedgerow grows, at every stage of ripeness |
 | `--render-hilltop` | The Hilltop; `--sample-hilltop` fills it |
 | `--render-building` | The colony building on the Hilltop, `--at` seconds in |
 | `--render-story` | A story, `--at` seconds in |
@@ -220,6 +227,7 @@ crates/formiga-hill/src/
   woods/             the glade, and rummaging there
   fishing/           the pool, its fish, and angling
   meadow/            the meadow, its bugs, and catching them
+  hedgerow/          the hedgerow, what ripens there, and foraging
   hilltop/           the Hilltop, and the Hilltop seen from elsewhere
   clearing/          the secret
   finds/             everything the Woods turns up, and how each looks
