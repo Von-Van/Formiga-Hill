@@ -159,6 +159,11 @@ pub fn layout() -> Layout {
     }
 }
 
+/// Shows what stands on the Hilltop now, far off over the trees.
+pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
+    ground.set_backdrop(scenery::backdrop(hilltop));
+}
+
 /// The meadow, with the companions who came walking out of the trees.
 pub fn open(cast: &Cast, party: &[Id], now: f32, hilltop: &Arrangement) -> Playground {
     let backdrop = scenery::backdrop(hilltop);

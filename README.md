@@ -23,7 +23,7 @@ owns only the destination.
 | Village Green | Free play, pats, snacks and toys | Built |
 | Fairground | Games the colony plays among themselves while you watch, starting with hide-and-seek | Built |
 | Clubhouse | Authored scenes, picked from the notice board and played out by the fire; free play between them | Built |
-| Woods | Activities you play yourself, with a companion or two, for finds to take home (DESIGN.md §2, the Woods → Hilltop loop): rummaging in the glade, fishing at the pool | Being built |
+| Woods | Activities you play yourself, with a companion or two, for finds to take home (DESIGN.md §2, the Woods → Hilltop loop): rummaging in the glade, fishing at the pool, bug catching in the meadow | Being built |
 | Hilltop | The colony's own place, empty at first, filled and arranged with what the Woods turns up | Being built |
 
 ## Where it is
@@ -53,7 +53,8 @@ owns only the destination.
 | Done | Fishing at the pool: eight kinds of fish, each keeping to its own part of the pool (trout under the falls, pike in the reeds, carp by the lilies). Cast where you think they are, but not on top of a wary one; tell a nibble from a bite, each kind nibbling its own number of times; reel in and ease off when it pulls, or the line snaps. The Old One only comes up at dusk. A patient angler gets a longer moment to strike, a playful one draws fish in, a strong one strains the line less, a dozing lazybones gets bolder bites, and a second companion lands fish with the net. Fish are let go and remembered: how many, the longest, and who caught the first. Now and then something snags and comes home for the Hilltop |
 | Done | A secret in the Woods (DESIGN.md §2, the Cursor Sovereign): an interactive cutscene played completely straight, with a menu of absurd attacks each acted out by the companion it belongs to, three phases, and the whole colony arriving for the finale. It leaves a relic for the Hilltop. How to find it is deliberately not written here; see CLAUDE.md |
 | Done | The Hill keeps your hours: its light follows your computer's clock, so a morning visit is morning everywhere and a late one is under the stars. Dawn comes up rose and evening goes down gold; after dark the station's lamp, ticket office and display case are lit, fireflies come out on the green and in the Woods, the Clubhouse dims only to lamp and firelight with the night in its window, and the Hilltop's lantern and fallen star glow, with the Fairground's bulbs far below. Nothing in play depends on the hour |
-| Next | More Woods activities (bug catching, longer expeditions); finds that open new Woods possibilities |
+| Done | Bug catching in the meadow at the Woods' edge: eleven bugs, each keeping to its own haunt (butterflies in the wildflowers, grasshoppers in the long grass, dragonflies over the pond, a stag beetle on the old stump). Choose one, hold to creep up and let go to keep still, watching its nerves; then swing when its own way leaves it open: a butterfly with its wings shut, a grasshopper before it chirps, a firefly while it is lit. Quiet companions creep better, playful ones draw bugs near, a little one fits into the brambles, a dozy one may be landed on. The dusk brings out the firefly, the stag beetle and the moon moth. Caught bugs are admired, let go and remembered; a miss sometimes nets something for the Hilltop |
+| Next | Longer expeditions; finds that open new Woods possibilities |
 
 ## Running it
 
@@ -76,6 +77,9 @@ cargo run -p formiga-hill -- --render-hilltop hilltop.png
 cargo run -p formiga-hill -- --render-finds finds.png
 cargo run -p formiga-hill -- --render-fishing fishing.png --at 20
 cargo run -p formiga-hill -- --render-fish fish.png
+cargo run -p formiga-hill -- --render-meadow meadow.png
+cargo run -p formiga-hill -- --render-bugs bugs.png
+cargo run -p formiga-hill -- --render-bug-hunt hunt.png --at 30
 cargo run -p formiga-hill -- --render-sovereign secret.png --at 60
 cargo run -p formiga-hill -- --render-reactions reactions.png
 cargo run -p formiga-hill -- --render-story story.png --at 20
@@ -104,6 +108,7 @@ crates/
     src/kit.rs        pieces areas are built from: walls, roofs, windows, stonework, bushes
     src/station/      the station: scenery, the train, and the timeline of its comings and goings
     src/green/        the Village Green: scenery and free play
+    src/meadow/       the meadow at the Woods' edge: bugs, and catching them
     src/clubhouse/    the Clubhouse: the room where stories are staged, and its fire
     src/character.rs  who each traveller is, turned into what it does
     src/actor.rs      a traveller performing on a stage: steps, beats, cached frames, gaze

@@ -457,11 +457,25 @@ impl Hunt {
         self.target = Some(index);
         let flier = &self.fliers[index];
         self.events.push(Event::Stalking { bug: flier.bug.id });
+        let pos = flier.pos;
         if let Some(netter) = self.party.first() {
             let crouch = Beat::new(Gesture::Crouch, ExpressionKind::Focused, 600.0);
+            ground.direct(*netter, vec![Step::FaceX(pos.0), Step::Beat(crouch)], now);
+        }
+        // A second companion comes round to help, keeping well back from the bug and watching.
+        if let (Some(netter), Some(helper)) = (self.party.first(), self.party.get(1))
+            && let Some(at) = ground.position(*netter)
+        {
+            let stand = self.stand_for(pos, at);
+            let back = ground.beside_point(stand, if stand.0 < pos.0 { -26.0 } else { 26.0 });
+            let watch = Beat::new(Gesture::Watch, ExpressionKind::Focused, 600.0);
             ground.direct(
-                *netter,
-                vec![Step::FaceX(flier.pos.0), Step::Beat(crouch)],
+                *helper,
+                vec![
+                    Step::Walk { to: back },
+                    Step::FaceX(pos.0),
+                    Step::Beat(watch),
+                ],
                 now,
             );
         }
