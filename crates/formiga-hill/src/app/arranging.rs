@@ -336,7 +336,7 @@ impl HillApp {
             .show(ctx, |ui| {
                 ui.label(format!(
                     "{} of {} found \u{b7} {} outing{} to the Woods",
-                    colony.finds.len(),
+                    CATALOGUE.iter().filter(|find| colony.finds.contains_key(find.id)).count(),
                     CATALOGUE.len(),
                     colony.outings,
                     if colony.outings == 1 { "" } else { "s" }
@@ -481,6 +481,7 @@ impl HillApp {
                             }
                         }
                     }
+                    super::foraging::journal(ui, colony, &who);
                     if !colony.outings_by.is_empty() {
                         ui.add_space(6.0);
                         ui.strong("Who has been");

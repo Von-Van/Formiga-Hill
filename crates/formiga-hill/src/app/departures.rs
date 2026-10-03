@@ -23,11 +23,12 @@ pub(super) enum Outing {
     Rummaging,
     Fishing,
     BugCatching,
+    Foraging,
     Hilltop,
 }
 
 impl Outing {
-    const ALL: [Self; 9] = [
+    const ALL: [Self; 10] = [
         Self::Picnic,
         Self::Stories,
         Self::HideAndSeek,
@@ -36,6 +37,7 @@ impl Outing {
         Self::Rummaging,
         Self::Fishing,
         Self::BugCatching,
+        Self::Foraging,
         Self::Hilltop,
     ];
 
@@ -45,7 +47,7 @@ impl Outing {
             Self::Picnic => Area::Green,
             Self::Stories => Area::Clubhouse,
             Self::HideAndSeek | Self::SackRace | Self::HighStriker => Area::Fairground,
-            Self::Rummaging | Self::Fishing | Self::BugCatching => Area::Woods,
+            Self::Rummaging | Self::Fishing | Self::BugCatching | Self::Foraging => Area::Woods,
             Self::Hilltop => Area::Hilltop,
         }
     }
@@ -61,6 +63,7 @@ impl Outing {
             Self::Rummaging => "go rummaging in the Woods",
             Self::Fishing => "go fishing at the pool",
             Self::BugCatching => "go bug catching in the meadow",
+            Self::Foraging => "go foraging along the hedgerow",
             Self::Hilltop => "sit up on the Hilltop",
         }
     }
@@ -74,6 +77,7 @@ impl Outing {
             Self::Rummaging => Some("rummaging"),
             Self::Fishing => Some("fishing"),
             Self::BugCatching => Some("bugs"),
+            Self::Foraging => Some("foraging"),
             _ => None,
         }
     }
@@ -115,6 +119,12 @@ impl Outing {
             }
             Self::BugCatching => {
                 0.5 * a.energy + 0.3 * a.impulsiveness + 0.2 * a.playfulness + kind(&[Oddball])
+            }
+            Self::Foraging => {
+                0.35 * a.affection
+                    + 0.35 * (1.0 - a.impulsiveness)
+                    + 0.3 * a.curiosity
+                    + kind(&[Sweetheart])
             }
             Self::Hilltop => {
                 0.4 * (1.0 - a.energy)
@@ -428,7 +438,9 @@ pub(super) fn departures(board: &Board) -> Vec<Departure> {
         (
             Area::Woods,
             "The Woods",
-            "Rummaging in the glade, fishing at the pool, bugs in the meadow".to_owned(),
+            "Rummaging in the glade, fishing at the pool, bugs in the meadow, foraging along the \
+             hedgerow"
+                .to_owned(),
         ),
         (Area::Hilltop, "The Hilltop", hilltop),
     ]
@@ -613,6 +625,7 @@ mod tests {
             TemperamentKind::Wallflower,
             TemperamentKind::Oddball,
             TemperamentKind::Guardian,
+            TemperamentKind::Sweetheart,
         ] {
             for level in [0.0, 0.5, 1.0] {
                 character.kind = kind;

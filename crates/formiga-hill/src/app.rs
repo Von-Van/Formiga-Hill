@@ -10,6 +10,7 @@ mod finery;
 mod fishing_trip;
 mod games;
 mod plans;
+mod foraging;
 mod rummaging;
 mod storytelling;
 
@@ -293,6 +294,7 @@ impl HillApp {
             self.woods.empty.as_mut(),
             self.woods.pool.as_mut(),
             self.woods.meadow.as_mut(),
+            self.woods.hedgerow.as_mut(),
         ];
         for ground in grounds.into_iter().flatten() {
             ground.set_daylight(daylight);
@@ -308,6 +310,10 @@ impl HillApp {
         if let Some((ground, hunt)) = &mut self.woods.hunt {
             ground.set_daylight(daylight);
             hunt.set_hour_dark(daylight.darkness());
+        }
+        if let Some((ground, foray)) = &mut self.woods.foray {
+            ground.set_daylight(daylight);
+            foray.set_hour_dark(daylight.darkness());
         }
     }
 
@@ -351,6 +357,9 @@ impl HillApp {
         }
         if self.woods.hunt.is_some() {
             self.finish_bug_hunt(now);
+        }
+        if self.woods.foray.is_some() {
+            self.finish_foraging(now);
         }
         self.placing = None;
         self.notices_open = false;
@@ -699,6 +708,10 @@ impl eframe::App for HillApp {
                         (Area::Woods, _, _) => {
                             let mut hovered = None;
                             if let Some((ground, _)) = &mut self.woods.outing {
+                                ground.set_pointer(pointer);
+                                hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                            }
+                            if let Some((ground, _)) = &mut self.woods.foray {
                                 ground.set_pointer(pointer);
                                 hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
                             }

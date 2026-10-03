@@ -15,6 +15,7 @@ mod finds;
 mod fishing;
 mod font;
 mod green;
+mod hedgerow;
 mod hilltop;
 mod hosting;
 mod icon;
@@ -73,6 +74,8 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-meadow <PNG>    Draw the meadow at the Woods' edge, every bug settled in its haunt
   --render-bugs <PNG>      Draw every bug in each of its poses, close up, and its icon, for review
   --render-bug-hunt <PNG>  Draw a bug hunt in the meadow, --at seconds in, played by a patient hand
+  --render-hedgerow <PNG>  Draw a foray along the hedgerow, --at seconds in, played by a canny hand
+  --render-produce <PNG>   Draw everything that grows on the hedgerow at each stage, for review
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
   --render-costumes <PNG>  Draw everyone wearing every piece in the dress-up box, for review
@@ -126,6 +129,10 @@ enum Area {
     Bugs,
     /// The meadow, a bug hunt under way.
     BugHunt,
+    /// The hedgerow, a foray under way.
+    Hedgerow,
+    /// Not an area: the review sheet of everything the hedgerow grows, at every stage.
+    Produce,
     /// The clearing that isn't on any map, the Sovereign met.
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
@@ -294,6 +301,8 @@ fn main() -> Result<()> {
             Area::Meadow => meadow_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Bugs => bug_sheet(),
             Area::BugHunt => bug_hunt_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
+            Area::Hedgerow => foray_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
+            Area::Produce => produce_sheet(),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Costumes => sheet::costumes(&arrival.cast),
@@ -424,6 +433,12 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             Some("--render-bugs") => render = Some((Area::Bugs, value("--render-bugs")?)),
             Some("--render-bug-hunt") => {
                 render = Some((Area::BugHunt, value("--render-bug-hunt")?));
+            }
+            Some("--render-hedgerow") => {
+                render = Some((Area::Hedgerow, value("--render-hedgerow")?));
+            }
+            Some("--render-produce") => {
+                render = Some((Area::Produce, value("--render-produce")?));
             }
             Some("--render-sovereign") => {
                 render = Some((Area::Sovereign, value("--render-sovereign")?));
@@ -920,6 +935,84 @@ fn bug_sheet() -> Canvas {
     sheet
 }
 
+/// A foray along the hedgerow `at` seconds in, played by a canny hand: it goes wherever something
+/// worth having is ripe, or soonest to be, picks only what is ripe, and puts back the least thing
+/// in the basket to make room for something better.
+fn foray_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    use hedgerow::foraging::{Foray, Move, Outset};
+    let family = cast
+        .members
+        .iter()
+        .find_map(|member| member.parent().map(|parent| vec![parent, member.id]));
+    let party: Vec<cast::Id> = family.unwrap_or_else(|| cast.ids().take(2).collect());
+    let close_pair = cast
+        .bond(party[0], party[party.len() - 1])
+        .is_some_and(|bond| bond.warmth >= formiga_travel::Band::High);
+    let mut lane = hedgerow::open(cast, &party, 0.0, &sample_arrangement());
+    lane.set_daylight(daylight);
+    let outset = Outset {
+        party,
+        drought: 0,
+        close_pair,
+        influence: woods::influence(&sample_arrangement()),
+        seed: 9,
+    };
+    let mut foray = Foray::new(&mut lane, outset, |_| false, 0.0);
+    foray.set_hour_dark(daylight.darkness());
+    let mut now = 0.0;
+    let mut hovered = None;
+    while now < at {
+        now += 1.0 / 30.0;
+        lane.tick(cast, now);
+        foray.tick(&mut lane, now);
+        match foray.canny(&lane) {
+            Move::Pick(item) => {
+                hovered = Some(item);
+                foray.pick(&mut lane, item, now);
+            }
+            Move::PutBack(slot) => foray.put_back(slot),
+            Move::Go(patch) => foray.choose(&mut lane, patch, now),
+            Move::Wait => {}
+        }
+        for event in foray.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    lane.set_fliers(foray.produce(now));
+    let mut scene = lane.compose(now);
+    foray.draw(&mut scene, hovered, now);
+    scene
+}
+
+/// Everything the hedgerow grows, a row each, at each stage of ripeness: unripe, turning, ripe and
+/// over, on a strip of hedge green and close up.
+fn produce_sheet() -> Canvas {
+    use hedgerow::Plant;
+    use hedgerow::produce::{Stage, sprite};
+    const ROW: i32 = 17;
+    let mut sheet = Canvas::new(384, (ROW * Plant::ALL.len() as i32) as u32);
+    for (row, plant) in Plant::ALL.into_iter().enumerate() {
+        let top = row as i32 * ROW;
+        let shade = if row % 2 == 0 { 0x4c6e3a } else { 0x557a40 };
+        sheet.fill_rect(0, top, 384, ROW, paint::rgb(shade));
+        paint::blit(&mut sheet, &finds::art::icon(plant.find().id), 4, top + 4);
+        for (column, stage) in Stage::ALL.into_iter().enumerate() {
+            let x = 20 + column as i32 * 18;
+            paint::blit(&mut sheet, &sprite(plant, stage, false), x, top + 2);
+            // And on pale ground, to see its own outline.
+            let pale = 110 + column as i32 * 18;
+            sheet.fill_rect(pale - 1, top + 1, 15, 15, paint::rgb(0xe8e0c8));
+            paint::blit(
+                &mut sheet,
+                &sprite(plant, stage, stage == Stage::Ripe),
+                pale,
+                top + 2,
+            );
+        }
+    }
+    sheet
+}
+
 /// A spread of finds over the Hilltop, some of them still growing and some built into something
 /// grander, with a spot or two left open, for seeing it lived in.
 fn sample_arrangement() -> hilltop::Arrangement {
@@ -969,8 +1062,7 @@ fn sample_arrangement() -> hilltop::Arrangement {
 fn finds_sheet() -> Canvas {
     const CELL: (i32, i32) = (56, 70);
     let columns = 7;
-    let mut sheet = Canvas::new((CELL.0 * columns) as u32, (CELL.1 * 5) as u32);
-    // A row for each kind, and a last row for the relics.
+    // A row for each kind, a row for the relics, and the hedgerow's finds after.
     let rows: Vec<Vec<&finds::Find>> = finds::Kind::ALL
         .into_iter()
         .map(|kind| {
@@ -980,7 +1072,16 @@ fn finds_sheet() -> Canvas {
                 .collect()
         })
         .chain(std::iter::once(finds::RELICS.iter().collect()))
+        .chain(
+            finds::FORAGED
+                .chunks(columns as usize)
+                .map(|row| row.iter().collect()),
+        )
         .collect();
+    let mut sheet = Canvas::new(
+        (CELL.0 * columns) as u32,
+        (CELL.1 * rows.len() as i32) as u32,
+    );
     for (row, of_kind) in rows.into_iter().enumerate() {
         for (column, find) in of_kind.into_iter().enumerate() {
             let (left, top) = (column as i32 * CELL.0, row as i32 * CELL.1);

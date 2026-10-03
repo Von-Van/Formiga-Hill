@@ -79,6 +79,14 @@ pub struct ColonyMemories {
     /// Hunts in a row that caught no new kind of bug.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub bug_drought: u32,
+    /// Forays to the hedgerow, all told and by each traveller's Desktop id.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub forays: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub forays_by: BTreeMap<String, u32>,
+    /// Forays in a row that brought home nothing new to the journal.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub forage_drought: u32,
 }
 
 fn is_zero(count: &u32) -> bool {
@@ -355,6 +363,25 @@ impl Memories {
         haul.new_finds = keep_finds(colony, party, netted);
         self.keep();
         haul
+    }
+
+    /// Remembers a foray to the hedgerow: who went, and what was picked ripe and brought home in
+    /// the basket, which goes into the journal and the satchel like anything from the Woods. Says
+    /// which finds were new.
+    pub fn back_from_foraging(&mut self, party: &[u64], basket: &[&str]) -> Vec<&'static str> {
+        let colony = self.colony_mut();
+        colony.forays += 1;
+        for id in party {
+            *colony.forays_by.entry(id.to_string()).or_default() += 1;
+        }
+        let new = keep_finds(colony, party, basket);
+        colony.forage_drought = if new.is_empty() {
+            colony.forage_drought + 1
+        } else {
+            0
+        };
+        self.keep();
+        new
     }
 
     /// Remembers the Cursor Sovereign seen off by `party`. The first time, its arrow comes home for
@@ -716,6 +743,35 @@ mod tests {
         assert!(haul.new_kinds.is_empty() && haul.longest_yet.is_empty());
         assert_eq!(memories.colony().bug_drought, 1);
         assert_eq!(memories.colony().bug_hunts, 2);
+    }
+
+    #[test]
+    fn forays_keep_their_own_count_and_bring_their_basket_home() {
+        let mut memories = Memories::open(None, "c");
+        let new = memories.back_from_foraging(
+            &[9, 7],
+            &["blackberries", "blackberries", "hazelnut", "nonsense"],
+        );
+        assert_eq!(new, vec!["blackberries", "hazelnut"]);
+        let colony = memories.colony();
+        assert_eq!(colony.forays, 1);
+        assert_eq!(colony.forays_by["7"], 1);
+        assert_eq!(
+            colony.finds["hazelnut"].first_by, "9",
+            "whoever led found it"
+        );
+        assert_eq!(colony.finds["blackberries"].count, 2);
+        assert_eq!(colony.satchel["blackberries"], 2, "picked, for the Hilltop");
+        assert_eq!(colony.forage_drought, 0);
+        assert_eq!(colony.outings, 0, "a foray is not a rummage");
+        assert_eq!(colony.drought, 0);
+        memories.back_from_foraging(&[7], &["hazelnut"]);
+        assert_eq!(memories.colony().forage_drought, 1, "nothing new that time");
+        assert_eq!(memories.colony().forays_by["7"], 2);
+        assert_eq!(memories.colony().finds["hazelnut"].first_by, "9");
+        memories.back_from_foraging(&[7], &[]);
+        assert_eq!(memories.colony().forage_drought, 2);
+        assert_eq!(memories.colony().forays, 3);
     }
 
     #[test]
