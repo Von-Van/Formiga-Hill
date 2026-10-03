@@ -837,7 +837,7 @@ mod tests {
     #[test]
     fn a_story_is_drawn_at_the_hour_asked_for() {
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
-        let library = story::Library::load(&[]);
+        let library = story::Library::load(None, &[]);
         let chosen = story_to_draw(&library).unwrap();
         let at =
             |hour| story_moment(&cast, chosen, 1.0, daylight::Daylight::at_hour(hour)).unwrap();
