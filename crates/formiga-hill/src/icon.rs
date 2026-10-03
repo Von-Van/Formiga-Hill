@@ -22,7 +22,15 @@ pub fn draw() -> Canvas {
     let mut icon = Canvas::new(SIZE, SIZE);
     let inside = |x: i32, y: i32| {
         // A rounded square, its corners cut on a radius of six.
-        let corner = |a: i32| if a < 6 { 6 - a } else if a > size - 7 { a - (size - 7) } else { 0 };
+        let corner = |a: i32| {
+            if a < 6 {
+                6 - a
+            } else if a > size - 7 {
+                a - (size - 7)
+            } else {
+                0
+            }
+        };
         let (cx, cy) = (corner(x), corner(y));
         cx * cx + cy * cy <= 36
     };

@@ -143,7 +143,10 @@ fn main() -> Result<()> {
         return Ok(());
     }
     // For the packaging scripts too: Hill's icon, for the bundle and the installer.
-    if std::env::args_os().nth(1).is_some_and(|arg| arg == "--icon") {
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--icon")
+    {
         let folder = std::env::args_os()
             .nth(2)
             .map(PathBuf::from)
