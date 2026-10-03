@@ -283,7 +283,9 @@ impl HillApp {
             self.leaving = Some((self.compose(now), now));
         }
         if area == Area::Green && self.green.is_none() {
-            self.green = Some(crate::green::open(&self.arrival.cast, now));
+            let mut green = crate::green::open(&self.arrival.cast, now);
+            crate::green::show_hilltop(&mut green, &self.memories.colony().hilltop);
+            self.green = Some(green);
         }
         if area == Area::Fairground && self.fairground.is_none() {
             let (mut ground, game) = fairground::open(&self.arrival.cast, now);

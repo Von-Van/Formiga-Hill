@@ -63,6 +63,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
                            line for 2.5 seconds and taking the first choice
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
   --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
+  --sample-hilltop         Draw the station's skyline with a sample of finds on the Hilltop
   --at <SECONDS>           Draw that far into the arrival, or into free play on the green or
                            at the Fairground
 ";
@@ -104,6 +105,8 @@ struct Args {
     packages: Vec<PathBuf>,
     /// Check these package folders and report, without opening a window.
     check: Vec<PathBuf>,
+    /// Draw the station with a sample of finds on the Hilltop, rather than the colony's own.
+    sample_hilltop: bool,
 }
 
 fn main() -> Result<()> {
@@ -130,13 +133,18 @@ fn main() -> Result<()> {
                 );
                 let mut station =
                     station::Station::new(&arrival.cast, journey, &memories.colony().souvenirs);
-                station.show_hilltop(&memories.colony().hilltop);
+                if args.sample_hilltop {
+                    station.show_hilltop(&sample_arrangement());
+                } else {
+                    station.show_hilltop(&memories.colony().hilltop);
+                }
                 station.compose(now)
             }
             Area::Green => {
                 // Free play, run forward as the window would run it.
                 let until = args.at.unwrap_or(20.0);
                 let mut green = green::open(&arrival.cast, 0.0);
+                green::show_hilltop(&mut green, &sample_arrangement());
                 let mut now = 0.0;
                 while now < until {
                     now += 1.0 / 30.0;
@@ -214,6 +222,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut at = None;
     let mut packages = Vec::new();
     let mut check = Vec::new();
+    let mut sample_hilltop = false;
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
             bail!("choose one of --sample, {LAUNCH_ARGUMENT}, or --from-save");
@@ -266,6 +275,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                         .with_context(|| format!("--at needs seconds, not {seconds:?}"))?,
                 );
             }
+            Some("--sample-hilltop") => sample_hilltop = true,
             Some("--package") => packages.push(value("--package")?),
             Some("--check-package") => check.push(value("--check-package")?),
             Some("-h" | "--help") => return Ok(None),
@@ -281,6 +291,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         at,
         packages,
         check,
+        sample_hilltop,
     }))
 }
 

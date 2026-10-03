@@ -5,6 +5,7 @@
 mod scenery;
 
 use crate::cast::Cast;
+use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Playground};
 use scenery::{BLANKET, SHADE, WALK_BOTTOM, WALK_LEFT, WALK_RIGHT, WALK_TOP, walkable};
 
@@ -43,13 +44,18 @@ pub fn layout() -> Layout {
     }
 }
 
+/// Shows what stands on the Hilltop, far off through the gap in the trees.
+pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
+    ground.set_backdrop(scenery::backdrop(hilltop));
+}
+
 /// The green, with the colony walking in.
 pub fn open(cast: &Cast, now: f32) -> Playground {
     Playground::new(
         cast,
         now,
         layout(),
-        scenery::backdrop(),
+        scenery::backdrop(&Arrangement::new()),
         scenery::foreground(),
         Vec::new(),
     )
@@ -84,7 +90,7 @@ mod tests {
             green.tick(&cast, now);
         }
         let scene = green.compose(now);
-        let mut empty = scenery::backdrop();
+        let mut empty = scenery::backdrop(&Arrangement::new());
         blit(&mut empty, &scenery::foreground(), 0, 0);
         assert_ne!(scene, empty);
     }

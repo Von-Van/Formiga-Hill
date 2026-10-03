@@ -5,6 +5,7 @@
 //! A strip of long grass along the bottom is painted separately, to be drawn in front of everyone.
 
 use super::{SCENE_HEIGHT, SCENE_WIDTH};
+use crate::hilltop::{Arrangement, Tint, Vista, skyline};
 use crate::kit::{bush, roof};
 use crate::materials::*;
 use crate::paint::{
@@ -46,9 +47,19 @@ const ROPE: Rgba = rgb(0xcbb38a);
 const BRASS_LIKE: Rgba = rgb(0xc9a14e);
 const SHADOW: Rgba = rgba(0x24452b, 64);
 
-pub fn backdrop() -> Canvas {
+/// The Hill through the gap in the trees, far off, with whatever stands on it.
+const VISTA: Vista = Vista {
+    tree: (308.0, 18.0),
+    crest: |x| 44.0 - 26.0 * (1.0 - ((x - 308.0) / 44.0).powi(2)).max(0.0).sqrt(),
+    spread: 12.0,
+    shrink: 10,
+    tint: Tint::Haze(HILL_SHADE, 0.45),
+};
+
+pub fn backdrop(hilltop: &Arrangement) -> Canvas {
     let mut scene = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
     beyond_the_gap(&mut scene);
+    skyline(&mut scene, hilltop, &VISTA);
     lawn(&mut scene);
     path(&mut scene);
     treeline(&mut scene);
@@ -665,7 +676,12 @@ mod tests {
 
     #[test]
     fn the_backdrop_fills_every_pixel() {
-        assert!(backdrop().pixels().iter().all(|pixel| pixel.a == 255));
+        assert!(
+            backdrop(&Arrangement::new())
+                .pixels()
+                .iter()
+                .all(|pixel| pixel.a == 255)
+        );
     }
 
     #[test]
@@ -683,7 +699,7 @@ mod tests {
 
     #[test]
     fn the_green_is_the_same_every_time() {
-        assert_eq!(backdrop(), backdrop());
+        assert_eq!(backdrop(&Arrangement::new()), backdrop(&Arrangement::new()));
     }
 
     #[test]

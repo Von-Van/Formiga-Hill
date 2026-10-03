@@ -44,6 +44,9 @@ impl HillApp {
         if let Some((ground, _)) = &mut self.fairground {
             crate::fairground::show_hilltop(ground, &arrangement);
         }
+        if let Some(green) = &mut self.green {
+            crate::green::show_hilltop(green, &arrangement);
+        }
     }
 
     /// The spot under a point: a piece standing there, front-most first, or an open spot.
