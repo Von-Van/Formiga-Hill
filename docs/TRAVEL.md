@@ -7,8 +7,8 @@ the `formiga-travel` crate, and that crate's documentation is the authority: sta
 code. The founding brief is [DESIGN.md §8](DESIGN.md#8-inter-app-travel-contract).
 
 Hill takes `formiga-core`, `formiga-art` and `formiga-travel` from the same Desktop source, so
-their types agree, pinned in the root `Cargo.toml`. That is now Desktop's travel version 2,
-from a commit on its `work/hill-follow-up` branch until Desktop releases it with a tag.
+their types agree: a Desktop release tag, now `v0.66.5` (travel version 2); see the root
+`Cargo.toml`.
 
 ## Who owns what
 
