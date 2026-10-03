@@ -1966,7 +1966,7 @@ mod tests {
     fn whatever_stands_on_the_hilltop_shows_through_the_gate() {
         for find in crate::finds::CATALOGUE.iter().chain(&crate::finds::FORAGED) {
             let everywhere: Arrangement = (0..SPOTS.len() as u8)
-                .map(|spot| (spot, find.id.to_owned()))
+                .map(|spot| (spot, crate::hilltop::Standing::from(find.id)))
                 .collect();
             let mut view = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
             skyline(&mut view, &everywhere, &VISTA);
