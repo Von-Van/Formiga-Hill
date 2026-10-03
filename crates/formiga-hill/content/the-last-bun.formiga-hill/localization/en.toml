@@ -1,0 +1,80 @@
+# The Last Bun, in English. A line is plain text, or a table with `text` and a version for any
+# temperament that would say it differently. {role} becomes the name of whoever plays that role.
+
+title = "The Last Bun"
+
+[plate]
+intro = "There was one bun left on the Clubhouse table. Now there is a plate, and some crumbs."
+choose_question = "Question everyone"
+choose_crumbs = "Follow the crumbs"
+
+[plate.notice]
+text = "The last bun. Gone. And not so long ago: these crumbs are still soft."
+scholar = "Crumbs, still soft. Taken in the last few minutes, by someone with small bites."
+explorer = "Gone! But it can't have gone far. Nothing goes far in here."
+grump = "Somebody has had the last bun. Somebody is going to explain themselves."
+lazybones = "The last bun is gone. I was going to have that. Later. Much later."
+
+[plate.gather]
+text = "Nobody leave the Clubhouse. Somebody here knows where that bun went."
+scholar = "Nobody move. One of us knows where that bun went, and I mean to find out who."
+sweetheart = "Nobody's in trouble. I'd just like to know where the bun went. Please?"
+showoff = "Stand back, everyone. This is a job for the greatest mind in the Clubhouse."
+wallflower = "Um... does anyone know where the bun went?"
+
+[questions]
+hungry_ask = "{hungry}, you do look at food rather a lot."
+rascal_ask = "{rascal}. Where were you while the bun was disappearing?"
+keeper_ask = "And you, {keeper}? You've gone very quiet."
+
+[questions.hungry]
+text = "I only looked at it! Looking isn't eating."
+grump = "I look at everything. It doesn't mean I eat it."
+lazybones = "I was much too comfortable to get up for a bun."
+sweetheart = "I'd never take the last one. That's the worst thing you can do."
+
+[questions.rascal]
+text = "It wasn't me! This time."
+troublemaker = "If it was me, there wouldn't be any crumbs. I'm better than that."
+showoff = "Me? I'd have eaten it where everyone could see."
+
+[questions.keeper]
+text = "I've been by the window. Looking at... the Hill. Mostly."
+guardian = "I was keeping watch. Over everything. Nothing has gone missing that I know of."
+sweetheart = "I haven't eaten anything. Honestly. I promise."
+wallflower = "...I didn't eat it."
+oddball = "Buns come and go, {detective}. It's the way of things."
+
+[questions.suspicious]
+text = "{detective} notices that {keeper} keeps glancing at the bookshelf."
+scholar = "{detective} notices, as a scholar does, that {keeper} keeps glancing at the bookshelf."
+
+# ---------------------------------------------------------------------------------------------
+[crumbs]
+trail = "A trail of crumbs runs from the table, past the armchair, all the way to the bookshelf."
+found = "Tucked behind a row of books, wrapped in a napkin: the last bun, without a bite out of it."
+napkin = "Wrapped in a napkin. Whoever hid this wasn't eating it. They were keeping it safe."
+
+# ---------------------------------------------------------------------------------------------
+[reveal]
+pieces = "The last bun goes round in very small pieces."
+little = "Mine's the smallest! It's the best one."
+
+[reveal.confess]
+text = "It was me. I put it away for you, {detective}. You always let everyone else have the last one."
+guardian = "I put it somewhere safe. For you, {detective}. You never take the last one for yourself."
+sweetheart = "It was for you, {detective}. You always give yours away, so I saved one."
+grump = "Fine. It was me. You never get one, {detective}, so I put it by. Don't make a fuss."
+wallflower = "...it was me. I was saving it for you, {detective}."
+troublemaker = "All right, it was me! But I was saving it for you, {detective}, so it doesn't count."
+
+[reveal.share]
+text = "Then we'll share it. All of us."
+scholar = "Case closed. And the evidence will be shared out equally."
+grump = "Well. We'll have to share it now, won't we."
+showoff = "Mystery solved! By me. Now, everyone gets a piece."
+
+[reveal.end]
+text = "It is, everyone agrees, the best bun there has ever been."
+scholar = "{detective} writes it up afterwards as The Case of the Last Bun, and leaves out nothing."
+explorer = "{detective} says it was the best adventure in ages, and nobody even left the room."

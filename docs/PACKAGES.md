@@ -5,11 +5,10 @@ snug room with a fire, where the person picks a story from the notice board. You
 TOML files in a folder. There is no code to write, nothing to compile, and nothing your package
 can do except tell Hill who should do what, where, and what they say.
 
-Hill's own stories, *The First Picnic* and *The Book with No Ending*, are written exactly this
-way. Each is a complete working example:
-[`crates/formiga-hill/content/first-picnic.formiga-hill`](../crates/formiga-hill/content/first-picnic.formiga-hill)
-and
-[`crates/formiga-hill/content/book-with-no-ending.formiga-hill`](../crates/formiga-hill/content/book-with-no-ending.formiga-hill).
+Hill's own stories, *The First Picnic*, *The Last Bun* and *The Book with No Ending*, are written
+exactly this way. Each is a complete working example in
+[`crates/formiga-hill/content`](../crates/formiga-hill/content); *The Last Bun* shows a mystery
+whose suspects are cast from the colony's own habits, temperaments and friendships.
 
 ## Trying a story
 

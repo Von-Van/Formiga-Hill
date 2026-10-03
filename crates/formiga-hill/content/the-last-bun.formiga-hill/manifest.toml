@@ -1,0 +1,13 @@
+# A small mystery in the Clubhouse, written exactly as any package author would write one.
+package_id = "com.formiga.hill.the-last-bun"
+title = "The Last Bun"
+author = "Formiga"
+version = "1.0.0"
+hill_api = 2
+content_types = ["story"]
+entry_points = ["content/the-last-bun.toml"]
+default_locale = "en"
+
+[requirements]
+min_cast = 2
+areas = ["clubhouse"]
