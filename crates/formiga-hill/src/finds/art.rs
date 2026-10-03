@@ -60,6 +60,27 @@ pub fn piece(id: &str) -> Piece {
     piece
 }
 
+/// A find planted on the Hilltop as it stands at `stage` of its growing (see `finds::growing`):
+/// a mound of turned earth with a sprout at first, and then each time a little more like its full
+/// piece. Anything without its stages drawn stands as its full piece.
+pub fn stage(id: &str, stage: u8) -> Piece {
+    let Some(find) = find(id) else {
+        return placeholder_piece(Kind::Dig);
+    };
+    let drawn = match find.kind {
+        Kind::Dig => earth::stage(id, stage),
+        Kind::Reach => hollow::stage(id, stage),
+        Kind::Shake => undergrowth::stage(id, stage),
+        _ => None,
+    };
+    let piece = drawn.unwrap_or_else(|| self::piece(id));
+    debug_assert!(
+        piece.sprite.width() <= PIECE_MAX.0 && piece.sprite.height() <= PIECE_MAX.1,
+        "{id} at stage {stage} is too big for a spot"
+    );
+    piece
+}
+
 fn tint(kind: Kind) -> Ramp {
     match kind {
         Kind::Dig => Ramp::new(0x4a3326, 0x6e4c36, 0x8f6747, 0xad855e, 0xc9a57c),
@@ -94,6 +115,46 @@ fn placeholder_piece(kind: Kind) -> Piece {
 mod tests {
     use super::*;
     use crate::finds::CATALOGUE;
+
+    /// How far a piece rises above where it stands, in pixels.
+    fn rises(piece: &Piece) -> i32 {
+        let (_, top, _, _) = piece.sprite.alpha_bounds().expect("nothing drawn");
+        piece.anchor.1 - top as i32
+    }
+
+    #[test]
+    fn everything_planted_comes_up_a_little_more_each_stage_and_fits_any_spot() {
+        for growth in &crate::finds::growing::GROWING {
+            let full = piece(growth.id);
+            let mut heights = Vec::new();
+            for at in 0..growth.stages.len() as u8 {
+                let young = stage(growth.id, at);
+                let (width, height) = (young.sprite.width(), young.sprite.height());
+                assert!(
+                    width <= PIECE_MAX.0 && height <= PIECE_MAX.1,
+                    "{} at {at} is {width}x{height}",
+                    growth.id
+                );
+                let (x, y) = young.anchor;
+                assert!(x >= 0 && y >= 0 && x < width as i32 && y < height as i32);
+                assert_ne!(
+                    young.sprite, full.sprite,
+                    "{} at {at} is not drawn",
+                    growth.id
+                );
+                heights.push(rises(&young));
+            }
+            heights.push(rises(&full));
+            // A last stage may flower or fruit at its full height, but nothing comes up shorter
+            // than it was, and it starts out well short of grown.
+            let grown = heights[heights.len() - 1];
+            assert!(
+                heights.windows(2).all(|pair| pair[0] <= pair[1]) && heights[0] + 4 <= grown,
+                "{} does not come up stage by stage: {heights:?}",
+                growth.id
+            );
+        }
+    }
 
     #[test]
     fn every_find_has_an_icon_and_a_piece_that_fits_any_spot() {

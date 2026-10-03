@@ -207,7 +207,8 @@ pub fn influence(arrangement: &Arrangement) -> Influence {
             notes.push(text);
         }
     };
-    for id in arrangement.values() {
+    let pieces = arrangement.values().flat_map(|standing| standing.finds());
+    for id in pieces {
         let Some(find) = finds::find(id) else {
             continue;
         };
@@ -289,16 +290,17 @@ pub fn open(cast: &Cast, party: &[Id], now: f32) -> Playground {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hilltop::Standing;
 
     #[test]
     fn the_hilltop_helps_the_woods_but_only_so_far() {
         assert_eq!(influence(&Arrangement::new()), Influence::default());
         let lit = influence(&Arrangement::from([
-            (0, "lost_lantern".to_owned()),
-            (1, "lost_lantern".to_owned()),
-            (2, "lost_lantern".to_owned()),
-            (3, "brass_lens".to_owned()),
-            (4, "fallen_star".to_owned()),
+            (0, "lost_lantern".into()),
+            (1, "lost_lantern".into()),
+            (2, "lost_lantern".into()),
+            (3, "brass_lens".into()),
+            (4, "fallen_star".into()),
         ]));
         assert_eq!(lit.light, MOST_LIGHT);
         assert_eq!(lit.earlier, MOST_EARLIER);
@@ -309,7 +311,7 @@ mod tests {
             lit.notes
         );
         let planted: Arrangement = (0..18)
-            .map(|spot| (spot, "wild_berries".to_owned()))
+            .map(|spot| (spot, Standing::from_satchel("wild_berries")))
             .collect();
         let richer = influence(&planted).richer;
         assert_eq!(richer[Kind::Shake.index()], MOST_RICHER);

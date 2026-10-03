@@ -532,6 +532,47 @@ impl Character {
             Use::Rest => {
                 vec![Beat::new(Gesture::Sit, ExpressionKind::Content, 3.0 + linger).idle()]
             }
+            Use::Tend => self.tend(linger),
+        }
+    }
+
+    /// Looking after something growing, its own way: getting down low to sniff it, patting the
+    /// leaves, dancing round it, or sitting by it and keeping it company. It grows just the same
+    /// whoever tends it, and whether anyone does.
+    fn tend(&self, linger: f32) -> Vec<Beat> {
+        let a = self.axes;
+        match self.kind {
+            TemperamentKind::Lazybones => vec![
+                Beat::new(Gesture::Sit, ExpressionKind::Content, 1.5),
+                Beat::new(ActionKind::Sleep, ExpressionKind::Sleepy, 4.0 + linger)
+                    .cue(Cue::Sleep)
+                    .idle(),
+            ],
+            TemperamentKind::Scholar => vec![
+                Beat::new(Gesture::Crouch, ExpressionKind::Focused, 1.6),
+                Beat::new(Gesture::Watch, ExpressionKind::Focused, 1.8 + linger).idle(),
+            ],
+            TemperamentKind::Grump => vec![
+                Beat::new(Gesture::Crouch, ExpressionKind::Grumpy, 1.2),
+                Beat::new(Gesture::Reach, ExpressionKind::Content, 1.0),
+                Beat::new(Gesture::Huff, ExpressionKind::Smug, 1.0).idle(),
+            ],
+            _ if a.affection > 0.6 => vec![
+                Beat::new(Gesture::Reach, ExpressionKind::Affectionate, 1.4).cue(Cue::Heart),
+                Beat::new(Gesture::Sit, ExpressionKind::Content, 2.5 + linger).idle(),
+            ],
+            _ if a.playfulness > 0.65 => vec![
+                Beat::new(Gesture::Bop, ExpressionKind::Joy, 1.6).cue(Cue::Note),
+                Beat::new(ActionKind::Idle, ExpressionKind::Joy, 1.0 + linger).idle(),
+            ],
+            _ if a.curiosity > 0.55 => vec![
+                Beat::new(Gesture::Crouch, ExpressionKind::Curious, 1.4),
+                Beat::new(Gesture::Watch, ExpressionKind::Curious, 1.5 + linger).idle(),
+            ],
+            _ => vec![
+                Beat::new(Gesture::Crouch, ExpressionKind::Content, 1.2),
+                Beat::new(Gesture::Sit, ExpressionKind::Content, 2.5 + linger).idle(),
+            ],
         }
     }
 
@@ -700,6 +741,35 @@ mod tests {
             }
         }
         assert!(friendships > 0, "someone in the sample has a friend");
+    }
+
+    #[test]
+    fn each_looks_after_something_growing_in_its_own_way() {
+        let mut dice = Dice::new(8);
+        let tenders = [
+            with(TemperamentKind::Lazybones, |_| {}),
+            with(TemperamentKind::Scholar, |_| {}),
+            with(TemperamentKind::Sweetheart, |a| a.affection = 0.9),
+            with(TemperamentKind::Troublemaker, |a| {
+                a.affection = 0.2;
+                a.playfulness = 0.9;
+            }),
+            with(TemperamentKind::Explorer, |a| {
+                a.affection = 0.2;
+                a.playfulness = 0.2;
+                a.curiosity = 0.9;
+            }),
+        ];
+        let mut ways = std::collections::BTreeSet::new();
+        for tender in &tenders {
+            let beats = tender.enjoy(Use::Tend, &mut dice);
+            assert!(
+                beats.last().is_some_and(|beat| beat.idle),
+                "free to move on after"
+            );
+            ways.insert(format!("{:?}", faces(&beats)));
+        }
+        assert_eq!(ways.len(), tenders.len(), "some tend alike: {ways:?}");
     }
 
     #[test]

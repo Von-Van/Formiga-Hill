@@ -143,6 +143,8 @@ pub struct HillApp {
     /// The story being played in the Clubhouse, if any, and the package it came from.
     story: Option<(String, Director)>,
     memories: Memories,
+    /// What has grown on the Hilltop since the last visit, as it is now, spot by spot.
+    grown: Vec<(u8, crate::hilltop::Standing)>,
     /// A short note in the bottom bar, and when it was posted.
     notice: Option<(String, f32)>,
 }
@@ -175,7 +177,7 @@ impl HillApp {
             Memories::folder().as_deref(),
             &arrival.cast.snapshot.colony_id,
         );
-        memories.arrived();
+        let grown = memories.arrived();
         let mut station = Station::new(
             &arrival.cast,
             Journey::Arriving { since: 0.0 },
@@ -230,6 +232,7 @@ impl HillApp {
             last_hour_check: None,
             story: None,
             memories,
+            grown,
             notice: None,
         };
         app.pin_notices();

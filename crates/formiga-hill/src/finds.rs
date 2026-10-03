@@ -9,6 +9,7 @@
 //! colony that only ever brings the same companion still finds everything in the end.
 
 pub mod art;
+pub mod growing;
 
 use crate::character::Character;
 use crate::dice::Dice;
@@ -155,6 +156,8 @@ pub enum Use {
     Play,
     /// Settles beside it for a rest.
     Rest,
+    /// Looks after it while it grows: pats the soil round it, sniffs it, sits by it.
+    Tend,
 }
 
 #[derive(Debug)]

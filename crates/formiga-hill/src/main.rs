@@ -62,6 +62,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-woods <PNG>     Draw a rummage in the Woods, --at seconds into it
   --render-hilltop <PNG>   Draw the Hilltop with a sample of finds placed on it
   --render-finds <PNG>     Draw every find's icon and Hilltop piece on one sheet, for review
+  --render-growing <PNG>   Draw everything that grows on the Hilltop at each of its stages
   --render-fishing <PNG>   Draw a fishing trip at the pool, --at seconds into it
   --render-fish <PNG>      Draw every fish as it is held up, and its icon, for review
   --render-meadow <PNG>    Draw the meadow at the Woods' edge, every bug settled in its haunt
@@ -100,6 +101,8 @@ enum Area {
     Hilltop,
     /// Not an area: the review sheet of every find.
     Finds,
+    /// Not an area: the review sheet of everything that grows, at every stage.
+    Growing,
     /// The pool in the Woods, a fishing trip under way.
     Fishing,
     /// Not an area: the review sheet of every fish.
@@ -268,6 +271,7 @@ fn main() -> Result<()> {
                 hilltop.compose(now)
             }
             Area::Finds => finds_sheet(),
+            Area::Growing => growing_sheet(),
             Area::Fishing => fishing_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Fish => fish_sheet(),
             Area::Meadow => meadow_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
@@ -380,6 +384,9 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Hilltop, value("--render-hilltop")?));
             }
             Some("--render-finds") => render = Some((Area::Finds, value("--render-finds")?)),
+            Some("--render-growing") => {
+                render = Some((Area::Growing, value("--render-growing")?));
+            }
             Some("--render-fishing") => {
                 render = Some((Area::Fishing, value("--render-fishing")?));
             }
@@ -833,7 +840,8 @@ fn bug_sheet() -> Canvas {
     sheet
 }
 
-/// A spread of finds over the Hilltop, with some spots left open, for seeing it lived in.
+/// A spread of finds over the Hilltop, some of them still growing, with some spots left open, for
+/// seeing it lived in.
 fn sample_arrangement() -> hilltop::Arrangement {
     let picks = [
         (0, "weathervane"),
@@ -849,9 +857,22 @@ fn sample_arrangement() -> hilltop::Arrangement {
         (15, "tangled_kite"),
         (17, "lost_lantern"),
     ];
+    let growing = [
+        (3, "bluebell_bulb", 1),
+        (10, "sycamore_key", 2),
+        (12, "dandelion_clock", 0),
+        (16, "silk_cocoon", 1),
+    ];
     picks
         .into_iter()
-        .map(|(spot, id)| (spot, id.to_owned()))
+        .map(|(spot, id)| (spot, hilltop::Standing::from(id)))
+        .chain(growing.into_iter().map(|(spot, id, stage)| {
+            let planted = hilltop::Standing::Planted {
+                planted: id.to_owned(),
+                stage,
+            };
+            (spot, planted)
+        }))
         .collect()
 }
 
@@ -875,27 +896,68 @@ fn finds_sheet() -> Canvas {
     for (row, of_kind) in rows.into_iter().enumerate() {
         for (column, find) in of_kind.into_iter().enumerate() {
             let (left, top) = (column as i32 * CELL.0, row as i32 * CELL.1);
-            for y in 0..CELL.1 {
-                let t = y as f32 / CELL.1 as f32;
-                let color = if y < CELL.1 - 12 {
-                    paint::mix(paint::rgb(0xd6ecf2), paint::rgb(0xf6e8cf), t)
-                } else {
-                    paint::mix(paint::rgb(0x86bb7c), paint::rgb(0x639858), t)
-                };
-                sheet.fill_rect(left, top + y, CELL.0, 1, color);
-            }
-            sheet.fill_rect(left + CELL.0 - 1, top, 1, CELL.1, paint::rgb(0x9ab0a0));
-            sheet.fill_rect(left, top + CELL.1 - 1, CELL.0, 1, paint::rgb(0x9ab0a0));
-            let piece = finds::art::piece(find.id);
-            let base = (left + CELL.0 / 2, top + CELL.1 - 6);
-            paint::blit(
-                &mut sheet,
-                &piece.sprite,
-                base.0 - piece.anchor.0,
-                base.1 - piece.anchor.1,
-            );
+            on_the_grass(&mut sheet, (left, top), CELL, &finds::art::piece(find.id));
             paint::blit(&mut sheet, &finds::art::icon(find.id), left + 2, top + 2);
         }
+    }
+    sheet
+}
+
+/// A piece standing on a patch of summit grass under a pale sky, in a cell of a review sheet.
+fn on_the_grass(
+    sheet: &mut Canvas,
+    (left, top): (i32, i32),
+    cell: (i32, i32),
+    piece: &finds::art::Piece,
+) {
+    for y in 0..cell.1 {
+        let t = y as f32 / cell.1 as f32;
+        let color = if y < cell.1 - 12 {
+            paint::mix(paint::rgb(0xd6ecf2), paint::rgb(0xf6e8cf), t)
+        } else {
+            paint::mix(paint::rgb(0x86bb7c), paint::rgb(0x639858), t)
+        };
+        sheet.fill_rect(left, top + y, cell.0, 1, color);
+    }
+    sheet.fill_rect(left + cell.0 - 1, top, 1, cell.1, paint::rgb(0x9ab0a0));
+    sheet.fill_rect(left, top + cell.1 - 1, cell.0, 1, paint::rgb(0x9ab0a0));
+    let base = (left + cell.0 / 2, top + cell.1 - 6);
+    paint::blit(
+        sheet,
+        &piece.sprite,
+        base.0 - piece.anchor.0,
+        base.1 - piece.anchor.1,
+    );
+}
+
+/// Everything that grows, two to a row: each stage from just planted to its full piece, left to
+/// right, with the find it was planted from in the corner of the first.
+fn growing_sheet() -> Canvas {
+    const CELL: (i32, i32) = (56, 70);
+    let growing = &finds::growing::GROWING;
+    let most = growing
+        .iter()
+        .map(|growth| growth.stages.len() + 1)
+        .max()
+        .unwrap_or(1) as i32;
+    let rows = growing.len().div_ceil(2) as i32;
+    let mut sheet = Canvas::new((CELL.0 * most * 2 + 4) as u32, (CELL.1 * rows) as u32);
+    sheet.fill_rect(CELL.0 * most, 0, 4, CELL.1 * rows, paint::rgb(0x4a6a50));
+    for (index, growth) in growing.iter().enumerate() {
+        let left = (index % 2) as i32 * (CELL.0 * most + 4);
+        let top = (index / 2) as i32 * CELL.1;
+        let stages = (0..growth.stages.len() as u8)
+            .map(|stage| finds::art::stage(growth.id, stage))
+            .chain(std::iter::once(finds::art::piece(growth.id)));
+        for (column, piece) in stages.enumerate() {
+            on_the_grass(
+                &mut sheet,
+                (left + column as i32 * CELL.0, top),
+                CELL,
+                &piece,
+            );
+        }
+        paint::blit(&mut sheet, &finds::art::icon(growth.id), left + 2, top + 2);
     }
     sheet
 }

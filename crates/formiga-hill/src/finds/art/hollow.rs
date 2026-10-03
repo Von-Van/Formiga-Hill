@@ -1,7 +1,7 @@
 //! The finds in a hollow: the finds reached for (Kind::Reach): their icons and their Hilltop
 //! pieces.
 
-use super::brush::{icon_from, lit, lump, moss, paint_rows, shadow, tuft};
+use super::brush::{icon_from, lit, lump, moss, mound, paint_rows, shadow, tuft};
 use super::{ICON, Piece};
 use crate::materials::{GLASS, GLOW, STONE};
 use crate::paint::{Ramp, chance, hline, line, mix, noise, put, rect, rgb, rgba, vline};
@@ -28,6 +28,8 @@ const GILT: Ramp = Ramp::new(0x7a5420, 0xa87c2c, 0xd4a842, 0xecc864, 0xfaeaa8);
 const RINGS: Ramp = Ramp::new(0x7a5a3a, 0xa07a50, 0xc09a68, 0xd6b484, 0xe8cca0);
 const TOADSTOOL: Ramp = Ramp::new(0x6e2a22, 0x9a3a2e, 0xc4503c, 0xdc6e52, 0xf09a7a);
 const CANDLE: Rgba = rgb(0xf3e9cf);
+/// The red a young oak's shoot comes up.
+const SHOOT: Rgba = rgb(0x9a5a3a);
 const PLUM: Ramp = Ramp::new(0x3e2448, 0x56325e, 0x6e4278, 0x8a5a94, 0xb088b8);
 
 /// The icon for one of these finds, nine pixels square, or `None` if it isn't drawn yet.
@@ -203,6 +205,16 @@ pub fn piece(id: &str) -> Option<Piece> {
     })
 }
 
+/// One of these finds planted, at `stage` of its growing, or `None` if it isn't drawn.
+pub fn stage(id: &str, stage: u8) -> Option<Piece> {
+    Some(match (id, stage) {
+        ("acorn_stash", 0) => sprouting_acorn(),
+        ("acorn_stash", 1) => oak_seedling(),
+        ("acorn_stash", _) => oak_sapling(),
+        _ => return None,
+    })
+}
+
 // ---------------------------------------------------------------------------------------------
 // The pieces
 // ---------------------------------------------------------------------------------------------
@@ -329,6 +341,101 @@ fn young_oak() -> Piece {
     Piece {
         sprite: s,
         anchor: (13, ground),
+    }
+}
+
+/// One oak leaf, its lobes showing, standing up from its stalk.
+const OAK: [&str; 5] = [".o.", "olo", ".o.", "oos", ".s."];
+
+/// An acorn lying on its side, its cup to the left.
+const LYING_ACORN: [&str; 4] = ["..###.", "kk*lo#", "kCoos#", "..###."];
+
+fn cup_inks() -> [(char, Rgba); 4] {
+    [
+        ('k', CUP.edge),
+        ('c', CUP.light),
+        ('C', CUP.base),
+        ('d', CUP.shadow),
+    ]
+}
+
+/// Just planted: an acorn lying split on a mound of turned earth, and beside it the shoot it
+/// sent up, reddish as young oaks are, with its first two leaves.
+fn sprouting_acorn() -> Piece {
+    let mut s = Canvas::new(16, 17);
+    let (cx, ground) = (8, 15);
+    mound(&mut s, cx, ground, (6, 4), 111);
+    paint_rows(&mut s, 1, 9, &LYING_ACORN, ACORN, &cup_inks());
+    for y in 6..ground - 3 {
+        let color = if y < 9 { SHOOT } else { OAK_LEAF.shadow };
+        put(&mut s, cx + 1, y, color);
+    }
+    paint_rows(&mut s, cx - 2, 2, &OAK, OAK_LEAF, &[]);
+    paint_rows(&mut s, cx + 2, 1, &OAK, OAK_LEAF, &[]);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: a thin stem a hand high with a few leaves off it, and the empty husk at its foot.
+fn oak_seedling() -> Piece {
+    let mut s = Canvas::new(18, 26);
+    let (cx, ground) = (9, 24);
+    shadow(&mut s, cx, ground, 6, 2);
+    mound(&mut s, cx, ground, (6, 2), 112);
+    stick(&mut s, (9.0, 16.0), (5.0, 13.0), (1.2, 1.0), BARK);
+    stick(&mut s, (9.5, 13.0), (13.0, 10.0), (1.2, 1.0), BARK);
+    stick(
+        &mut s,
+        (9.5, ground as f32 + 0.5),
+        (9.5, 7.0),
+        (2.0, 1.2),
+        BARK,
+    );
+    for (x, y) in [(3, 9), (13, 6), (7, 3), (10, 2), (5, 13)] {
+        paint_rows(&mut s, x, y, &OAK, OAK_LEAF, &[]);
+    }
+    paint_rows(&mut s, 11, ground - 3, &LYING_ACORN, CUP, &cup_inks());
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: a sapling with a slim trunk, three branches and a small crown, the young
+/// oak it will be the next time the train comes.
+fn oak_sapling() -> Piece {
+    let mut s = Canvas::new(22, 36);
+    let (cx, ground) = (11, 34);
+    shadow(&mut s, cx, ground, 8, 2);
+    mound(&mut s, cx, ground, (6, 1), 113);
+    stick(&mut s, (10.5, 21.0), (5.0, 13.0), (1.6, 1.0), BARK);
+    stick(&mut s, (11.0, 19.0), (17.0, 11.0), (1.6, 1.0), BARK);
+    stick(&mut s, (11.0, 16.0), (11.0, 5.0), (1.6, 1.0), BARK);
+    stick(
+        &mut s,
+        (11.0, ground as f32 + 0.5),
+        (11.0, 14.0),
+        (2.8, 1.8),
+        BARK,
+    );
+    for (x, y, r, salt) in [
+        (16.5, 10.5, 3.2, 114),
+        (5.0, 11.5, 3.2, 115),
+        (11.0, 5.5, 3.8, 116),
+        (10.5, 12.5, 2.8, 117),
+    ] {
+        leaves(&mut s, x, y, r, salt);
+    }
+    for (x, y) in [(0, 9), (19, 8), (9, 0), (14, 15)] {
+        paint_rows(&mut s, x, y, &OAK, OAK_LEAF, &[]);
+    }
+    tuft(&mut s, cx, ground, 4, 118);
+    paint_rows(&mut s, 2, ground - 3, &LYING_ACORN, ACORN, &cup_inks());
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
     }
 }
 

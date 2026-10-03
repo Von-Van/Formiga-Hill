@@ -220,6 +220,55 @@ pub(super) fn paint_rows(
     }
 }
 
+/// Freshly turned earth, where something has been planted.
+pub(super) const TILTH: Ramp = Ramp::new(0x3e2a1c, 0x5a3c26, 0x765232, 0x926c46, 0xb08c62);
+
+/// A mound of freshly turned earth where something has just been planted: `rx` pixels either side
+/// of `cx` and `ry` high above the ground row, lit from the upper left, with crumbs of soil
+/// catching the light and its soft shadow on the grass. A low one (`ry` of 1) is the bare earth
+/// still showing round the foot of something that has grown a while.
+pub(super) fn mound(s: &mut Canvas, cx: i32, ground: i32, (rx, ry): (i32, i32), salt: u32) {
+    shadow(s, cx + 1, ground, rx + 1, 2);
+    let inside = |x: i32, y: i32| {
+        let dx = (x - cx) as f32 / (rx as f32 + 0.4);
+        let dy = (ground - y) as f32 / (ry as f32 + 0.6);
+        y <= ground && dx * dx + dy * dy <= 1.0
+    };
+    model(s, TILTH, ROUND, 50, salt, inside);
+    for y in ground - ry..ground {
+        for x in cx - rx..=cx + rx {
+            let within = inside(x, y) && inside(x - 1, y) && inside(x + 1, y) && inside(x, y - 1);
+            if !within {
+                continue;
+            }
+            if chance(x, y, salt + 3, 30) && x <= cx {
+                put(s, x, y, TILTH.shine);
+            } else if chance(x, y, salt + 4, 34) {
+                put(s, x, y, TILTH.edge);
+            }
+        }
+    }
+}
+
+/// A pointed shoot or upright leaf from `base` up `height` pixels, its tip `lean` pixels over:
+/// two pixels wide and lit on its left, its own darkest shade down its right, narrowing to a
+/// single pixel at the tip.
+pub(super) fn spike(s: &mut Canvas, base: (i32, i32), height: i32, lean: i32, ramp: Ramp) {
+    for step in 0..height {
+        let t = step as f32 / (height - 1).max(1) as f32;
+        let x = base.0 + (lean as f32 * t * t).round() as i32;
+        let y = base.1 - step;
+        let left = height - 1 - step;
+        put(s, x, y, if left == 0 { ramp.base } else { ramp.light });
+        if left >= 1 {
+            put(s, x + 1, y, if left >= 3 { ramp.base } else { ramp.edge });
+        }
+        if left >= 3 {
+            put(s, x + 2, y, ramp.edge);
+        }
+    }
+}
+
 /// The soft shade under a piece, where it stands on the grass. Drawn first, onto clear canvas.
 pub(super) fn shadow(s: &mut Canvas, cx: i32, cy: i32, rx: i32, ry: i32) {
     for y in -ry..=ry {

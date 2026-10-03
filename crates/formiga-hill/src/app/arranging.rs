@@ -1,9 +1,10 @@
-//! The Hilltop in the window: placing finds from the satchel on its spots, moving them about,
-//! and the journal of everything the Woods has turned up.
+//! The Hilltop in the window: placing finds from the satchel on its spots, planting what grows,
+//! moving them about, and the journal of everything the Woods has turned up.
 
 use super::HillApp;
-use crate::finds::{self, CATALOGUE, Kind};
-use crate::hilltop::{self, SPOTS};
+use super::departures::grown_since;
+use crate::finds::{self, CATALOGUE, Kind, growing};
+use crate::hilltop::{self, SPOTS, Standing};
 use crate::paint::{put, rgb, rgba};
 use eframe::egui;
 use formiga_art::Canvas;
@@ -13,28 +14,43 @@ use std::f32::consts::TAU;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Placing {
     FromSatchel(String),
+    /// Something growing, lifted into the satchel, to be planted again as it is.
+    Lifted(Standing),
     FromSpot(u8),
 }
 
+/// How a find in the satchel is listed: by what it becomes, or as something to plant.
+fn in_the_satchel(id: &str) -> String {
+    match finds::find(id) {
+        Some(find) if growing::growth(id).is_some() => format!("{}, for planting", find.name),
+        Some(find) => find.piece.to_owned(),
+        None => id.to_owned(),
+    }
+}
+
 impl HillApp {
-    /// Readies the summit the first time anyone goes there.
+    /// Readies the summit the first time anyone goes there, with a word for anything that has
+    /// grown since the last visit.
     pub(super) fn open_hilltop(&mut self, now: f32) {
         if self.hilltop.is_none() {
             let arrangement = &self.memories.colony().hilltop;
             self.hilltop = Some(hilltop::open(&self.arrival.cast, now, arrangement));
             self.refresh_hilltop();
+            if let Some(line) = grown_since(&self.grown) {
+                self.notice = Some((line, now));
+            }
         }
     }
 
     /// Puts the summit's pieces where the memories say they stand.
     fn refresh_hilltop(&mut self) {
         let arrangement = self.memories.colony().hilltop.clone();
-        let props = hilltop::props(&arrangement);
-        self.piece_bounds = arrangement
-            .keys()
-            .zip(&props)
+        let placed = hilltop::placed(&arrangement);
+        self.piece_bounds = placed
+            .iter()
             .map(|(spot, prop)| (*spot, prop.bounds()))
             .collect();
+        let props = placed.into_iter().map(|(_, prop)| prop).collect();
         if let Some(ground) = &mut self.hilltop {
             ground.set_props(props);
             ground.set_attractions(hilltop::attractions(&arrangement));
@@ -114,6 +130,9 @@ impl HillApp {
             Some(Placing::FromSatchel(id)) => {
                 self.memories.place(spot, &id);
             }
+            Some(Placing::Lifted(standing)) => {
+                self.memories.replant(spot, &standing);
+            }
             Some(Placing::FromSpot(from)) => self.memories.move_piece(from, spot),
             None if occupied => {
                 self.placing = Some(Placing::FromSpot(spot));
@@ -133,10 +152,9 @@ impl HillApp {
         let spot = self.hilltop_spot(pointer)?;
         let (x, y) = SPOTS[usize::from(spot)];
         let standing = self.memories.colony().hilltop.get(&spot);
-        let piece = |id: &str| finds::find(id).map_or("", |find| find.piece);
         let label = match (&self.placing, standing) {
             (Some(_), _) => "Here".to_owned(),
-            (None, Some(id)) => piece(id).to_owned(),
+            (None, Some(standing)) => standing.name().to_owned(),
             (None, None) => return None,
         };
         let top = self
@@ -149,20 +167,32 @@ impl HillApp {
 
     pub(super) fn hilltop_bar(&mut self, ui: &mut egui::Ui) {
         let colony = self.memories.colony();
-        let piece = |id: &str| finds::find(id).map_or(id.to_owned(), |find| find.piece.to_owned());
         match self.placing.clone() {
             Some(Placing::FromSatchel(id)) => {
-                ui.label(format!("Choose a spot for {}.", piece(&id).to_lowercase()));
+                let line = match finds::find(&id) {
+                    Some(find) if growing::growth(&id).is_some() => {
+                        format!("Choose a spot to plant {}.", find.name.to_lowercase())
+                    }
+                    Some(find) => format!("Choose a spot for {}.", find.piece.to_lowercase()),
+                    None => "Choose a spot.".to_owned(),
+                };
+                ui.label(line);
+                if ui.button("Cancel").clicked() {
+                    self.placing = None;
+                }
+            }
+            Some(Placing::Lifted(standing)) => {
+                ui.label(format!(
+                    "Choose a spot to plant {} again.",
+                    standing.name().to_lowercase()
+                ));
                 if ui.button("Cancel").clicked() {
                     self.placing = None;
                 }
             }
             Some(Placing::FromSpot(spot)) => {
-                let id = colony.hilltop.get(&spot).cloned().unwrap_or_default();
-                ui.label(format!(
-                    "Moving {}: choose a spot.",
-                    piece(&id).to_lowercase()
-                ));
+                let name = colony.hilltop.get(&spot).map_or("", Standing::name);
+                ui.label(format!("Moving {}: choose a spot.", name.to_lowercase()));
                 if ui.button("Back in the satchel").clicked() {
                     self.memories.pick_up(spot);
                     self.placing = None;
@@ -178,30 +208,35 @@ impl HillApp {
                     .iter()
                     .map(|(id, count)| (id.clone(), *count))
                     .collect();
+                let lifted = colony.lifted.clone();
+                let count = satchel.iter().map(|(_, n)| n).sum::<u32>() + lifted.len() as u32;
                 let mut chosen = None;
-                ui.add_enabled_ui(!satchel.is_empty(), |ui| {
+                ui.add_enabled_ui(count > 0, |ui| {
                     egui::ComboBox::from_id_salt("satchel")
-                        .selected_text(format!(
-                            "Satchel ({})",
-                            satchel.iter().map(|(_, n)| n).sum::<u32>()
-                        ))
+                        .selected_text(format!("Satchel ({count})"))
                         .show_ui(ui, |ui| {
                             for (id, count) in &satchel {
                                 let label = if *count > 1 {
-                                    format!("{} \u{d7}{count}", piece(id))
+                                    format!("{} \u{d7}{count}", in_the_satchel(id))
                                 } else {
-                                    piece(id)
+                                    in_the_satchel(id)
                                 };
                                 if ui.selectable_label(false, label).clicked() {
-                                    chosen = Some(id.clone());
+                                    chosen = Some(Placing::FromSatchel(id.clone()));
+                                }
+                            }
+                            for standing in &lifted {
+                                let label = format!("{}, lifted", standing.name());
+                                if ui.selectable_label(false, label).clicked() {
+                                    chosen = Some(Placing::Lifted(standing.clone()));
                                 }
                             }
                         });
                 });
-                if let Some(id) = chosen {
-                    self.placing = Some(Placing::FromSatchel(id));
+                if chosen.is_some() {
+                    self.placing = chosen;
                 }
-                let hint = if satchel.is_empty() && colony.hilltop.is_empty() {
+                let hint = if count == 0 && colony.hilltop.is_empty() {
                     "Finds from the Woods can stand up here."
                 } else if !colony.hilltop.is_empty() {
                     "Click something to move it."
@@ -256,11 +291,12 @@ impl HillApp {
                         for find in of_kind {
                             match colony.finds.get(find.id) {
                                 Some(record) => {
+                                    let becomes = if growing::growth(find.id).is_some() { "Grows into" } else { "Becomes" };
                                     ui.label(egui::RichText::new(find.name).strong());
                                     ui.label(egui::RichText::new(find.blurb).small());
                                     ui.label(
                                         egui::RichText::new(format!(
-                                            "Becomes {} \u{b7} brought home {}\u{d7} \u{b7} first found with {}",
+                                            "{becomes} {} \u{b7} brought home {}\u{d7} \u{b7} first found with {}",
                                             find.piece.to_lowercase(),
                                             record.count,
                                             who(&record.first_by)
@@ -298,6 +334,26 @@ impl HillApp {
                                     .small()
                                     .italics(),
                             );
+                        }
+                    }
+                    // What is planted and still coming up, on the Hilltop or lifted into the satchel.
+                    let planted = colony.hilltop.values().map(|standing| (standing, true));
+                    let lifted = colony.lifted.iter().map(|standing| (standing, false));
+                    let growing: Vec<_> = planted.chain(lifted).filter(|(standing, _)| standing.growing()).collect();
+                    if !growing.is_empty() {
+                        ui.add_space(6.0);
+                        ui.strong("Growing");
+                        for (standing, up) in growing {
+                            let Some(find) = finds::find(standing.id()) else {
+                                continue;
+                            };
+                            let line = if up {
+                                format!("Grows a little with every visit, into {}", find.piece.to_lowercase())
+                            } else {
+                                format!("Lifted into the satchel; it grows on into {} once it is planted again", find.piece.to_lowercase())
+                            };
+                            ui.label(egui::RichText::new(standing.name()).strong());
+                            ui.label(egui::RichText::new(line).small().italics());
                         }
                     }
                     let fish = &crate::fishing::fish::CATALOGUE;

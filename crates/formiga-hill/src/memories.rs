@@ -4,13 +4,17 @@
 //!
 //! Nothing here is a debt. A colony that stays away for a year comes back to everything it left.
 
+use crate::hilltop::{Arrangement, Standing};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-const VERSION: u32 = 1;
+/// The book's format. Version 2 can keep something planted on the Hilltop, and growing things
+/// lifted into the satchel; a version 1 book reads as it was, everything on its Hilltop fully
+/// grown. A Hill older than the book sets it aside rather than losing what it cannot read.
+const VERSION: u32 = 2;
 const MAX_BYTES: u64 = 1024 * 1024;
 const FILE: &str = "memories.json";
 
@@ -36,7 +40,11 @@ pub struct ColonyMemories {
     pub satchel: BTreeMap<String, u32>,
     /// What stands on each of the Hilltop's spots.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub hilltop: BTreeMap<u8, String>,
+    pub hilltop: Arrangement,
+    /// Growing things lifted from the Hilltop into the satchel, each as far as it had grown, to
+    /// be planted again just as they are.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lifted: Vec<Standing>,
     /// Outings to the Woods, all told and by each traveller's Desktop id.
     #[serde(default)]
     pub outings: u32,
@@ -159,9 +167,19 @@ impl Memories {
         self.book.colonies.entry(self.colony.clone()).or_default()
     }
 
-    pub fn arrived(&mut self) {
-        self.colony_mut().visits += 1;
+    /// Remembers the train arriving: another visit, and everything planted on the Hilltop grows a
+    /// stage. Says what has grown, as it is now, spot by spot.
+    pub fn arrived(&mut self) -> Vec<(u8, Standing)> {
+        let colony = self.colony_mut();
+        colony.visits += 1;
+        let mut grown = Vec::new();
+        for (spot, standing) in &mut colony.hilltop {
+            if standing.grow() {
+                grown.push((*spot, standing.clone()));
+            }
+        }
         self.keep();
+        grown
     }
 
     /// Remembers a story finished and whatever souvenirs it gave.
@@ -301,34 +319,49 @@ impl Memories {
         first
     }
 
-    /// Stands a find from the satchel on a Hilltop spot. Whatever stood there goes back into the
-    /// satchel. Says whether it was placed.
+    /// Stands a find from the satchel on a Hilltop spot, planted if it is one that grows. Whatever
+    /// stood there goes back into the satchel. Says whether it was placed.
     pub fn place(&mut self, spot: u8, id: &str) -> bool {
         if usize::from(spot) >= crate::hilltop::SPOTS.len() {
             return false;
         }
         let colony = self.colony_mut();
-        let Some(count) = colony.satchel.get_mut(id).filter(|count| **count > 0) else {
+        if !take_from_satchel(colony, id, 1) {
             return false;
-        };
-        *count -= 1;
-        if *count == 0 {
-            colony.satchel.remove(id);
         }
-        if let Some(old) = colony.hilltop.insert(spot, id.to_owned()) {
-            *colony.satchel.entry(old).or_default() += 1;
+        if let Some(old) = colony.hilltop.insert(spot, Standing::from_satchel(id)) {
+            put_back(colony, old);
         }
         self.keep();
         true
     }
 
-    /// Takes whatever stands on a spot back into the satchel.
-    pub fn pick_up(&mut self, spot: u8) -> Option<String> {
+    /// Plants something lifted into the satchel again, on a Hilltop spot, as far as it had grown.
+    /// Whatever stood there goes back into the satchel. Says whether it was planted.
+    pub fn replant(&mut self, spot: u8, lifted: &Standing) -> bool {
+        if usize::from(spot) >= crate::hilltop::SPOTS.len() {
+            return false;
+        }
         let colony = self.colony_mut();
-        let id = colony.hilltop.remove(&spot)?;
-        *colony.satchel.entry(id.clone()).or_default() += 1;
+        let Some(index) = colony.lifted.iter().position(|kept| kept == lifted) else {
+            return false;
+        };
+        let standing = colony.lifted.remove(index);
+        if let Some(old) = colony.hilltop.insert(spot, standing) {
+            put_back(colony, old);
+        }
         self.keep();
-        Some(id)
+        true
+    }
+
+    /// Takes whatever stands on a spot back into the satchel: a find among the finds, anything
+    /// growing lifted whole.
+    pub fn pick_up(&mut self, spot: u8) -> Option<Standing> {
+        let colony = self.colony_mut();
+        let standing = colony.hilltop.remove(&spot)?;
+        put_back(colony, standing.clone());
+        self.keep();
+        Some(standing)
     }
 
     /// Moves what stands on one spot to another, swapping with whatever is there.
@@ -359,6 +392,28 @@ impl Memories {
         if let Err(error) = write(path, &book) {
             eprintln!("formiga-hill: could not keep the colony's memories: {error}");
         }
+    }
+}
+
+/// Takes `count` of a find out of the satchel, if there are that many there. Says whether it did.
+fn take_from_satchel(colony: &mut ColonyMemories, id: &str, count: u32) -> bool {
+    let Some(there) = colony.satchel.get_mut(id).filter(|there| **there >= count) else {
+        return false;
+    };
+    *there -= count;
+    if *there == 0 {
+        colony.satchel.remove(id);
+    }
+    true
+}
+
+/// Puts something taken off the Hilltop back into the satchel: a find that never grows among the
+/// finds, anything planted lifted whole, so nothing is ever less grown for having been moved.
+fn put_back(colony: &mut ColonyMemories, standing: Standing) {
+    if standing.back_among_finds() {
+        *colony.satchel.entry(standing.id().to_owned()).or_default() += 1;
+    } else {
+        colony.lifted.push(standing);
     }
 }
 
@@ -557,7 +612,7 @@ mod tests {
         assert!(memories.place(3, "pinecone"));
         assert!(!memories.colony().satchel.contains_key("pinecone"));
         assert!(memories.place(3, "geode"), "a spot takes anything");
-        assert_eq!(memories.colony().hilltop[&3], "geode");
+        assert_eq!(memories.colony().hilltop[&3], Standing::from("geode"));
         assert_eq!(
             memories.colony().satchel["pinecone"],
             1,
@@ -565,12 +620,118 @@ mod tests {
         );
         memories.move_piece(3, 10);
         assert_eq!(
-            memories.colony().hilltop.get(&10).map(String::as_str),
-            Some("geode")
+            memories.colony().hilltop.get(&10),
+            Some(&Standing::from("geode"))
         );
-        assert_eq!(memories.pick_up(10).as_deref(), Some("geode"));
+        assert_eq!(memories.pick_up(10), Some(Standing::from("geode")));
         assert!(memories.colony().hilltop.is_empty());
+        assert_eq!(memories.colony().satchel["geode"], 1);
+        assert!(memories.colony().lifted.is_empty());
         assert!(!memories.place(99, "geode"), "no such spot");
+    }
+
+    #[test]
+    fn something_planted_grows_a_stage_with_each_visit_and_never_shrinks() {
+        let mut memories = Memories::open(None, "c");
+        memories.back_from_the_woods(&[7], &["bluebell_bulb", "pinecone"]);
+        assert!(memories.place(4, "bluebell_bulb"));
+        assert!(memories.place(5, "pinecone"));
+        assert_eq!(memories.colony().hilltop[&4].stage(), Some(0));
+        let stages = crate::finds::growing::growth("bluebell_bulb")
+            .unwrap()
+            .stages
+            .len();
+        let mut was = 0;
+        for visit in 1..=stages {
+            let grown = memories.arrived();
+            assert_eq!(grown.len(), 1, "only the bulb grows, visit {visit}");
+            assert_eq!(grown[0].0, 4);
+            // Fully grown counts as further on than any stage.
+            let now = memories.colony().hilltop[&4].stage().unwrap_or(u8::MAX);
+            assert!(now > was, "it went from {was} to {now}");
+            was = now;
+        }
+        assert_eq!(
+            memories.colony().hilltop[&4],
+            Standing::from("bluebell_bulb"),
+            "after its last stage, a full clump of bluebells"
+        );
+        for _ in 0..5 {
+            assert!(memories.arrived().is_empty(), "grown is grown");
+        }
+        assert_eq!(
+            memories.colony().hilltop[&4],
+            Standing::from("bluebell_bulb")
+        );
+        assert_eq!(memories.colony().hilltop[&5], Standing::from("pinecone"));
+    }
+
+    #[test]
+    fn growth_goes_with_what_was_planted_moved_or_lifted() {
+        let mut memories = Memories::open(None, "c");
+        memories.back_from_the_woods(&[7], &["acorn_stash", "acorn_stash"]);
+        assert!(memories.place(2, "acorn_stash"));
+        memories.arrived();
+        memories.move_piece(2, 12);
+        assert_eq!(memories.colony().hilltop[&12].stage(), Some(1), "moved");
+        let lifted = memories.pick_up(12).unwrap();
+        assert_eq!(lifted.stage(), Some(1));
+        assert_eq!(
+            memories.colony().satchel["acorn_stash"],
+            1,
+            "the seedling is lifted, not turned back into an acorn"
+        );
+        assert_eq!(memories.colony().lifted, vec![lifted.clone()]);
+        memories.arrived();
+        assert_eq!(
+            memories.colony().lifted[0].stage(),
+            Some(1),
+            "nothing grows in the satchel, and nothing shrinks there"
+        );
+        assert!(memories.replant(7, &lifted));
+        assert_eq!(memories.colony().hilltop[&7].stage(), Some(1));
+        assert!(memories.colony().lifted.is_empty());
+        assert!(!memories.replant(8, &lifted), "it was only lifted once");
+        // Planting the other acorn on top lifts the seedling again, still as grown.
+        assert!(memories.place(7, "acorn_stash"));
+        assert_eq!(memories.colony().hilltop[&7].stage(), Some(0));
+        assert_eq!(memories.colony().lifted, [lifted]);
+    }
+
+    #[test]
+    fn an_old_book_reads_with_what_stood_on_its_hilltop_fully_grown() {
+        let dir = scratch("old-book");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join(FILE),
+            r#"{
+                "version": 1,
+                "colonies": {
+                    "c": {
+                        "visits": 4,
+                        "satchel": {"bluebell_bulb": 2},
+                        "hilltop": {"3": "bluebell_bulb", "9": "acorn_stash", "12": "geode"},
+                        "finds": {"geode": {"count": 1, "first_by": "7"}}
+                    }
+                }
+            }"#,
+        )
+        .unwrap();
+        let mut memories = Memories::open(Some(&dir), "c");
+        let colony = memories.colony();
+        assert_eq!(colony.visits, 4);
+        assert_eq!(colony.hilltop.len(), 3);
+        assert!(
+            colony.hilltop.values().all(|standing| !standing.growing()),
+            "nothing standing before anything grew is any less than it was"
+        );
+        assert_eq!(colony.hilltop[&3], Standing::from("bluebell_bulb"));
+        assert_eq!(colony.satchel["bluebell_bulb"], 2);
+        assert!(memories.arrived().is_empty(), "nothing to grow");
+        let again = Memories::open(Some(&dir), "c");
+        assert_eq!(again.colony().hilltop[&9], Standing::from("acorn_stash"));
+        assert_eq!(again.colony().visits, 5);
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

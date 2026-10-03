@@ -26,8 +26,8 @@ const FRONT: (f32, f32) = (190.0, 184.0);
 const FLOORS: [f32; 3] = [0.67, 0.34, 0.12];
 
 /// Whether, on a rummage late in the day, the glint may show: only for a colony that has found a
-/// good many things and set something on the Hilltop for looking up at the sky with. Once seen
-/// off, it comes back only now and then.
+/// good many things and set something on the Hilltop for looking up at the sky with (or anything
+/// made with one). Once seen off, it comes back only now and then.
 pub fn may_beckon(colony: &crate::memories::ColonyMemories) -> bool {
     let found = colony
         .finds
@@ -37,7 +37,7 @@ pub fn may_beckon(colony: &crate::memories::ColonyMemories) -> bool {
     let gazing = colony
         .hilltop
         .values()
-        .any(|id| crate::finds::find(id).is_some_and(|find| find.use_ == crate::finds::Use::Gaze));
+        .any(crate::hilltop::Standing::sky_gazing);
     let due = colony.sovereign_bested == 0 || colony.outings.is_multiple_of(3);
     found >= 10 && gazing && due
 }
@@ -937,7 +937,7 @@ mod tests {
             !may_beckon(&colony),
             "nothing on the Hilltop to watch the sky with"
         );
-        colony.hilltop.insert(3, "brass_lens".to_owned());
+        colony.hilltop.insert(3, "brass_lens".into());
         assert!(may_beckon(&colony));
         colony.sovereign_bested = 1;
         colony.outings = 4;
