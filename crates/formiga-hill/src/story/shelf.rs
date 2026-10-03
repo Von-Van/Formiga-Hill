@@ -31,8 +31,20 @@ pub fn folder(data: &Path) -> PathBuf {
 /// folder that does not exist yet holds nothing, and is not a problem.
 pub fn found_in(folder: &Path) -> (Vec<PathBuf>, Vec<PackageError>) {
     let mut problems = Vec::new();
-    let Ok(entries) = fs::read_dir(folder) else {
-        return (Vec::new(), problems);
+    let entries = match fs::read_dir(folder) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return (Vec::new(), problems);
+        }
+        // There, but unreadable: that is worth saying, rather than showing an empty shelf.
+        Err(error) => {
+            problems.push(PackageError {
+                package: folder.display().to_string(),
+                file: None,
+                problem: format!("the packages folder could not be read: {error}"),
+            });
+            return (Vec::new(), problems);
+        }
     };
     let mut packages: Vec<PathBuf> = Vec::new();
     for entry in entries.filter_map(Result::ok) {
@@ -186,6 +198,17 @@ mod tests {
     fn a_missing_folder_holds_nothing_and_is_no_trouble() {
         let (found, problems) = found_in(Path::new("/no/such/folder/for/hill"));
         assert!(found.is_empty() && problems.is_empty());
+    }
+
+    #[test]
+    fn a_folder_that_cannot_be_read_says_so() {
+        let dir = scratch("unreadable");
+        let file = dir.join("packages");
+        fs::write(&file, b"a file where the folder should be").unwrap();
+        let (found, problems) = found_in(&file);
+        assert!(found.is_empty());
+        assert_eq!(problems.len(), 1);
+        assert!(problems[0].problem.contains("could not be read"));
     }
 
     #[cfg(unix)]

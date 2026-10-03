@@ -54,7 +54,10 @@ if [[ -n "${FORMIGA_NOTARY_PROFILE:-}" ]]; then
     xcrun stapler staple "$disk_image"
 fi
 
-shasum -a 256 "$archive" > "$archive.sha256"
-shasum -a 256 "$disk_image" > "$disk_image.sha256"
+# Checksums name the file alone, so `shasum -c` works wherever the files are downloaded to.
+(cd "$dist_dir" && for file in "$archive" "$disk_image"; do
+    name="$(basename "$file")"
+    shasum -a 256 "$name" > "$name.sha256"
+done)
 
 echo "Packaged $disk_image and $archive (travel version $travel_version)"

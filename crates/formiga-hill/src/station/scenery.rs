@@ -1306,6 +1306,8 @@ fn bank(scene: &mut Canvas) {
 // ---------------------------------------------------------------------------------------------
 
 const HOUSE_LEFT: i32 = 10;
+/// The ticket window's top-left corner: shared with the clerk's lamp that lights it after dark.
+const TICKET_WINDOW: (i32, i32) = (106, 110);
 const HOUSE_RIGHT: i32 = 134;
 const RIDGE: i32 = 70;
 const EAVES: i32 = 96;
@@ -1393,7 +1395,7 @@ fn station_house(scene: &mut Canvas) {
     flower_box(scene, 16, 136, 34);
     door(scene, 60, 106);
     timetable(scene, 84, 109);
-    ticket_window(scene, 106, 110);
+    ticket_window(scene, TICKET_WINDOW.0, TICKET_WINDOW.1);
 
     let plinth = (
         HOUSE_LEFT - 2,
@@ -2045,8 +2047,9 @@ pub fn lamplight() -> Canvas {
         rect(&mut lamps, pane, ly + 1, 4, 10, glow);
         vline(&mut lamps, pane, ly + 1, 10, GLOW[2]);
     }
-    rect(&mut lamps, 100, 112, 18, 13, rgba(0xffc860, 140));
-    crate::daylight::glow(&mut lamps, (109, 118), 20, rgba(0xffc860, 200));
+    let (tx, ty) = TICKET_WINDOW;
+    rect(&mut lamps, tx + 2, ty + 2, 18, 13, rgba(0xffc860, 140));
+    crate::daylight::glow(&mut lamps, (tx + 11, ty + 8), 20, rgba(0xffc860, 200));
     let (left, top, right, bottom) = CASE;
     rect(
         &mut lamps,
