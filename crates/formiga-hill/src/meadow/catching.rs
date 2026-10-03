@@ -679,7 +679,8 @@ impl Hunt {
             return;
         };
         let back = if stand.0 < bug_x { -1.0 } else { 1.0 };
-        let Some(spot) = [
+        let clear = |(x, y): (f32, f32)| walkable(x, y) && distance((x, y), stand) >= HELPER_ROOM;
+        let preferred = [
             (back * 28.0, 4.0),
             (back * 22.0, 16.0),
             (back * 22.0, -12.0),
@@ -688,7 +689,21 @@ impl Hunt {
         ]
         .into_iter()
         .map(|(dx, dy)| (stand.0 + dx, stand.1 + dy))
-        .find(|&(x, y)| walkable(x, y) && distance((x, y), stand) >= HELPER_ROOM) else {
+        .find(|&spot| clear(spot));
+        // Hemmed in, by the pond or at the brambles: the nearest clear ground going round.
+        let Some(spot) = preferred.or_else(|| {
+            (0..6).find_map(|ring| {
+                let radius = HELPER_ROOM + 4.0 + ring as f32 * 8.0;
+                (0..16).find_map(|step| {
+                    let angle = step as f32 / 16.0 * std::f32::consts::TAU;
+                    let spot = (
+                        stand.0 + angle.cos() * radius,
+                        stand.1 + angle.sin() * radius,
+                    );
+                    clear(spot).then_some(spot)
+                })
+            })
+        }) else {
             return;
         };
         let watch = Beat::new(Gesture::Watch, ExpressionKind::Focused, 600.0);
@@ -1449,6 +1464,31 @@ mod tests {
             ground.position(helper).unwrap(),
         );
         assert!(apart >= HELPER_ROOM - 1.0, "only {apart} px apart");
+    }
+
+    #[test]
+    fn a_helper_finds_room_even_where_the_ground_is_hemmed_in() {
+        let (cast, mut ground, hunt) = hunt_with(2, 9);
+        let helper = hunt.party[1];
+        // Netting from the bank by the far reeds, with the pond and the meadow's edge close by.
+        let stand = hunt.stand_for((362.0, 108.0), (192.0, 180.0));
+        ground.reserve(hunt.party.clone());
+        hunt.bring_helper(&mut ground, stand, 362.0, 0.0);
+        let mut now = 0.0;
+        while now < 40.0 {
+            now += 1.0 / 30.0;
+            ground.tick(&cast, now);
+        }
+        let at = ground.position(helper).unwrap();
+        assert!(
+            walkable(at.0, at.1),
+            "the helper stood somewhere nobody can"
+        );
+        let apart = distance(at, stand);
+        assert!(
+            (HELPER_ROOM - 1.0..=70.0).contains(&apart),
+            "the helper is {apart} px from the one with the net, not alongside"
+        );
     }
 
     #[test]
