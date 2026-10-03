@@ -11,6 +11,7 @@ use crate::playground::{Layout, Playground};
 use scenery::{BLANKET, SHADE, WALK_BOTTOM, WALK_LEFT, WALK_RIGHT, WALK_TOP, walkable};
 
 pub use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
+pub use scenery::DRESS_UP;
 
 /// The green's named spots, for anyone sent somewhere in particular.
 const SPOTS: [(&str, (f32, f32)); 10] = [

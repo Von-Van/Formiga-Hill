@@ -495,8 +495,10 @@ fn crown_of(frame: &Canvas, x: i32) -> Option<i32> {
 
 /// How far under the middle of the face the throat is, where a neck piece sits.
 const THROAT_BELOW_FACE: i32 = 6;
-/// How wide a row must be to count as the top of a head rather than an ear.
-const HEAD_WIDE: i32 = 7;
+/// How wide a row must be to count as the top of a head rather than an ear. Eight, not seven: a
+/// long ear with a speck beside it, as one shows between its ears mid-cheer, makes seven, and a
+/// hat put there sits on the ear tips.
+const HEAD_WIDE: i32 = 8;
 
 /// A costume piece on a companion whose crown is at `crown` in the scene, its throat
 /// `face_below_crown` and a little further down, facing the way it faces.
