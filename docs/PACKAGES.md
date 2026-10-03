@@ -242,7 +242,8 @@ give are `picnic_ribbon`, `pressed_daisy`, `well_penny`, `oak_acorn`, `swing_fea
 `chest_marble`. Some others, such as the Fairground's ticket, are only ever won at Hill's own
 games.
 Hill remembers which stories each colony has finished and what it has kept, and nothing is ever
-lost by staying away.
+lost by staying away. When the colony goes home, every souvenir it has kept goes home with it to
+Formiga Desktop's Journal (from Desktop 0.66.6), whichever story or game gave it.
 
 ## What packages can't do
 

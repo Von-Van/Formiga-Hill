@@ -7,7 +7,7 @@ the `formiga-travel` crate, and that crate's documentation is the authority: sta
 code. The founding brief is [DESIGN.md §8](DESIGN.md#8-inter-app-travel-contract).
 
 Hill takes `formiga-core`, `formiga-art` and `formiga-travel` from the same Desktop source, so
-their types agree: a Desktop release tag, now `v0.66.5` (travel version 2); see the root
+their types agree: a Desktop release tag, now `v0.66.6` (travel version 3); see the root
 `Cargo.toml`.
 
 ## Who owns what
@@ -40,9 +40,14 @@ ending, so Hill must quit when the visit is over. It does: the window closes and
    and writes nothing.
 5. **Come home.** "Take the train home" plays the departure. Then Hill writes `receipt.json` once
    with `ReturnReceipt::new(&seal, now, version, effects)` and exits. Closing the window writes
-   the same receipt. The only effect written today is `ReturnEffect::Visit { arrived, left }`, and
-   only when the snapshot's capabilities offer `visit_record`. Desktop writes its own journal line;
-   Hill never sends prose.
+   the same receipt, with up to two kinds of effect, each only when the snapshot's capabilities
+   offer it:
+   - `ReturnEffect::Visit { arrived, left }`, for `visit_record`;
+   - `ReturnEffect::Souvenir { id }`, for `souvenirs`: one for every souvenir the colony has kept
+     at the Hill, on this trip or any earlier one, that the snapshot lists in
+     `accepts_souvenirs`, in the order of Hill's catalogue and within `MAX_EFFECTS`.
+   Desktop writes its own journal line, and shows the souvenirs in its Journal; Hill never sends
+   prose.
 
 Whatever goes wrong, whether Hill crashes, is force-quit, or writes nothing, Desktop brings the
 colony home exactly as it left. Hill never relies on Desktop noticing anything else.
@@ -60,10 +65,21 @@ colony home exactly as it left. Hill never relies on Desktop noticing anything e
   calls affinity *warmth* and avoidance *friction* (`cast::Bond`).
 - `presentation` holds reduce motion, theme and text size.
 
-## Not done yet
+## Souvenirs, on both sides
 
-- Souvenirs and keepsakes. Desktop will accept catalogue ids such as `accessory.leaf_hat` once
-  it has a catalogue. None are offered yet.
+Since travel version 3 (Desktop 0.66.6) the souvenirs are shared: `formiga_core::Souvenir` names
+them and `formiga_art::draw_souvenir` draws them, and Hill's display case draws them with it, so
+a souvenir looks the same in both apps. Desktop lists only the ids it knows, so a souvenir Hill
+adds stays at the Hill until a Desktop release lists it too; a test holds every one Desktop knows
+to be one of Hill's. Hill sends every kept souvenir on every trip: Desktop keeps each one once, so
+sending it again changes nothing, and a souvenir kept before Desktop listed it goes home on the
+first trip after it does.
+
+The train is shared the same way: `formiga_art::TrainRenderer` draws the one that leaves the
+desktop and the one that pulls in at the station, and Hill adds only the faces at the windows.
+
+Ask Desktop's session before changing a souvenir's picture, adding a souvenir, or changing the
+train: they are Desktop's to draw.
 
 ## Being found, and being busy
 

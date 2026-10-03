@@ -104,7 +104,7 @@ impl Station {
             backdrop,
             keepsakes: keepsakes.to_vec(),
             hilltop: Arrangement::new(),
-            train: Train::new(),
+            train: Train::new(reduce_motion),
             travelers,
             reduce_motion,
             journey,
@@ -246,18 +246,18 @@ impl Station {
 
         if let Some(train_x) = stage.train_x {
             let x = train_x.round() as i32;
-            self.train.draw(&mut scene, x, stage.rolled, &passengers);
-            // Steam trails behind as fast as the train is going.
+            // Rolling or standing, by whether it is a moment from somewhere else.
             let ahead = self.journey.stage(now + 0.1, count, self.reduce_motion);
-            let speed = ahead.train_x.map_or(0.0, |ahead| (ahead - train_x) * 10.0);
-            let (chimney_x, chimney_y) = self.train.chimney();
-            train::steam(
-                &mut scene,
-                (x + chimney_x, chimney_y),
-                now,
-                speed,
-                self.reduce_motion,
-            );
+            let moving = ahead
+                .train_x
+                .is_some_and(|ahead| (ahead - train_x).abs() > 0.05);
+            let going = if moving {
+                train::Going::Rolling(stage.rolled)
+            } else {
+                train::Going::Standing
+            };
+            let lit = self.daylight.lamps() > 0.5;
+            self.train.draw(&mut scene, x, going, lit, now, &passengers);
         }
         self.nightlights
             .light(&mut scene, &self.backdrop, self.daylight);
