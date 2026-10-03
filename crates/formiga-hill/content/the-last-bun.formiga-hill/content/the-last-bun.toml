@@ -208,6 +208,22 @@ to = "beside:detective"
 say = "keeper"
 line = "reveal.confess"
 
+# If nobody followed the crumbs, the bun is still behind the books: the keeper fetches it.
+[[scenes.beats]]
+walk = "keeper"
+to = "bookshelf"
+when = "!flag:found"
+
+[[scenes.beats]]
+narrate = "reveal.fetch"
+about = "keeper"
+when = "!flag:found"
+
+[[scenes.beats]]
+walk = "keeper"
+to = "beside:detective"
+when = "!flag:found"
+
 [[scenes.beats]]
 react = "detective"
 feeling = "fond"

@@ -60,6 +60,11 @@ napkin = "Wrapped in a napkin. Whoever hid this wasn't eating it. They were keep
 pieces = "The last bun goes round in very small pieces."
 little = "Mine's the smallest! It's the best one."
 
+[reveal.fetch]
+text = "{keeper} pads over to the bookshelf and comes back with something wrapped in a napkin: the last bun, without a bite out of it."
+guardian = "{keeper} fetches it from behind the books, where it has been guarded all along, and hands it over in its napkin."
+wallflower = "{keeper} slips over to the bookshelf and comes back, very pink, with the last bun wrapped in a napkin."
+
 [reveal.confess]
 text = "It was me. I put it away for you, {detective}. You always let everyone else have the last one."
 guardian = "I put it somewhere safe. For you, {detective}. You never take the last one for yourself."
