@@ -13,20 +13,24 @@
 
 use crate::actor::{Actor, Step, Whereabouts};
 use crate::cast::{Cast, Id};
-use crate::character::{Character, Company, Cue, Idea, Offer};
+use crate::character::{Brushing, Character, Company, Cue, Idea, Offer};
 use crate::cues::draw_cue;
 use crate::daylight::{Daylight, Nightlights};
 use crate::dice::Dice;
 use crate::finds::Use;
 use crate::paint::blit;
 use formiga_art::{Canvas, GazeDirection};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// How much a creature warms to the person with each kindness, and how far, over one visit.
 const TRUST_STEP: f32 = 0.15;
 const MAX_TRUST: f32 = 0.6;
 /// How close two companions stand when one goes to see the other.
 const BESIDE: f32 = 26.0;
+/// How much stroking, in pixels of brush across a companion, grooms it till it shines.
+const GROOMING: f32 = 260.0;
+/// How long after the last stroke a companion being groomed gets on with its day.
+const BRUSH_PATIENCE: f32 = 1.5;
 /// How long a prop shakes when someone looks behind it.
 const RUSTLE_SECS: f32 = 0.35;
 
@@ -153,6 +157,17 @@ pub struct Playground {
     /// The backdrop with the props standing on it: the place with nobody in it, which is where a
     /// lamp may shine.
     still: Canvas,
+    /// Who has been brushed, and how far the grooming has got.
+    brushing: HashMap<Id, Grooming>,
+}
+
+/// One companion's grooming: how far it has got, from 0 to 1, when the last stroke was, and
+/// whether it is still keeping still for it.
+#[derive(Clone, Copy, Debug)]
+struct Grooming {
+    progress: f32,
+    last: f32,
+    held: bool,
 }
 
 impl Playground {
@@ -231,6 +246,7 @@ impl Playground {
             nightlights: None,
             daylight: Daylight::default(),
             still: Canvas::new(1, 1),
+            brushing: HashMap::new(),
         }
         .stilled()
     }
@@ -441,6 +457,73 @@ impl Playground {
             }
         }
         self.look_at_the_pointer();
+        // Whoever was being groomed and hasn't been stroked for a moment gets on with its day;
+        // how far it got is kept, so brushing again carries on.
+        let mut done = Vec::new();
+        for (id, grooming) in &mut self.brushing {
+            if grooming.held && grooming.progress < 1.0 && now - grooming.last > BRUSH_PATIENCE {
+                grooming.held = false;
+                done.push(*id);
+            }
+        }
+        for id in done {
+            if let Some(index) = self.index_of(id) {
+                self.actors[index].begin(now, []);
+            }
+        }
+    }
+
+    /// Strokes a traveller with the brush, by `stroke` pixels of brush across it. It keeps still
+    /// for it, answers in its own way as the grooming gets under way, halfway, and done, and the
+    /// person's kindness counts as any other. Says what point it has just reached, if any.
+    pub fn brush(&mut self, id: Id, stroke: f32, trust: &mut Trust, now: f32) -> Option<Brushing> {
+        let index = self.index_of(id)?;
+        let grooming = self.brushing.entry(id).or_insert(Grooming {
+            progress: 0.0,
+            last: now,
+            held: false,
+        });
+        let before = grooming.progress;
+        if before >= 1.0 {
+            return None;
+        }
+        let after = (before + stroke / GROOMING).min(1.0);
+        // Begun again whenever it isn't already keeping still for it.
+        let begun = !grooming.held;
+        *grooming = Grooming {
+            progress: after,
+            last: now,
+            held: after < 1.0,
+        };
+        let reached = if after >= 1.0 {
+            Some(Brushing::Done)
+        } else if before < 0.5 && after >= 0.5 {
+            Some(Brushing::Halfway)
+        } else if begun {
+            Some(Brushing::Begun)
+        } else {
+            None
+        };
+        if let Some(stage) = reached {
+            let warmed = trust.warmed.get(&id).copied().unwrap_or(0.0);
+            let beats = self.actors[index].character.brushed(stage, warmed);
+            self.actors[index].begin(now, beats.into_iter().map(Step::Beat));
+            if stage == Brushing::Done {
+                trust
+                    .warmed
+                    .insert(id, (warmed + TRUST_STEP * 2.0).min(MAX_TRUST));
+            }
+        }
+        reached
+    }
+
+    /// What everyone is wearing from the dress-up box, and who has been groomed till they
+    /// shine: for the visit, carried from place to place.
+    pub fn dress(&mut self, costumes: &HashMap<Id, &'static str>, groomed: &HashSet<Id>) {
+        for actor in &mut self.actors {
+            actor.wear(costumes.get(&actor.id).copied());
+            actor.shine(groomed.contains(&actor.id));
+        }
     }
 
     /// Holds something out to a traveller, who answers in its own way and as far as it has come
@@ -766,6 +849,37 @@ pub fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn brushing_grooms_a_companion_in_stages_and_it_waits_for_more_if_left_off() {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let mut green = crate::green::open(&cast, 0.0);
+        let id = cast.members[0].id;
+        let mut trust = Trust::default();
+        let mut now = 0.0;
+        let mut reached = Vec::new();
+        // Half the grooming, then a pause long enough for it to wander off.
+        for _ in 0..20 {
+            now += 0.1;
+            reached.extend(green.brush(id, GROOMING / 40.0, &mut trust, now));
+        }
+        assert_eq!(reached, vec![Brushing::Begun, Brushing::Halfway]);
+        green.tick(&cast, now + BRUSH_PATIENCE + 0.5);
+        now += BRUSH_PATIENCE + 0.6;
+        // Picked up again where it left off, and finished.
+        reached.clear();
+        for _ in 0..30 {
+            now += 0.1;
+            reached.extend(green.brush(id, GROOMING / 40.0, &mut trust, now));
+        }
+        assert_eq!(reached, vec![Brushing::Begun, Brushing::Done]);
+        assert!(trust.warmed[&id] > 0.0);
+        assert_eq!(
+            green.brush(id, 50.0, &mut trust, now + 0.1),
+            None,
+            "already groomed"
+        );
+    }
     use crate::green;
     use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
     use formiga_art::BodyClip;

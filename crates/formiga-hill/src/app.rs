@@ -4,6 +4,7 @@
 mod arranging;
 mod bug_hunt;
 mod encounter;
+mod finery;
 mod fishing_trip;
 mod rummaging;
 mod storytelling;
@@ -105,6 +106,17 @@ pub struct HillApp {
     area: Area,
     /// What the person is holding out on the green.
     tool: Offer,
+    /// What everyone has on from the dress-up box, and who is groomed till they shine: for the
+    /// visit only.
+    costumes: std::collections::HashMap<Id, &'static str>,
+    groomed: std::collections::HashSet<Id>,
+    /// Whether the dress-up box is open, what has been picked out of it, and its pictures.
+    dress_up: bool,
+    picked: Option<finery::Pick>,
+    costume_icons: Vec<egui::TextureHandle>,
+    /// Where the brush last was, over whom, and who the pointer is over this frame.
+    stroke: Option<(Id, (f32, f32))>,
+    hovered: Option<Id>,
     /// How each traveller has warmed to the person, wherever they have met this visit.
     trust: Trust,
     /// The last picture of the area just left, dissolving into the new one.
@@ -186,6 +198,13 @@ impl HillApp {
             last_frame: 0.0,
             area: Area::Station,
             tool: Offer::Pet,
+            costumes: std::collections::HashMap::new(),
+            groomed: std::collections::HashSet::new(),
+            dress_up: false,
+            picked: None,
+            costume_icons: Vec::new(),
+            stroke: None,
+            hovered: None,
             trust: Trust::default(),
             leaving: None,
             texture: None,
@@ -465,6 +484,14 @@ impl HillApp {
             }
             Area::Green => {
                 tools(ui, &mut self.tool);
+                ui.separator();
+                if ui
+                    .selectable_label(self.dress_up, "The dress-up box")
+                    .clicked()
+                {
+                    self.dress_up = !self.dress_up;
+                    self.picked = None;
+                }
                 if let Some((notice, _)) = &self.notice {
                     ui.label(egui::RichText::new(notice).italics());
                 }
@@ -567,10 +594,11 @@ impl HillApp {
     }
 }
 
-const TOOLS: [(Offer, &str, &str); 3] = [
+const TOOLS: [(Offer, &str, &str); 4] = [
     (Offer::Pet, "A pat", "1"),
     (Offer::Snack, "A snack", "2"),
     (Offer::Toy, "A toy", "3"),
+    (Offer::Brush, "A brush", "4"),
 ];
 
 /// What the person can hold out, to choose from.
@@ -658,9 +686,14 @@ impl eframe::App for HillApp {
                     {
                         game.stop(ground, now);
                     }
-                    for (key, (offer, _, _)) in [egui::Key::Num1, egui::Key::Num2, egui::Key::Num3]
-                        .into_iter()
-                        .zip(TOOLS)
+                    for (key, (offer, _, _)) in [
+                        egui::Key::Num1,
+                        egui::Key::Num2,
+                        egui::Key::Num3,
+                        egui::Key::Num4,
+                    ]
+                    .into_iter()
+                    .zip(TOOLS)
                     {
                         if input.key_pressed(key) {
                             self.tool = offer;
@@ -712,6 +745,8 @@ impl eframe::App for HillApp {
 
         egui::Panel::bottom("platform").show(ui, |ui| self.bottom_bar(ui, now));
 
+        // Whoever the person clicks with something picked out of the dress-up box.
+        let mut dress_on = None;
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(LETTERBOX))
             .show(ui, |ui| {
@@ -856,7 +891,11 @@ impl eframe::App for HillApp {
                         if let Some(id) = hovered {
                             ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                             if response.clicked() {
-                                green.offer(id, self.tool, &mut self.trust, now);
+                                if self.picked.is_some() {
+                                    dress_on = Some(id);
+                                } else {
+                                    green.offer(id, self.tool, &mut self.trust, now);
+                                }
                             }
                         }
                         if let Some(id) = hovered {
@@ -890,6 +929,7 @@ impl eframe::App for HillApp {
                         pointer.and_then(|(x, y)| self.station.traveler_at(x, y).map(|t| t.id))
                     }
                 };
+                self.hovered = hovered;
                 if on_case && hovered.is_none() {
                     let kept: Vec<&str> = self
                         .memories
@@ -923,6 +963,13 @@ impl eframe::App for HillApp {
                 }
             });
 
+        if let Some(id) = dress_on {
+            self.dress(id, now);
+        }
+        let held = ctx.input(|input| input.pointer.primary_down());
+        self.groom(held, now);
+        self.dress_everyone();
+        self.dress_up_window(&ctx);
         self.journal_window(&ctx);
         self.board_window(&ctx, now);
         self.shelf_window(&ctx);

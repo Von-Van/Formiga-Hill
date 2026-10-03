@@ -78,6 +78,8 @@ pub struct Actor {
     face_below_crown: i32,
     /// A piece from the Green's dress-up box, worn for the visit, if it has one on.
     costume: Option<&'static str>,
+    /// Groomed till it shines, for the rest of the visit.
+    shining: bool,
     /// The frame row its feet rest on.
     foot_row: i32,
     pub pos: (f32, f32),
@@ -115,6 +117,7 @@ impl Actor {
             face,
             face_below_crown,
             costume: None,
+            shining: false,
             foot_row: FRAME_SIZE as i32 - 1 - baseline as i32,
             pos,
             facing_right,
@@ -390,6 +393,9 @@ impl Actor {
         // `blit` takes the frame by reference while `self` is borrowed for the cache.
         let (canvas, crown) = (frame.canvas.clone(), frame.crown);
         blit(scene, &canvas, x, y);
+        if self.shining {
+            draw_shine(scene, &canvas, (x, y), now, self.reduce_motion, self.id);
+        }
         if let Some(id) = self.costume {
             draw_costume(
                 scene,
@@ -406,8 +412,52 @@ impl Actor {
         self.costume = costume;
     }
 
-    pub fn costume(&self) -> Option<&'static str> {
-        self.costume
+    /// Groomed till it shines, or not.
+    pub fn shine(&mut self, shining: bool) {
+        self.shining = shining;
+    }
+}
+
+/// A freshly groomed coat: a few glints that come and go across it, each on a pixel of the
+/// creature itself. With reduced motion they hold still.
+fn draw_shine(
+    scene: &mut Canvas,
+    frame: &Canvas,
+    (x, y): (i32, i32),
+    now: f32,
+    reduce_motion: bool,
+    id: Id,
+) {
+    let Some((left, top, right, bottom)) = frame.alpha_bounds() else {
+        return;
+    };
+    let (left, top, right, bottom) = (left as i32, top as i32, right as i32, bottom as i32);
+    let beat = if reduce_motion { 0 } else { (now * 2.5) as u32 };
+    for glint in 0..3u32 {
+        let salt = (id as u32).wrapping_add(glint * 97).wrapping_add(beat * 13);
+        let gx = left
+            + (crate::paint::noise(glint as i32, beat as i32, salt) % (right - left + 1) as u32)
+                as i32;
+        let gy = top
+            + (crate::paint::noise(beat as i32, glint as i32, salt)
+                % ((bottom - top) / 2 + 1) as u32) as i32;
+        if frame.get(gx, gy).a > 0 {
+            let at = (x + gx, y + gy);
+            crate::paint::put(
+                scene,
+                at.0,
+                at.1,
+                formiga_art::Rgba::new(255, 255, 255, 230),
+            );
+            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+                crate::paint::put(
+                    scene,
+                    at.0 + dx,
+                    at.1 + dy,
+                    formiga_art::Rgba::new(255, 250, 220, 120),
+                );
+            }
+        }
     }
 }
 

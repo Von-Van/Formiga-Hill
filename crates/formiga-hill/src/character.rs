@@ -80,6 +80,17 @@ pub enum Offer {
     Pet,
     Snack,
     Toy,
+    /// A brush: held on a companion and stroked to groom it (see `Character::brushed`).
+    Brush,
+}
+
+/// How far a grooming has got.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Brushing {
+    Begun,
+    Halfway,
+    /// Groomed till it shines.
+    Done,
 }
 
 /// What a traveller sets out to do next, on its own.
@@ -292,6 +303,14 @@ impl Character {
                     _ => Beat::new(ActionKind::Idle, ExpressionKind::Content, 0.9),
                 });
             }
+            Offer::Brush => {
+                // Shown the brush, before any stroking: a look at what it is.
+                beats.push(if shy {
+                    Beat::new(Gesture::Peek, ExpressionKind::Worried, 0.9)
+                } else {
+                    Beat::new(Gesture::Watch, ExpressionKind::Curious, 0.8)
+                });
+            }
             Offer::Toy => {
                 if let Some(flourish) = self.flourish(HabitCue::Play) {
                     beats.push(flourish);
@@ -345,6 +364,57 @@ impl Character {
             }
         }
         beats
+    }
+
+    /// How it takes being groomed, as the brushing gets under way, halfway through, and done:
+    /// its own way, from its temperament. While being brushed it keeps still, held in a pose
+    /// that lasts until the brushing stops.
+    pub fn brushed(&self, stage: Brushing, trust: f32) -> Vec<Beat> {
+        const HELD: f32 = 600.0;
+        let a = self.axes;
+        let wary = (a.suspicion - trust).max(0.0) > 0.55 && a.boldness < 0.5;
+        match stage {
+            Brushing::Begun => vec![match self.kind {
+                TemperamentKind::Lazybones => {
+                    Beat::new(ActionKind::Sleep, ExpressionKind::Sleepy, HELD).cue(Cue::Sleep)
+                }
+                _ if wary => Beat::new(Gesture::Worry, ExpressionKind::Worried, HELD),
+                TemperamentKind::Grump => Beat::new(Gesture::Huff, ExpressionKind::Grumpy, HELD),
+                _ if a.playfulness > 0.7 => Beat::new(Gesture::Bop, ExpressionKind::Joy, HELD),
+                _ => Beat::new(ActionKind::PetReaction, ExpressionKind::Affectionate, HELD),
+            }],
+            Brushing::Halfway => vec![match self.kind {
+                TemperamentKind::Lazybones => {
+                    Beat::new(ActionKind::Sleep, ExpressionKind::Sleepy, HELD).cue(Cue::Sleep)
+                }
+                // Coming round to it after all.
+                TemperamentKind::Grump => {
+                    Beat::new(ActionKind::PetReaction, ExpressionKind::Content, HELD)
+                }
+                TemperamentKind::Sweetheart => {
+                    Beat::new(Gesture::Beg, ExpressionKind::Pleading, HELD).cue(Cue::Heart)
+                }
+                TemperamentKind::Showoff => Beat::new(Gesture::Strut, ExpressionKind::Smug, HELD),
+                TemperamentKind::Scholar => {
+                    Beat::new(Gesture::Watch, ExpressionKind::Focused, HELD)
+                }
+                _ if wary => Beat::new(ActionKind::PetReaction, ExpressionKind::Content, HELD),
+                _ => Beat::new(ActionKind::PetReaction, ExpressionKind::Affectionate, HELD)
+                    .cue(Cue::Heart),
+            }],
+            Brushing::Done => match self.kind {
+                TemperamentKind::Lazybones => {
+                    vec![Beat::new(ActionKind::Sleep, ExpressionKind::Sleepy, 3.0).cue(Cue::Sleep)]
+                }
+                TemperamentKind::Showoff => {
+                    vec![Beat::new(Gesture::Strut, ExpressionKind::Smug, 1.6).cue(Cue::Sparkle)]
+                }
+                TemperamentKind::Grump => {
+                    vec![Beat::new(Gesture::Huff, ExpressionKind::Smug, 1.2).cue(Cue::Sparkle)]
+                }
+                _ => vec![self.celebrate(1.2).cue(Cue::Sparkle)],
+            },
+        }
     }
 
     /// What it sets out to do next, given who is about.
