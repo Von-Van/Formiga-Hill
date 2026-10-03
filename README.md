@@ -56,10 +56,18 @@ parents and rivals keeping apart.
 - Anyone can write a story as a package ([PACKAGES.md](docs/PACKAGES.md)) and drop it in the
   packages folder.
 
-**The Fairground.** Down the lane from the green: a big top, a carousel and a hoopla stall, with
-its bulbs lit after dark. The colony plays its games among themselves while you watch, choosing at
-most who plays. Today that is hide-and-seek: where each hides, how each gives itself away, and how
-"it" searches all come from temperament. A parent never finds its little one until last.
+**The Fairground.** Down the lane from the green: a big top, a carousel, a hoopla stall and a high
+striker, with its bulbs lit after dark. The colony plays its games among themselves while you
+watch; you choose the game and, at most, who plays. Each game keeps a souvenir the first time it
+is seen through, and its records go up on the station's boards.
+- **Hide-and-seek.** Where each hides, how each gives itself away, and how "it" searches all come
+  from temperament. A parent never finds its little one until last.
+- **The sack race.** Hop length and rhythm come from pace, energy and size. An impulsive one may
+  jump the start; a lazybones sits down for a breather; a show-off waves to the crowd short of the
+  line and is overtaken; an affectionate one helps a fallen friend up.
+- **The high striker.** The puck climbs by strength times timing: a patient one times it
+  steadily, an impulsive one swings early, and a little one's parent helps hold the mallet so
+  together they can ring the bell.
 
 **The Woods.** Here you play, with a companion or two, for finds to take home. Who comes along
 changes how it goes and what turns up, but never rules anything out.
@@ -112,7 +120,7 @@ written here.
 
 ### Coming next
 
-- **The Fairground:** races, timing games, toy challenges, and co-op and competitive games.
+- **The Fairground:** hoopla, and a tug-of-war for co-op and competitive play.
 - **The Woods:** foraging, scavenging and treasure routes, and longer expeditions that combine
   activities.
 
@@ -178,7 +186,7 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | --- | --- |
 | `--render-station` | The station; `--at` seconds into the arrival, or settled |
 | `--render-green`, `--render-clubhouse`, `--render-fairground` | The place, `--at` seconds into free play |
-| `--render-hide-and-seek` | A game of hide-and-seek, `--at` seconds in |
+| `--render-hide-and-seek`, `--render-sack-race`, `--render-high-striker` | A game at the Fairground, `--at` seconds in |
 | `--render-woods`, `--render-fishing`, `--render-bug-hunt` | A Woods outing, `--at` seconds in |
 | `--render-meadow` | The meadow |
 | `--render-hilltop` | The Hilltop; `--sample-hilltop` fills it |
