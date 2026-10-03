@@ -15,6 +15,7 @@ mod fishing;
 mod font;
 mod green;
 mod hilltop;
+mod hosting;
 mod keepsake_art;
 mod kit;
 mod materials;
@@ -66,6 +67,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
                            line for 2.5 seconds and taking the first choice
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
   --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
+  --packages-folder        Say where to put story packages for Hill to find, and what is there
   --sample-hilltop         Draw the station's skyline with a sample of finds on the Hilltop
   --hour <HOUR>            Draw at that hour of the day, from 0 to 24, rather than at midday;
                            with a window, hold the Hill at that hour rather than the clock's
@@ -111,6 +113,8 @@ struct Args {
     packages: Vec<PathBuf>,
     /// Check these package folders and report, without opening a window.
     check: Vec<PathBuf>,
+    /// Say where the packages folder is, and what is in it, without opening a window.
+    show_folder: bool,
     /// Draw the station with a sample of finds on the Hilltop, rather than the colony's own.
     sample_hilltop: bool,
     /// The hour to draw at, rather than midday.
@@ -118,16 +122,38 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    // For the packaging scripts: the newest travel version this Hill reads, which goes in the
+    // macOS bundle and the Windows registry for Desktop to find.
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--travel-version")
+    {
+        println!("{}", formiga_travel::TRAVEL_FORMAT_VERSION);
+        return Ok(());
+    }
     // Before anything starts a thread: see `daylight::Clock`.
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
     let Some(args) = parse_args(std::env::args_os().skip(1))? else {
         print!("{USAGE}");
         return Ok(());
     };
+    if args.show_folder {
+        return show_packages_folder();
+    }
     if !args.check.is_empty() {
         return check_packages(&args.check);
     }
-    let arrival = arrive(args.source)?;
+    // A window hosts one colony at a time: see `hosting`. Drawing to a file needs no window.
+    let hosting = if args.render.is_none() {
+        memories::Memories::folder().map(|data| hosting::take(&data))
+    } else {
+        None
+    };
+    let busy = matches!(hosting, Some(Err(hosting::Busy)));
+    if busy && !matches!(args.source, Source::Trip(_)) {
+        bail!("Formiga Hill is already open, with a colony visiting");
+    }
+    let arrival = arrive(args.source, busy)?;
 
     if let Some((area, path)) = args.render {
         let daylight = daylight::Daylight::at_hour(args.hour.unwrap_or(12.0));
@@ -167,7 +193,7 @@ fn main() -> Result<()> {
             }
             Area::Clubhouse => {
                 let until = args.at.unwrap_or(20.0);
-                let library = story::Library::load(&args.packages);
+                let library = story::Library::load(None, &args.packages);
                 let pinned = library
                     .stories()
                     .enumerate()
@@ -214,7 +240,7 @@ fn main() -> Result<()> {
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Story => {
-                let library = story::Library::load(&args.packages);
+                let library = story::Library::load(None, &args.packages);
                 story_moment(
                     &arrival.cast,
                     story_to_draw(&library)?,
@@ -243,7 +269,12 @@ fn main() -> Result<()> {
         "Formiga Hill",
         options,
         Box::new(|cc| {
-            let library = story::Library::load(&args.packages);
+            // Community stories go in the packages folder, made ready so it is there to find.
+            let folder = memories::Memories::folder().map(|data| story::shelf::folder(&data));
+            if let Some(folder) = &folder {
+                let _ = std::fs::create_dir_all(folder);
+            }
+            let library = story::Library::load(folder.as_deref(), &args.packages);
             let clock = match args.hour {
                 Some(hour) => daylight::Clock::Held(hour),
                 None => daylight::Clock::Local(offset),
@@ -260,6 +291,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut at = None;
     let mut packages = Vec::new();
     let mut check = Vec::new();
+    let mut show_folder = false;
     let mut sample_hilltop = false;
     let mut hour = None;
     let mut set_source = |next: Source| {
@@ -332,6 +364,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             }
             Some("--package") => packages.push(value("--package")?),
             Some("--check-package") => check.push(value("--check-package")?),
+            Some("--packages-folder") => show_folder = true,
             Some("-h" | "--help") => return Ok(None),
             _ => bail!("unexpected argument {arg:?}\n\n{USAGE}"),
         }
@@ -345,19 +378,20 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         at,
         packages,
         check,
+        show_folder,
         sample_hilltop,
         hour,
     }))
 }
 
-fn arrive(source: Source) -> Result<Arrival> {
+fn arrive(source: Source, busy: bool) -> Result<Arrival> {
     Ok(match source {
         Source::Sample => Arrival {
             cast: Cast::new(formiga_travel::sample::snapshot())?,
             visit: Visit::Rehearsal("Desktop's sample colony".to_owned()),
         },
         Source::Trip(dir) => {
-            let (trip, cast) = trip::arrive(&dir)?;
+            let (trip, cast) = trip::arrive(&dir, busy)?;
             Arrival {
                 cast,
                 visit: Visit::Trip(trip),
@@ -690,6 +724,34 @@ fn finds_sheet() -> Canvas {
 }
 
 /// Checks package folders as Hill would load them, and says what is wrong in each.
+/// Where community packages go, and how each one there fares.
+fn show_packages_folder() -> Result<()> {
+    let folder = memories::Memories::folder()
+        .map(|data| story::shelf::folder(&data))
+        .context("there is nowhere to keep packages on this computer")?;
+    println!("Put story packages in:\n  {}", folder.display());
+    let library = story::Library::load(Some(&folder), &[]);
+    let found: Vec<_> = library
+        .packages
+        .iter()
+        .zip(&library.origins)
+        .filter(|(_, origin)| **origin == story::Origin::Folder)
+        .collect();
+    if found.is_empty() && library.problems.is_empty() {
+        println!("Nothing there yet.");
+    }
+    for (package, _) in found {
+        println!(
+            "{} {} (\u{201c}{}\u{201d} by {}) loads",
+            package.id, package.version, package.title, package.author
+        );
+    }
+    for problem in &library.problems {
+        println!("{problem}");
+    }
+    Ok(())
+}
+
 fn check_packages(folders: &[PathBuf]) -> Result<()> {
     let mut failed = 0;
     for folder in folders {
@@ -749,6 +811,38 @@ fn write_png(path: &Path, canvas: &Canvas, scale: u32) -> Result<()> {
 mod tests {
     use super::*;
 
+    /// Desktop finds an installed Hill by what `formiga_travel::discovery` names, so the bundle
+    /// and the installer must say exactly that.
+    #[test]
+    fn the_packaging_says_what_desktop_looks_for() {
+        use formiga_travel::discovery::*;
+        let packaging = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging");
+        // Read as Git checks them out, which on Windows is with carriage returns.
+        let read = |file: &str| {
+            std::fs::read_to_string(packaging.join(file))
+                .unwrap()
+                .replace("\r\n", "\n")
+        };
+        let plist = read("macos/Info.plist");
+        assert!(plist.contains(&format!(
+            "<key>CFBundleIdentifier</key><string>{MACOS_BUNDLE_ID}</string>"
+        )));
+        assert!(plist.contains(&format!("<key>{MACOS_TRAVEL_VERSION_KEY}</key><integer>")));
+        let installer = read("windows/FormigaHill.wxs");
+        for value in [
+            WINDOWS_PATH_VALUE,
+            WINDOWS_VERSION_VALUE,
+            WINDOWS_TRAVEL_VERSION_VALUE,
+        ] {
+            assert!(
+                installer.contains(&format!(
+                    "Key=\"{WINDOWS_REGISTRY_KEY}\"\n              Name=\"{value}\""
+                )),
+                "the installer does not write {value}"
+            );
+        }
+    }
+
     fn parse(args: &[&str]) -> Result<Option<Args>> {
         parse_args(args.iter().map(OsString::from))
     }
@@ -786,16 +880,16 @@ mod tests {
 
     #[test]
     fn a_package_that_would_not_load_is_reported_rather_than_drawn_around() {
-        let library = story::Library::load(&[PathBuf::from("/no/such/package.formiga-hill")]);
+        let library = story::Library::load(None, &[PathBuf::from("/no/such/package.formiga-hill")]);
         let problem = story_to_draw(&library).unwrap_err().to_string();
         assert!(problem.contains("package.formiga-hill"), "{problem}");
-        assert!(story_to_draw(&story::Library::load(&[])).is_ok());
+        assert!(story_to_draw(&story::Library::load(None, &[])).is_ok());
     }
 
     #[test]
     fn a_story_is_drawn_at_the_hour_asked_for() {
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
-        let library = story::Library::load(&[]);
+        let library = story::Library::load(None, &[]);
         let chosen = story_to_draw(&library).unwrap();
         let at =
             |hour| story_moment(&cast, chosen, 1.0, daylight::Daylight::at_hour(hour)).unwrap();

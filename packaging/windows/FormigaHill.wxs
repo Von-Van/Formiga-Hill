@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Formiga Hill for one user, where Formiga Desktop looks for it: the registry key and values
+     are the ones formiga-travel's discovery module names. -->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+      Name="Formiga Hill"
+      Manufacturer="Formiga"
+      Version="$(HillVersion)"
+      UpgradeCode="50722512-4F69-4E14-84A9-64675EF5251D"
+      Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer Formiga Hill is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPCOMMENTS" Value="Somewhere your Formiga colony goes to spend time together." />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Formiga Hill">
+        <Component Id="HillApplication" Guid="4300F411-6565-4D5C-BCFE-50C15C567001">
+          <File Id="HillExecutable" Source="$(HillExe)" Name="Formiga Hill.exe" KeyPath="yes" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga\Hill"
+              Name="Path"
+              Type="string"
+              Value="[INSTALLFOLDER]Formiga Hill.exe" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga\Hill"
+              Name="Version"
+              Type="string"
+              Value="$(HillVersion)" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga\Hill"
+              Name="TravelVersion"
+              Type="integer"
+              Value="$(TravelVersion)" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="ApplicationProgramsFolder" Name="Formiga">
+        <Component Id="HillShortcut" Guid="F1054863-9A95-41F9-A64C-781FC9A9E069">
+          <Shortcut
+              Id="HillStartMenuShortcut"
+              Name="Formiga Hill"
+              Target="[INSTALLFOLDER]Formiga Hill.exe"
+              WorkingDirectory="INSTALLFOLDER" />
+          <RemoveFolder Id="RemoveHillProgramsFolder" On="uninstall" />
+          <RegistryValue
+              Root="HKCU"
+              Key="Software\Formiga\Hill"
+              Name="StartMenuShortcut"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="MainFeature" Title="Formiga Hill" Level="1">
+      <ComponentRef Id="HillApplication" />
+      <ComponentRef Id="HillShortcut" />
+    </Feature>
+  </Package>
+</Wix>

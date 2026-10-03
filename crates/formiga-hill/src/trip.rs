@@ -27,8 +27,9 @@ pub struct Trip {
 }
 
 /// Reads the snapshot Desktop left in `dir` and answers it: accepted, with the colony ready for
-/// the stage, or refused, with the reason written for Desktop and returned as an error.
-pub fn arrive(dir: &Path) -> Result<(Trip, Cast)> {
+/// the stage, or refused, with the reason written for Desktop and returned as an error. `busy`
+/// when another Hill is already hosting a colony, which refuses it whatever it holds.
+pub fn arrive(dir: &Path, busy: bool) -> Result<(Trip, Cast)> {
     // The trip is named by its directory, and nothing else about the path is trusted.
     let session = dir
         .file_name()
@@ -52,6 +53,12 @@ pub fn arrive(dir: &Path) -> Result<(Trip, Cast)> {
         bail!("Formiga Hill could not take the colony: {why}")
     };
 
+    if busy {
+        return refuse(
+            AckRefusal::Busy,
+            "another Hill is already hosting a colony".into(),
+        );
+    }
     let snapshot = match decode::<TravelSnapshot>(&bytes) {
         Ok(snapshot) if snapshot.session_id == session => snapshot,
         Ok(_) => {
@@ -138,7 +145,7 @@ mod tests {
     fn a_good_snapshot_is_accepted_and_answered_with_a_receipt() {
         let snapshot = formiga_travel::sample::snapshot();
         let dir = left_by_desktop(&snapshot);
-        let (trip, cast) = arrive(&dir).unwrap();
+        let (trip, cast) = arrive(&dir, false).unwrap();
         assert_eq!(cast.members.len(), snapshot.travelers.len());
 
         let bytes = std::fs::read(dir.join(SNAPSHOT_FILE)).unwrap();
@@ -160,7 +167,7 @@ mod tests {
         let dir = left_by_desktop(&snapshot);
         let elsewhere = dir.with_file_name(SessionId::generate().unwrap().as_str());
         std::fs::rename(&dir, &elsewhere).unwrap();
-        assert!(arrive(&elsewhere).is_err());
+        assert!(arrive(&elsewhere, false).is_err());
         let ack: Acknowledgement = read_document(&elsewhere.join(ACK_FILE)).unwrap();
         assert_eq!(ack.refusal, Some(AckRefusal::Invalid));
         std::fs::remove_dir_all(elsewhere.parent().unwrap()).unwrap();
@@ -175,9 +182,20 @@ mod tests {
             b"{\"format\": \"formiga.travel.snapshot\"",
         )
         .unwrap();
-        assert!(arrive(&dir).is_err());
+        assert!(arrive(&dir, false).is_err());
         let ack: Acknowledgement = read_document(&dir.join(ACK_FILE)).unwrap();
         assert!(!ack.accepted);
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn a_trip_while_another_colony_is_visiting_is_refused_as_busy() {
+        let snapshot = formiga_travel::sample::snapshot();
+        let dir = left_by_desktop(&snapshot);
+        assert!(arrive(&dir, true).is_err());
+        let ack: Acknowledgement = read_document(&dir.join(ACK_FILE)).unwrap();
+        assert!(!ack.accepted);
+        assert_eq!(ack.refusal, Some(AckRefusal::Busy));
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 
@@ -185,7 +203,7 @@ mod tests {
     fn a_recall_is_noticed() {
         let snapshot = formiga_travel::sample::snapshot();
         let dir = left_by_desktop(&snapshot);
-        let (trip, _) = arrive(&dir).unwrap();
+        let (trip, _) = arrive(&dir, false).unwrap();
         std::fs::write(dir.join(RECALL_FILE), b"{}").unwrap();
         assert!(trip.recalled());
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
@@ -195,7 +213,7 @@ mod tests {
     fn a_trip_swept_away_counts_as_a_recall() {
         let snapshot = formiga_travel::sample::snapshot();
         let dir = left_by_desktop(&snapshot);
-        let (trip, _) = arrive(&dir).unwrap();
+        let (trip, _) = arrive(&dir, false).unwrap();
         assert!(!trip.recalled());
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
         assert!(trip.recalled());

@@ -3,17 +3,23 @@
 
 use super::{HillApp, INK, PAPER, tools};
 use crate::clubhouse::Clubhouse;
-use crate::story::{Director, souvenirs};
+use crate::story::{Director, Origin, Package, Story, souvenirs};
 use eframe::egui;
 
 impl HillApp {
     /// A card on the board for each story, starred where the colony has finished it.
     fn pinned(&self) -> Vec<bool> {
         let finished = &self.memories.colony().stories;
-        self.library
-            .stories()
+        self.on_the_board()
             .map(|(package, story)| finished.contains(&format!("{}/{}", package.id, story.id)))
             .collect()
+    }
+
+    /// The stories pinned up: every one, but for those in packages the person has set aside.
+    fn on_the_board(&self) -> impl Iterator<Item = (&Package, &Story)> {
+        self.library
+            .stories()
+            .filter(|(package, _)| !self.set_aside.contains(&package.id))
     }
 
     /// Readies the room the first time anyone goes in.
@@ -140,6 +146,7 @@ impl HillApp {
         let travellers = self.arrival.cast.members.len();
         let mut start = None;
         let mut open = true;
+        let mut open_shelf = false;
         egui::Window::new("The notice board")
             .open(&mut open)
             .default_width(300.0)
@@ -150,7 +157,7 @@ impl HillApp {
                         .italics(),
                 );
                 ui.add_space(4.0);
-                for (package, story) in self.library.stories() {
+                for (package, story) in self.on_the_board() {
                     let finished = self
                         .memories
                         .colony()
@@ -168,6 +175,12 @@ impl HillApp {
                             "Needs at least {} travellers",
                             story.min_cast
                         ));
+                    // A community story says whose it is.
+                    let button = if self.library.origin(&package.id) == Some(Origin::Official) {
+                        button
+                    } else {
+                        button.on_hover_text(format!("By {}", package.author))
+                    };
                     if button.clicked() {
                         start = Some((package.id.clone(), story.id.clone()));
                     }
@@ -182,12 +195,121 @@ impl HillApp {
                         }
                     }
                 }
+                ui.separator();
+                if ui.small_button("Story packages\u{2026}").clicked() {
+                    open_shelf = true;
+                }
             });
+        if open_shelf {
+            self.shelf = true;
+        }
         if !open {
             self.board = false;
         }
         if let Some((package, story)) = start {
             self.start_story(&package, &story, now);
+        }
+    }
+
+    /// Every package Hill found, where it came from, and a way to set any but Hill's own aside;
+    /// then any that would not load, and why, and where community packages go.
+    pub(super) fn shelf_window(&mut self, ctx: &egui::Context) {
+        if !self.shelf {
+            return;
+        }
+        let mut open = true;
+        let mut changes = Vec::new();
+        egui::Window::new("Story packages")
+            .open(&mut open)
+            .default_width(340.0)
+            .collapsible(false)
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .max_height(320.0)
+                    .show(ui, |ui| {
+                        for (package, origin) in
+                            self.library.packages.iter().zip(&self.library.origins)
+                        {
+                            let stories = package.stories.len();
+                            let about = format!(
+                                "by {} \u{b7} version {} \u{b7} {stories} {}",
+                                package.author,
+                                package.version,
+                                if stories == 1 { "story" } else { "stories" }
+                            );
+                            ui.horizontal(|ui| {
+                                if *origin == Origin::Official {
+                                    ui.label(egui::RichText::new(&package.title).strong());
+                                    ui.label(egui::RichText::new("Hill's own").small().weak());
+                                } else {
+                                    let mut on = !self.set_aside.contains(&package.id);
+                                    if ui
+                                        .checkbox(
+                                            &mut on,
+                                            egui::RichText::new(&package.title).strong(),
+                                        )
+                                        .on_hover_text(if on {
+                                            "On the notice board. Untick to set it aside."
+                                        } else {
+                                            "Set aside: its stories are off the notice board."
+                                        })
+                                        .changed()
+                                    {
+                                        changes.push((package.id.clone(), !on));
+                                    }
+                                    if *origin == Origin::Named {
+                                        ui.label(
+                                            egui::RichText::new("named to try").small().weak(),
+                                        );
+                                    }
+                                }
+                            });
+                            ui.label(egui::RichText::new(about).small());
+                            ui.add_space(4.0);
+                        }
+                        if !self.library.problems.is_empty() {
+                            ui.separator();
+                            ui.label(egui::RichText::new("Would not load").strong());
+                            for problem in &self.library.problems {
+                                ui.label(egui::RichText::new(problem.to_string()).small());
+                            }
+                        }
+                    });
+                ui.separator();
+                match &self.packages_folder {
+                    Some(folder) => {
+                        ui.label(
+                            egui::RichText::new(
+                                "To add a story, put its package folder here and come back to \
+                                 the Hill:",
+                            )
+                            .small(),
+                        );
+                        ui.add(egui::Label::new(
+                            egui::RichText::new(folder.display().to_string())
+                                .small()
+                                .monospace(),
+                        ));
+                    }
+                    None => {
+                        ui.label(
+                            egui::RichText::new(
+                                "There is nowhere to keep packages on this computer.",
+                            )
+                            .small(),
+                        );
+                    }
+                }
+            });
+        if !open {
+            self.shelf = false;
+        }
+        for (id, aside) in changes {
+            self.set_aside.set(&id, aside);
+        }
+        let pinned = self.pinned();
+        if let Some(room) = &mut self.clubhouse {
+            room.pin_up(pinned);
         }
     }
 

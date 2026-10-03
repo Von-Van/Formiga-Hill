@@ -22,6 +22,18 @@ formiga-hill --package my-story.formiga-hill --render-story moment.png --at 20
 `--check-package` names the file, scene and beat of anything wrong, in words like
 `scene "spread", beat 2: "the bandstand" is not a place in the clubhouse`.
 
+## Installing a story
+
+Put the package's folder (the one ending `.formiga-hill`) in Hill's packages folder, and its
+stories are on the notice board next time the colony visits. `formiga-hill --packages-folder` says
+where the folder is and how each package in it fares. On macOS it is
+`~/Library/Application Support/com.Formiga.Formiga-Hill/packages`.
+
+The notice board's **Story packages…** button lists every package Hill found, with anything that
+would not load and why. Untick a package to set it aside: its stories come off the board until it
+is ticked again, and the package itself is never touched. Hill reads at most 64 packages from the
+folder, and only folders: links are refused, as they are inside a package.
+
 ## The folder
 
 ```text

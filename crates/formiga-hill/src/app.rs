@@ -15,6 +15,7 @@ use crate::fairground::{self, Event, HideAndSeek, Phase};
 use crate::memories::Memories;
 use crate::playground::{Playground, Trust};
 use crate::station::{Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
+use crate::story::shelf::SetAside;
 use crate::story::{Director, Library, souvenirs};
 use crate::trip::Trip;
 use arranging::Placing;
@@ -74,8 +75,12 @@ pub struct HillApp {
     green: Option<Playground>,
     /// The same, for the room where stories are staged.
     clubhouse: Option<Clubhouse>,
-    /// Whether the notice board of stories is open.
+    /// Whether the notice board of stories is open, and the list of packages behind it.
     board: bool,
+    shelf: bool,
+    /// The packages the person has set aside, and where community packages go.
+    set_aside: SetAside,
+    packages_folder: Option<std::path::PathBuf>,
     /// The same, and the game of hide-and-seek played there.
     fairground: Option<(Playground, HideAndSeek)>,
     /// Who the person has asked to be "it" at hide-and-seek, if anyone in particular.
@@ -165,6 +170,9 @@ impl HillApp {
             green: None,
             clubhouse: None,
             board: false,
+            shelf: false,
+            set_aside: SetAside::open(Memories::folder().as_deref()),
+            packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
             fairground: None,
             it: None,
             woods: rummaging::Woods::default(),
@@ -902,6 +910,7 @@ impl eframe::App for HillApp {
 
         self.journal_window(&ctx);
         self.board_window(&ctx, now);
+        self.shelf_window(&ctx);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));
