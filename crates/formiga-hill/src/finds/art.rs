@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn everything_planted_comes_up_a_little_more_each_stage_and_fits_any_spot() {
-        for growth in &crate::finds::growing::GROWING {
+        for growth in crate::finds::growing::GROWING {
             let full = piece(growth.id);
             let mut heights = Vec::new();
             for at in 0..growth.stages.len() as u8 {

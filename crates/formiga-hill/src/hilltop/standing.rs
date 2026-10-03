@@ -219,7 +219,7 @@ mod tests {
 
     #[test]
     fn something_planted_grows_a_stage_at_a_time_into_its_full_piece_and_no_further() {
-        for growth in &growing::GROWING {
+        for growth in growing::GROWING {
             let mut planted = Standing::from_satchel(growth.id);
             assert_eq!(planted.stage(), Some(0), "{} is planted small", growth.id);
             let mut names = vec![planted.name()];

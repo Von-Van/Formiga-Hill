@@ -1004,7 +1004,7 @@ fn plans_sheet() -> Canvas {
 /// right, with the find it was planted from in the corner of the first.
 fn growing_sheet() -> Canvas {
     const CELL: (i32, i32) = (56, 70);
-    let growing = &finds::growing::GROWING;
+    let growing = finds::growing::GROWING;
     let most = growing
         .iter()
         .map(|growth| growth.stages.len() + 1)

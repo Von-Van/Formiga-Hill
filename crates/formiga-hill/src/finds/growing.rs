@@ -16,7 +16,7 @@ pub struct Growth {
     pub stages: &'static [&'static str],
 }
 
-pub const GROWING: [Growth; 8] = [
+pub const GROWING: &[Growth] = &[
     Growth {
         id: "bluebell_bulb",
         stages: &["A bluebell shoot", "Bluebell leaves", "Bluebells in bud"],
