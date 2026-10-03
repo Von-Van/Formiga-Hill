@@ -171,17 +171,12 @@ pub fn at(size: u32) -> Canvas {
                     }
                 }
                 let n = block * block;
-                if sum[3] > 0 {
-                    out.set(
-                        x,
-                        y,
-                        Rgba::new(
-                            (sum[0] / sum[3]) as u8,
-                            (sum[1] / sum[3]) as u8,
-                            (sum[2] / sum[3]) as u8,
-                            (sum[3] / n) as u8,
-                        ),
-                    );
+                // Colours weighted by how much of each pixel is there; nothing where none is.
+                let average = |channel: u32| channel.checked_div(sum[3]).map(|v| v as u8);
+                if let (Some(r), Some(g), Some(b)) =
+                    (average(sum[0]), average(sum[1]), average(sum[2]))
+                {
+                    out.set(x, y, Rgba::new(r, g, b, (sum[3] / n) as u8));
                 }
             }
         }
