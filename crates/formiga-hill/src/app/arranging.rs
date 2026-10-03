@@ -271,6 +271,38 @@ impl HillApp {
                             }
                         }
                     }
+                    let fish = &crate::fishing::fish::CATALOGUE;
+                    let caught = fish.iter().filter(|kind| colony.fish.contains_key(kind.id)).count();
+                    ui.add_space(6.0);
+                    ui.strong(format!("Caught at the pool ({caught} of {})", fish.len()));
+                    for kind in fish {
+                        match colony.fish.get(kind.id) {
+                            Some(record) => {
+                                ui.label(egui::RichText::new(kind.name).strong());
+                                ui.label(egui::RichText::new(kind.blurb).small());
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "Landed {}\u{d7}, longest {:.1} cm \u{b7} first caught by {}",
+                                        record.count,
+                                        record.longest,
+                                        who(&record.first_by)
+                                    ))
+                                    .small()
+                                    .italics(),
+                                );
+                            }
+                            None => {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "??? \u{b7} something {} in {}",
+                                        kind.tier.label(),
+                                        kind.haunt.name()
+                                    ))
+                                    .weak(),
+                                );
+                            }
+                        }
+                    }
                     if !colony.outings_by.is_empty() {
                         ui.add_space(6.0);
                         ui.strong("Who has been");

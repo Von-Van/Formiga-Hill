@@ -90,7 +90,7 @@ impl Tier {
     }
 
     /// How often it turns up, all else being equal.
-    fn weight(self) -> f32 {
+    pub fn weight(self) -> f32 {
         match self {
             Self::Common => 10.0,
             Self::Uncommon => 4.0,
@@ -157,6 +157,7 @@ pub enum Use {
     Rest,
 }
 
+#[derive(Debug)]
 pub struct Find {
     pub id: &'static str,
     pub name: &'static str,
@@ -466,22 +467,27 @@ pub fn find(id: &str) -> Option<&'static Find> {
 
 /// How likely `find` is to turn up for this party, before rarity.
 fn affinity(find: &Find, party: &[&Character]) -> f32 {
+    drawn_to(find.leanings, party)
+}
+
+/// How much a party is drawn to something that leans as `leanings` do: the keenest of them
+/// counts. Never below one: leaning only adds, so nothing is out of anyone's reach.
+pub fn drawn_to(leanings: &[Leaning], party: &[&Character]) -> f32 {
     let best = party
         .iter()
         .map(|character| {
-            find.leanings
+            leanings
                 .iter()
                 .map(|leaning| leaning.pull(character))
                 .sum::<f32>()
-                / find.leanings.len().max(1) as f32
+                / leanings.len().max(1) as f32
         })
         .fold(0.0, f32::max);
-    // Never below one: leaning only adds, so nothing is out of anyone's reach.
     1.0 + 1.6 * best
 }
 
-/// How strongly an undiscovered find is favoured over one already found.
-const NOVELTY: f32 = 2.5;
+/// How strongly something undiscovered is favoured over what has been found before.
+pub const NOVELTY: f32 = 2.5;
 /// After this many outings in a row with nothing new found, something new is certain.
 pub const DROUGHT: u32 = 2;
 /// How many of the spots hold something on an outing, roughly.
