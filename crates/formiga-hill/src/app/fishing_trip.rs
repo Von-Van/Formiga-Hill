@@ -32,7 +32,8 @@ impl HillApp {
             seed,
         };
         let caught = |id: &str| colony.fish.contains_key(id);
-        let angling = Angling::new(&mut ground, outset, caught, now);
+        let found = |id: &str| colony.finds.contains_key(id);
+        let angling = Angling::new(&mut ground, outset, caught, found, now);
         self.woods.fishing = Some((ground, angling));
         let line = note.unwrap_or(
             "Each kind of fish keeps to its own part of the pool. Click the water to cast.",

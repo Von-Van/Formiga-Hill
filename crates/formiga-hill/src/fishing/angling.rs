@@ -196,6 +196,10 @@ pub struct Angling {
     last_held: f32,
     /// What the snag will be, decided at the cast.
     snag: Option<&'static Find>,
+    /// Who came along, and the finds the colony has already: what snags leans towards the one
+    /// and away from the other, as a rummage in the Woods does.
+    characters: Vec<Character>,
+    found: Vec<&'static str>,
     /// From who came along: how long the bite lasts, how far a cast can stray, how readily fish
     /// come, how hard the line is strained, how far out the net reaches.
     window: f32,
@@ -224,6 +228,7 @@ impl Angling {
         ground: &mut Playground,
         outset: Outset,
         caught_before: impl Fn(&str) -> bool,
+        found_before: impl Fn(&str) -> bool,
         now: f32,
     ) -> Self {
         let Outset {
@@ -280,12 +285,18 @@ impl Angling {
             holding: false,
             last_held: now,
             snag: None,
+            found: finds::CATALOGUE
+                .iter()
+                .map(|find| find.id)
+                .filter(|id| found_before(id))
+                .collect(),
             window: 0.85 + 0.5 * patience,
             stray: 4.0 + 14.0 * (1.0 - (0.6 * patience + 0.4 * calm)),
             lure: 0.8 + 0.5 * playful,
             grip: 1.2 - 0.4 * strong,
             reach: if characters.len() > 1 { 12.0 } else { 0.0 },
             dozing: false,
+            characters,
         }
     }
 
@@ -558,7 +569,15 @@ impl Angling {
         }
         self.snag = None;
         if self.dice.chance(SNAG) {
-            self.snag = finds::surely(Kind::Scoop, &[], &[], |_| false, &mut self.dice);
+            let party: Vec<&Character> = self.characters.iter().collect();
+            let found = &self.found;
+            self.snag = finds::surely(
+                Kind::Scoop,
+                &[],
+                &party,
+                |id| found.contains(&id),
+                &mut self.dice,
+            );
         }
     }
 
@@ -1133,7 +1152,7 @@ mod tests {
             influence: crate::woods::Influence::default(),
             seed: 9,
         };
-        let angling = Angling::new(&mut ground, outset, |_| false, 0.0);
+        let angling = Angling::new(&mut ground, outset, |_| false, |_| false, 0.0);
         (ground, angling)
     }
 
@@ -1432,6 +1451,44 @@ mod tests {
         assert!(
             (0.75..1.33).contains(&(smooth / slow)),
             "{smooth:.2}s at 120 frames a second, {slow:.2}s at 20"
+        );
+    }
+
+    #[test]
+    fn a_snag_is_likelier_to_be_something_the_colony_has_not_found() {
+        let cast = sample();
+        let party = vec![cast.members[0].id];
+        let new = finds::CATALOGUE
+            .iter()
+            .find(|find| find.kind == Kind::Scoop && find.tier == Tier::Common)
+            .unwrap()
+            .id;
+        // How often that one snags, in many casts, with the colony having found everything else
+        // that snags, or nothing at all.
+        let share = |found_before: &dyn Fn(&str) -> bool| {
+            let mut ground = fishing::open(&cast, &party, 0.0);
+            let outset = Outset {
+                party: party.clone(),
+                drought: 0,
+                influence: crate::woods::Influence::default(),
+                seed: 9,
+            };
+            let mut angling = Angling::new(&mut ground, outset, |_| false, found_before, 0.0);
+            let (mut snags, mut it) = (0, 0);
+            for cast in 0..20_000 {
+                angling.splash((200.0, 112.0), cast as f32);
+                if let Some(snag) = angling.snag {
+                    snags += 1;
+                    it += usize::from(snag.id == new);
+                }
+            }
+            it as f32 / snags as f32
+        };
+        let with_the_rest = share(&|id: &str| id != new);
+        let with_nothing = share(&|_: &str| false);
+        assert!(
+            with_the_rest > 1.5 * with_nothing,
+            "{new} snagged {with_the_rest:.2} of the time when new among old, {with_nothing:.2} among new"
         );
     }
 }
