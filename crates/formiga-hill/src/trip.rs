@@ -24,6 +24,8 @@ pub struct Trip {
     arrived_at_utc: OffsetDateTime,
     /// Whether this Desktop records visits; Hill asks only for what is offered.
     records_visits: bool,
+    /// The souvenirs this Desktop can keep, if it offers to keep any.
+    accepts_souvenirs: Vec<String>,
 }
 
 /// Reads the snapshot Desktop left in `dir` and answers it: accepted, with the colony ready for
@@ -81,6 +83,12 @@ pub fn arrive(dir: &Path, busy: bool) -> Result<(Trip, Cast)> {
     };
     let seal = SnapshotSeal::of(&snapshot, &bytes);
     let records_visits = snapshot.offers(Capability::VisitRecord);
+    let accepts_souvenirs: Vec<String> = snapshot
+        .accepts_souvenirs
+        .iter()
+        .filter(|id| snapshot.accepts_souvenir(id))
+        .cloned()
+        .collect();
     let cast = match Cast::new(snapshot) {
         Ok(cast) => cast,
         Err(error) => return refuse(AckRefusal::Invalid, error.to_string()),
@@ -94,6 +102,7 @@ pub fn arrive(dir: &Path, busy: bool) -> Result<(Trip, Cast)> {
         seal,
         arrived_at_utc,
         records_visits,
+        accepts_souvenirs,
     };
     Ok((trip, cast))
 }
@@ -106,8 +115,10 @@ impl Trip {
     }
 
     /// The receipt for the way home. Written once, and only ever with things Desktop offered to
-    /// take.
-    pub fn come_home(&self) -> Result<()> {
+    /// take: the visit, and every souvenir the colony has `kept` at the Hill that this Desktop
+    /// can keep. Every one kept, not just this visit's, so one whose trip ended without a
+    /// receipt still comes home next time; Desktop keeps each once and ignores a repeat.
+    pub fn come_home(&self, kept: &[String]) -> Result<()> {
         let left_at_utc = OffsetDateTime::now_utc();
         let mut effects = Vec::new();
         if self.records_visits {
@@ -115,6 +126,15 @@ impl Trip {
                 arrived_at_utc: self.arrived_at_utc,
                 left_at_utc,
             });
+        }
+        for id in crate::story::souvenirs::ids() {
+            if effects.len() >= limits::MAX_EFFECTS {
+                break;
+            }
+            if kept.iter().any(|own| own == id) && self.accepts_souvenirs.iter().any(|ok| ok == id)
+            {
+                effects.push(ReturnEffect::Souvenir { id: id.to_owned() });
+            }
         }
         write_document(
             &self.dir.join(RECEIPT_FILE),
@@ -154,11 +174,77 @@ mod tests {
         assert!(ack.accepted && ack.answers(&seal));
 
         assert!(!trip.recalled());
-        trip.come_home().unwrap();
+        trip.come_home(&[]).unwrap();
         let receipt: ReturnReceipt = read_document(&dir.join(RECEIPT_FILE)).unwrap();
         assert!(receipt.answers(&seal));
         assert!(matches!(receipt.effects[..], [ReturnEffect::Visit { .. }]));
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    /// The souvenirs a receipt brings home: every one kept that this Desktop keeps, whichever
+    /// trip earned it.
+    fn souvenirs_home(offered: bool, accepts: &[&str], kept: &[&str]) -> Vec<String> {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        snapshot
+            .capabilities
+            .retain(|c| *c != Capability::Souvenirs);
+        if offered {
+            snapshot.capabilities.push(Capability::Souvenirs);
+        }
+        snapshot.accepts_souvenirs = accepts.iter().map(|id| (*id).to_owned()).collect();
+        let dir = left_by_desktop(&snapshot);
+        let (trip, _) = arrive(&dir, false).unwrap();
+        let kept: Vec<String> = kept.iter().map(|id| (*id).to_owned()).collect();
+        trip.come_home(&kept).unwrap();
+        let receipt: ReturnReceipt = read_document(&dir.join(RECEIPT_FILE)).unwrap();
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+        receipt
+            .effects
+            .into_iter()
+            .filter_map(|effect| match effect {
+                ReturnEffect::Souvenir { id } => Some(id),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_souvenir_kept_comes_home_when_desktop_keeps_it() {
+        let all: Vec<&str> = crate::story::souvenirs::ids();
+        assert_eq!(
+            souvenirs_home(true, &all, &["fair_ticket", "picnic_ribbon"]),
+            vec!["picnic_ribbon", "fair_ticket"],
+            "in the catalogue's order"
+        );
+    }
+
+    #[test]
+    fn a_souvenir_desktop_does_not_list_stays_at_the_hill() {
+        assert_eq!(
+            souvenirs_home(true, &["picnic_ribbon"], &["picnic_ribbon", "chest_marble"]),
+            vec!["picnic_ribbon"]
+        );
+    }
+
+    #[test]
+    fn a_desktop_that_does_not_offer_souvenirs_gets_none() {
+        // As from a Desktop before 0.66.6, whatever it lists.
+        assert!(souvenirs_home(false, &["picnic_ribbon"], &["picnic_ribbon"]).is_empty());
+        assert!(souvenirs_home(true, &[], &["picnic_ribbon"]).is_empty());
+    }
+
+    /// Desktop draws and names every souvenir it lists from its own copy, so each must be one of
+    /// Hill's. Hill may have more: Desktop lists a new one in a later release.
+    #[test]
+    fn every_souvenir_desktop_knows_is_one_of_hills() {
+        let ours = crate::story::souvenirs::ids();
+        for souvenir in formiga_core::Souvenir::ALL {
+            assert!(
+                ours.contains(&souvenir.id()),
+                "{} is not Hill's",
+                souvenir.id()
+            );
+        }
     }
 
     #[test]

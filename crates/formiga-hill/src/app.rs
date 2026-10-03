@@ -209,7 +209,7 @@ impl HillApp {
             return;
         }
         if let Visit::Trip(trip) = &self.arrival.visit
-            && let Err(error) = trip.come_home()
+            && let Err(error) = trip.come_home(&self.memories.colony().souvenirs)
         {
             // Desktop treats a trip with no receipt as one that came home unchanged.
             eprintln!("formiga-hill: could not write the receipt: {error}");

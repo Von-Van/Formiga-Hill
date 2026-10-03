@@ -41,6 +41,7 @@ owns only the destination.
 | Done | *The Last Bun*, a small mystery: one bun left on the table is gone, and whoever likes a mystery takes the case, questioning the colony's own suspects (whoever looks food over, the troublemaker) or following the crumbs, to find it kept safe by the one fondest of them |
 | Done | Hill's own memories of each colony: stories finished, souvenirs kept, visits, each seeker's quickest game |
 | Done | The station's display case, showing each souvenir the colony has kept |
+| Done | Souvenirs go home: every one the colony has kept goes back on the train to the Journal in Formiga Desktop 0.66.6, drawn the same in both apps by `formiga-art`, as is the train itself |
 | Done | The Village Green repainted from above, with no houses: lawn, gravel path, the old oak and its swing, the well, a flower bed, the toy chest and the picnic blanket, against the edge of the woods |
 | Done | The Fairground, reached from the green: a big top, a carousel, a hoopla stall and things to hide behind, with the Hill's tree on the skyline, its bulbs lit after dark. Free play there as on the green, and hide-and-seek to watch: you pick who is "it" (or let the colony decide), it counts with its eyes covered, everyone hides, and it goes looking. Where each hides, how each gives itself away, and how "it" searches all come from temperament; a parent never finds its little one until last. The first game seen through keeps a ticket in the display case |
 | Done | A packages folder for community stories: drop a package in and its stories join the notice board. The board's package list shows where each came from, anything that would not load and why, and sets any community package aside without touching it. `--packages-folder` says where the folder is |
@@ -126,7 +127,7 @@ The design's `formiga-hill-runtime` (cast resolution, scenes, packages, the Hill
 ## Formiga Desktop's crates
 
 `formiga-core`, `formiga-art` and `formiga-travel` all come from Formiga Desktop, from one source
-so their types agree: a release tag on GitHub, now `v0.66.5` (travel version 2). To move to a
+so their types agree: a release tag on GitHub, now `v0.66.6` (travel version 3). To move to a
 newer release, change the tag on all three in the root `Cargo.toml` together.
 
 ### Working against a Desktop checkout
