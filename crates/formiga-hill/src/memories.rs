@@ -11,9 +11,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-/// The book's format. Version 2 can keep something planted on the Hilltop, and growing things
-/// lifted into the satchel; a version 1 book reads as it was, everything on its Hilltop fully
-/// grown. A Hill older than the book sets it aside rather than losing what it cannot read.
+/// The book's format. Version 2 can keep something planted or built on the Hilltop, and growing
+/// things lifted into the satchel; a version 1 book reads as it was, everything on its Hilltop
+/// fully grown. A Hill older than the book sets it aside rather than losing what it cannot read.
 const VERSION: u32 = 2;
 const MAX_BYTES: u64 = 1024 * 1024;
 const FILE: &str = "memories.json";
@@ -354,8 +354,43 @@ impl Memories {
         true
     }
 
+    /// Builds a plan on a Hilltop spot from finds in the satchel, taking exactly what it needs.
+    /// Whatever stood there goes back into the satchel. Says whether it was built.
+    pub fn build(&mut self, spot: u8, plan: &str) -> bool {
+        let Some(plan) = crate::finds::plans::plan(plan) else {
+            return false;
+        };
+        if usize::from(spot) >= crate::hilltop::SPOTS.len() {
+            return false;
+        }
+        let colony = self.colony_mut();
+        if !plan.ready(&colony.satchel) {
+            return false;
+        }
+        for &(id, count) in plan.needs {
+            take_from_satchel(colony, id, count);
+        }
+        if let Some(old) = colony.hilltop.insert(spot, Standing::built(plan.id)) {
+            put_back(colony, old);
+        }
+        self.keep();
+        true
+    }
+
+    /// Takes apart something built on a spot, every find it took going back into the satchel.
+    /// Says what it was, if there was something built there.
+    pub fn take_apart(&mut self, spot: u8) -> Option<Standing> {
+        let colony = self.colony_mut();
+        let standing = colony.hilltop.get(&spot)?;
+        standing.comes_apart()?;
+        let standing = colony.hilltop.remove(&spot)?;
+        put_back(colony, standing.clone());
+        self.keep();
+        Some(standing)
+    }
+
     /// Takes whatever stands on a spot back into the satchel: a find among the finds, anything
-    /// growing lifted whole.
+    /// growing lifted whole, anything built taken apart into its finds.
     pub fn pick_up(&mut self, spot: u8) -> Option<Standing> {
         let colony = self.colony_mut();
         let standing = colony.hilltop.remove(&spot)?;
@@ -408,9 +443,14 @@ fn take_from_satchel(colony: &mut ColonyMemories, id: &str, count: u32) -> bool 
 }
 
 /// Puts something taken off the Hilltop back into the satchel: a find that never grows among the
-/// finds, anything planted lifted whole, so nothing is ever less grown for having been moved.
+/// finds, anything planted lifted whole, so nothing is ever less grown for having been moved, and
+/// anything built taken apart, every find it took given back.
 fn put_back(colony: &mut ColonyMemories, standing: Standing) {
-    if standing.back_among_finds() {
+    if let Some(finds) = standing.comes_apart() {
+        for &(id, count) in finds {
+            *colony.satchel.entry(id.to_owned()).or_default() += count;
+        }
+    } else if standing.back_among_finds() {
         *colony.satchel.entry(standing.id().to_owned()).or_default() += 1;
     } else {
         colony.lifted.push(standing);
@@ -696,6 +736,41 @@ mod tests {
         assert!(memories.place(7, "acorn_stash"));
         assert_eq!(memories.colony().hilltop[&7].stage(), Some(0));
         assert_eq!(memories.colony().lifted, [lifted]);
+    }
+
+    #[test]
+    fn building_takes_exactly_its_finds_and_taking_it_apart_gives_them_back() {
+        let mut memories = Memories::open(None, "c");
+        memories.back_from_the_woods(
+            &[7],
+            &["smooth_pebble", "smooth_pebble", "geode", "brass_lens"],
+        );
+        assert!(
+            !memories.build(4, "grand_cairn"),
+            "two pebbles are not enough"
+        );
+        assert!(!memories.build(4, "no_such_plan"));
+        memories.back_from_the_woods(&[7], &["smooth_pebble", "smooth_pebble"]);
+        let before = memories.colony().satchel.clone();
+        assert!(memories.place(4, "geode"));
+        assert!(memories.build(4, "grand_cairn"), "built over the geode");
+        let colony = memories.colony();
+        assert_eq!(colony.hilltop[&4], Standing::built("grand_cairn"));
+        assert_eq!(colony.satchel["smooth_pebble"], 1, "three of four taken");
+        assert_eq!(colony.satchel["geode"], 1, "what stood there went back");
+        assert_eq!(colony.satchel["brass_lens"], 1, "nothing else touched");
+        memories.move_piece(4, 9);
+        assert_eq!(memories.take_apart(9), Some(Standing::built("grand_cairn")));
+        assert!(memories.colony().hilltop.is_empty());
+        assert_eq!(memories.colony().satchel, before, "every find given back");
+        assert!(memories.colony().lifted.is_empty());
+        assert_eq!(memories.take_apart(9), None, "nothing left to take apart");
+        // Putting it back in the satchel takes it apart too, and a find is not taken apart.
+        assert!(memories.build(1, "grand_cairn"));
+        assert!(memories.place(2, "geode"));
+        assert_eq!(memories.take_apart(2), None);
+        memories.pick_up(1);
+        assert_eq!(memories.colony().satchel["smooth_pebble"], 4);
     }
 
     #[test]

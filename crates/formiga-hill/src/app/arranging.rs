@@ -1,10 +1,11 @@
 //! The Hilltop in the window: placing finds from the satchel on its spots, planting what grows,
-//! moving them about, and the journal of everything the Woods has turned up.
+//! moving them about, and the journal of everything the Woods has turned up. Building is in
+//! `plans`.
 
 use super::HillApp;
 use super::departures::grown_since;
-use crate::finds::{self, CATALOGUE, Kind, growing};
-use crate::hilltop::{self, SPOTS, Standing};
+use crate::finds::{self, CATALOGUE, Kind, growing, plans};
+use crate::hilltop::{self, Arrangement, SPOTS, Standing};
 use crate::paint::{put, rgb, rgba};
 use eframe::egui;
 use formiga_art::Canvas;
@@ -17,14 +18,23 @@ pub enum Placing {
     /// Something growing, lifted into the satchel, to be planted again as it is.
     Lifted(Standing),
     FromSpot(u8),
+    /// A plan, to be built.
+    Plan(&'static str),
 }
 
-/// How a find in the satchel is listed: by what it becomes, or as something to plant.
-fn in_the_satchel(id: &str) -> String {
+/// How a find in the satchel is listed, by name as the plans speak of it, and what it becomes on
+/// the Hilltop, for the person to read on hover.
+fn in_the_satchel(id: &str) -> (String, String) {
     match finds::find(id) {
-        Some(find) if growing::growth(id).is_some() => format!("{}, for planting", find.name),
-        Some(find) => find.piece.to_owned(),
-        None => id.to_owned(),
+        Some(find) if growing::growth(id).is_some() => (
+            find.name.to_owned(),
+            format!("Planted, it grows into {}", find.piece.to_lowercase()),
+        ),
+        Some(find) => (
+            find.name.to_owned(),
+            format!("Stands as {}", find.piece.to_lowercase()),
+        ),
+        None => (id.to_owned(), String::new()),
     }
 }
 
@@ -42,10 +52,15 @@ impl HillApp {
         }
     }
 
-    /// Puts the summit's pieces where the memories say they stand.
-    fn refresh_hilltop(&mut self) {
+    /// Puts the summit's pieces where the memories say they stand; anything still being built
+    /// isn't up yet, and its spot stands empty while the colony works.
+    pub(super) fn refresh_hilltop(&mut self) {
         let arrangement = self.memories.colony().hilltop.clone();
-        let placed = hilltop::placed(&arrangement);
+        let mut up: Arrangement = arrangement.clone();
+        if let Some(spot) = self.going_up() {
+            up.remove(&spot);
+        }
+        let placed = hilltop::placed(&up);
         self.piece_bounds = placed
             .iter()
             .map(|(spot, prop)| (*spot, prop.bounds()))
@@ -53,8 +68,8 @@ impl HillApp {
         let props = placed.into_iter().map(|(_, prop)| prop).collect();
         if let Some(ground) = &mut self.hilltop {
             ground.set_props(props);
-            ground.set_attractions(hilltop::attractions(&arrangement));
-            let lights = hilltop::nightlights(&arrangement, ground.backdrop());
+            ground.set_attractions(hilltop::attractions(&up));
+            let lights = hilltop::nightlights(&up, ground.backdrop());
             ground.set_nightlights(lights);
         }
         // The Hill seen from below changes too.
@@ -117,6 +132,7 @@ impl HillApp {
                 }
             }
         }
+        self.draw_crafting(&mut scene, now);
         scene
     }
 
@@ -125,6 +141,10 @@ impl HillApp {
         let Some(spot) = self.hilltop_spot(pointer) else {
             return false;
         };
+        // Nothing on the spot being built on can be picked up while the colony works there.
+        if self.going_up() == Some(spot) {
+            return true;
+        }
         let occupied = self.memories.colony().hilltop.contains_key(&spot);
         match self.placing.take() {
             Some(Placing::FromSatchel(id)) => {
@@ -134,6 +154,11 @@ impl HillApp {
                 self.memories.replant(spot, &standing);
             }
             Some(Placing::FromSpot(from)) => self.memories.move_piece(from, spot),
+            Some(Placing::Plan(plan)) => {
+                let now = self.now();
+                self.start_building(spot, plan, now);
+                return true;
+            }
             None if occupied => {
                 self.placing = Some(Placing::FromSpot(spot));
                 return true;
@@ -153,7 +178,9 @@ impl HillApp {
         let (x, y) = SPOTS[usize::from(spot)];
         let standing = self.memories.colony().hilltop.get(&spot);
         let label = match (&self.placing, standing) {
+            (Some(Placing::Plan(_)), _) => "Build here".to_owned(),
             (Some(_), _) => "Here".to_owned(),
+            (None, _) if self.going_up() == Some(spot) => "Being built".to_owned(),
             (None, Some(standing)) => standing.name().to_owned(),
             (None, None) => return None,
         };
@@ -190,10 +217,25 @@ impl HillApp {
                     self.placing = None;
                 }
             }
+            Some(Placing::Plan(plan)) => {
+                let name = plans::plan(plan).map_or("it", |plan| plan.name);
+                ui.label(format!("Choose a spot to build {}.", name.to_lowercase()));
+                if ui.button("Cancel").clicked() {
+                    self.placing = None;
+                }
+            }
             Some(Placing::FromSpot(spot)) => {
-                let name = colony.hilltop.get(&spot).map_or("", Standing::name);
+                let standing = colony.hilltop.get(&spot);
+                let name = standing.map_or("", Standing::name);
+                let built = standing.is_some_and(|standing| standing.plan().is_some());
                 ui.label(format!("Moving {}: choose a spot.", name.to_lowercase()));
-                if ui.button("Back in the satchel").clicked() {
+                if built {
+                    if ui.button("Take apart").clicked() {
+                        self.placing = None;
+                        let now = self.now();
+                        self.take_apart(spot, now);
+                    }
+                } else if ui.button("Back in the satchel").clicked() {
                     self.memories.pick_up(spot);
                     self.placing = None;
                     self.refresh_hilltop();
@@ -216,18 +258,23 @@ impl HillApp {
                         .selected_text(format!("Satchel ({count})"))
                         .show_ui(ui, |ui| {
                             for (id, count) in &satchel {
+                                let (name, becomes) = in_the_satchel(id);
                                 let label = if *count > 1 {
-                                    format!("{} \u{d7}{count}", in_the_satchel(id))
+                                    format!("{name} \u{d7}{count}")
                                 } else {
-                                    in_the_satchel(id)
+                                    name
                                 };
-                                if ui.selectable_label(false, label).clicked() {
+                                let row = ui.selectable_label(false, label).on_hover_text(becomes);
+                                if row.clicked() {
                                     chosen = Some(Placing::FromSatchel(id.clone()));
                                 }
                             }
                             for standing in &lifted {
                                 let label = format!("{}, lifted", standing.name());
-                                if ui.selectable_label(false, label).clicked() {
+                                let row = ui.selectable_label(false, label).on_hover_text(
+                                    "Lifted from the Hilltop as far as it had grown, to plant again",
+                                );
+                                if row.clicked() {
                                     chosen = Some(Placing::Lifted(standing.clone()));
                                 }
                             }
@@ -246,6 +293,18 @@ impl HillApp {
                 if !hint.is_empty() {
                     ui.label(egui::RichText::new(hint).italics());
                 }
+            }
+        }
+        // Plans only once there is an idea for one: the first find that goes into any.
+        if !self.thought_of().is_empty() {
+            let ready = self.ready_to_build().len();
+            let plans = if ready > 0 {
+                format!("Plans ({ready} ready)")
+            } else {
+                "Plans".to_owned()
+            };
+            if ui.selectable_label(self.crafting.open, plans).clicked() {
+                self.crafting.open = !self.crafting.open;
             }
         }
         if ui.button("Journal").clicked() {
@@ -356,6 +415,7 @@ impl HillApp {
                             ui.label(egui::RichText::new(line).small().italics());
                         }
                     }
+                    self.journal_plans(ui);
                     let fish = &crate::fishing::fish::CATALOGUE;
                     let caught = fish.iter().filter(|kind| colony.fish.contains_key(kind.id)).count();
                     ui.add_space(6.0);

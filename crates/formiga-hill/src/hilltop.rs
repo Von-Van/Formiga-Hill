@@ -3,6 +3,7 @@
 //! it all: sitting on the stones, looking through the telescope, napping by the berry bush. What
 //! grows is planted, and comes up a little more with every visit.
 
+pub mod building;
 mod scenery;
 mod standing;
 
@@ -309,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn something_growing_is_looked_after_and_lit_by_nothing_of_its_own() {
+    fn something_growing_is_looked_after_until_it_is_grown() {
         let arrangement = Arrangement::from([
             (2, Standing::from_satchel("bluebell_bulb")),
             (4, Standing::from("bluebell_bulb")),
@@ -320,6 +321,47 @@ mod tests {
             .collect();
         assert_eq!(uses, [Use::Tend, Use::Rest], "tended while it grows");
         assert_eq!(placed(&arrangement).len(), 2);
+    }
+
+    #[test]
+    fn the_colony_goes_over_and_enjoys_everything_built() {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        snapshot.presentation.reduce_motion = true;
+        let cast = Cast::new(snapshot).unwrap();
+        for (index, plan) in crate::finds::plans::PLANS.iter().enumerate() {
+            let spot = (index * 7 % SPOTS.len()) as u8;
+            let arrangement = Arrangement::from([(spot, Standing::built(plan.id))]);
+            let enjoyed = attractions(&arrangement);
+            assert_eq!(enjoyed.len(), 1, "nothing to enjoy in {}", plan.id);
+            assert_eq!(enjoyed[0].use_, plan.use_);
+            let mut ground = open(&cast, 0.0, &arrangement);
+            let stand = enjoyed[0].stand;
+            let mut went = false;
+            let mut now = 0.0;
+            while !went && now < 240.0 {
+                now += 1.0 / 30.0;
+                ground.tick(&cast, now);
+                went = ground.ids().into_iter().any(|id| {
+                    ground.position(id).is_some_and(|(x, y)| {
+                        (x - stand.0).abs() < 1.0 && (y - stand.1).abs() < 8.0
+                    })
+                });
+            }
+            assert!(went, "nobody went to {} on spot {spot}", plan.id);
+        }
+    }
+
+    #[test]
+    fn what_is_built_with_a_light_shines_after_dark() {
+        let dark = |arrangement: &Arrangement| {
+            let lights = nightlights(arrangement, &scenery::backdrop()).lamps;
+            lights.pixels().iter().filter(|pixel| pixel.a > 0).count()
+        };
+        let bare = dark(&Arrangement::new());
+        let lit = dark(&Arrangement::from([(3, Standing::built("lantern_tree"))]));
+        let unlit = dark(&Arrangement::from([(3, Standing::built("grand_cairn"))]));
+        assert!(lit > bare, "the lantern tree is dark");
+        assert_eq!(unlit, bare, "a cairn gives off no light");
     }
 
     #[test]

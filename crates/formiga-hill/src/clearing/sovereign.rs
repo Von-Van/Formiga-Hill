@@ -947,6 +947,43 @@ mod tests {
     }
 
     #[test]
+    fn something_built_from_a_sky_watching_find_still_watches_the_sky() {
+        use crate::hilltop::Standing;
+        use crate::memories::{ColonyMemories, FindRecord};
+        let mut colony = ColonyMemories::default();
+        for find in crate::finds::CATALOGUE.iter().take(10) {
+            colony
+                .finds
+                .insert(find.id.to_owned(), FindRecord::default());
+        }
+        colony.hilltop.insert(3, Standing::built("grand_cairn"));
+        colony
+            .hilltop
+            .insert(4, Standing::from_satchel("strange_seed"));
+        assert!(
+            !may_beckon(&colony),
+            "a cairn and a seedling are not for stargazing"
+        );
+        colony.hilltop.insert(3, Standing::built("great_telescope"));
+        assert!(
+            may_beckon(&colony),
+            "the great telescope is still a telescope"
+        );
+        // However it is built: anything made with a find for watching the sky counts.
+        for plan in &crate::finds::plans::PLANS {
+            let skyward = plan.needs.iter().any(|(id, _)| {
+                crate::finds::find(id).is_some_and(|find| find.use_ == crate::finds::Use::Gaze)
+            });
+            assert_eq!(
+                Standing::built(plan.id).sky_gazing(),
+                skyward || plan.use_ == crate::finds::Use::Gaze,
+                "{}",
+                plan.id
+            );
+        }
+    }
+
+    #[test]
     fn at_the_end_the_whole_colony_comes_running() {
         let cast = sample();
         let party = vec![cast.members[0].id];

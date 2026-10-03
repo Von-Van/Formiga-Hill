@@ -10,6 +10,7 @@
 
 pub mod art;
 pub mod growing;
+pub mod plans;
 
 use crate::character::Character;
 use crate::dice::Dice;

@@ -9,8 +9,8 @@ use crate::materials::{BLOSSOMS, GLOW, STONE};
 use crate::paint::{Ramp, chance, hline, line, mix, noise, polygon, put, rect, rgb, rgba, vline};
 use formiga_art::{Canvas, Rgba};
 
-const PEBBLE: Ramp = Ramp::new(0x5a524e, 0x7a716b, 0x999088, 0xb6aea4, 0xd4cdc2);
-const PEBBLE_WARM: Ramp = Ramp::new(0x5e4f45, 0x80695b, 0xa18977, 0xbea692, 0xd8c5b0);
+pub(super) const PEBBLE: Ramp = Ramp::new(0x5a524e, 0x7a716b, 0x999088, 0xb6aea4, 0xd4cdc2);
+pub(super) const PEBBLE_WARM: Ramp = Ramp::new(0x5e4f45, 0x80695b, 0xa18977, 0xbea692, 0xd8c5b0);
 const MOSS: Ramp = Ramp::new(0x34512a, 0x4a6e34, 0x638c40, 0x80aa52, 0xa4c872);
 const BULB: Ramp = Ramp::new(0x7a5a3e, 0xae8c66, 0xd2b88e, 0xe8d6b0, 0xf8eed8);
 const BLUEBELL: Ramp = Ramp::new(0x2c2f74, 0x3f4aa0, 0x5668c8, 0x7d8ee0, 0xb0bef2);
@@ -19,16 +19,16 @@ const STRAP: Ramp = Ramp::new(0x24482c, 0x346838, 0x488a46, 0x66a858, 0x8cc672);
 const SHOE: Ramp = Ramp::new(0x3e322c, 0x5a4a42, 0x76645a, 0x988474, 0xbaa694);
 const RUST: Ramp = Ramp::new(0x4a2a1e, 0x6e3c26, 0x925232, 0xb06c42, 0xcc8c5c);
 const WEATHERED: Ramp = Ramp::new(0x56504a, 0x7a726a, 0x9a9288, 0xb8b0a4, 0xd4ccc0);
-const BRASS: Ramp = Ramp::new(0x6b4a24, 0x9a7434, 0xc9a14e, 0xe4c06c, 0xf6e3a2);
+pub(super) const BRASS: Ramp = Ramp::new(0x6b4a24, 0x9a7434, 0xc9a14e, 0xe4c06c, 0xf6e3a2);
 const GATE: Ramp = Ramp::new(0x3c5a56, 0x5a807a, 0x7ca69c, 0xa0c4b8, 0xc8e0d6);
-const POST: Ramp = Ramp::new(0x3e2a20, 0x5a3e2e, 0x76543c, 0x92704e, 0xae8c66);
+pub(super) const POST: Ramp = Ramp::new(0x3e2a20, 0x5a3e2e, 0x76543c, 0x92704e, 0xae8c66);
 const GLAZE: Ramp = Ramp::new(0x9a8868, 0xcbbc98, 0xeadfc0, 0xf6eed8, 0xfffaf0);
 const DELFT: Ramp = Ramp::new(0x22357a, 0x2f4a9a, 0x4064b8, 0x6888d0, 0x9cb4e4);
 const MEND: Ramp = Ramp::new(0x8a5e14, 0xb8861e, 0xdcac30, 0xf2cc58, 0xfff0a8);
 const SOIL: Ramp = Ramp::new(0x2e2018, 0x46301f, 0x5c402a, 0x74543a, 0x8c6a4c);
 const BASIL: Ramp = Ramp::new(0x2a5228, 0x3a7232, 0x509640, 0x70b654, 0x9cd47a);
 const ROSEMARY: Ramp = Ramp::new(0x2a4238, 0x3a5a4a, 0x4e7460, 0x6a8e78, 0x8eac96);
-const TURF: Ramp = Ramp::new(0x2e5630, 0x44763c, 0x5e944c, 0x7cb262, 0xa2cc80);
+pub(super) const TURF: Ramp = Ramp::new(0x2e5630, 0x44763c, 0x5e944c, 0x7cb262, 0xa2cc80);
 const OAK_DOOR: Ramp = Ramp::new(0x4a2a1a, 0x6c3e24, 0x8a5430, 0xa86e42, 0xc48c5c);
 const HINGE: Ramp = Ramp::new(0x2e2624, 0x463a36, 0x5e504a, 0x7a6a62, 0x9a8a80);
 const CLAY: Rgba = rgb(0xb0684a);
@@ -213,7 +213,7 @@ fn cairn() -> Piece {
 
 /// A clump of bluebells: glossy strappy leaves fanned out over the grass, and stems nodding
 /// over at the top with their bells all hanging down one side.
-fn bluebells() -> Piece {
+pub(super) fn bluebells() -> Piece {
     let mut s = Canvas::new(26, 19);
     let ground = 17;
     shadow(&mut s, 13, ground, 11, 2);
@@ -808,7 +808,7 @@ fn sundial() -> Piece {
 }
 
 /// A block of dressed stone lit from the upper left, speckled.
-fn stone_block(s: &mut Canvas, x: i32, y: i32, width: i32, height: i32, salt: u32) {
+pub(super) fn stone_block(s: &mut Canvas, x: i32, y: i32, width: i32, height: i32, salt: u32) {
     for py in y..y + height {
         for px in x..x + width {
             let (col, row) = (px - x, py - y);
@@ -838,7 +838,7 @@ fn stone_block(s: &mut Canvas, x: i32, y: i32, width: i32, height: i32, salt: u3
 
 /// A little door in a grassy mound, for somebody very small: an arch of stones, a round window
 /// lit within, stepping stones up to the threshold and flowers all over.
-fn hill_door() -> Piece {
+pub(super) fn hill_door() -> Piece {
     let mut s = Canvas::new(48, 43);
     let ground = 38;
     shadow(&mut s, 24, ground, 23, 3);
@@ -1010,7 +1010,7 @@ fn hill_door() -> Piece {
 }
 
 /// The pixels about a circle of `radius` round the origin.
-fn ring_offsets(radius: f32) -> Vec<(i32, i32)> {
+pub(super) fn ring_offsets(radius: f32) -> Vec<(i32, i32)> {
     let reach = radius.ceil() as i32 + 1;
     let mut points = Vec::new();
     for dy in -reach..=reach {

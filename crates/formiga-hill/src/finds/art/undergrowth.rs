@@ -587,15 +587,15 @@ fn buddleia_in_bud() -> Piece {
     }
 }
 
-const LEAF: Ramp = Ramp::new(0x2c5233, 0x3d6e45, 0x518a55, 0x6fa866, 0x93c67e);
+pub(super) const LEAF: Ramp = Ramp::new(0x2c5233, 0x3d6e45, 0x518a55, 0x6fa866, 0x93c67e);
 const DEEP_LEAF: Ramp = Ramp::new(0x22422a, 0x30583a, 0x41704a, 0x588c58, 0x7aa86c);
 const SYCAMORE: Ramp = Ramp::new(0x2a5a2a, 0x3c7638, 0x529444, 0x74b456, 0x9ed078);
 const SAGE: Ramp = Ramp::new(0x34503e, 0x4a6a52, 0x648a6a, 0x84a884, 0xa8c8a4);
 const BARK: Ramp = Ramp::new(0x4a4038, 0x6a5c50, 0x8a7a6a, 0xa89888, 0xc4b6a4);
 const KEY_WING: Ramp = Ramp::new(0x7a4a2a, 0xa8683a, 0xc89058, 0xe0b47a, 0xf4dcb0);
 const KEY_SEED: Ramp = Ramp::new(0x5a3a1e, 0x7a5028, 0x96683a, 0xb08250, 0xc8a070);
-const BERRY_RED: Ramp = Ramp::new(0x6a1a22, 0x9a2430, 0xd03a3a, 0xf06a5a, 0xffd0c0);
-const BERRY_DARK: Ramp = Ramp::new(0x1e1430, 0x2e2048, 0x46306a, 0x6a5090, 0xc0b0e0);
+pub(super) const BERRY_RED: Ramp = Ramp::new(0x6a1a22, 0x9a2430, 0xd03a3a, 0xf06a5a, 0xffd0c0);
+pub(super) const BERRY_DARK: Ramp = Ramp::new(0x1e1430, 0x2e2048, 0x46306a, 0x6a5090, 0xc0b0e0);
 const CLOCK: Ramp = Ramp::new(0xa8a49a, 0xd4d0c4, 0xece8de, 0xf8f6f0, 0xffffff);
 const STEM: Ramp = Ramp::new(0x3e6a32, 0x4e8040, 0x62984e, 0x80b466, 0xa4d088);
 const PETAL: Ramp = Ramp::new(0xb07a18, 0xd89a20, 0xf5c430, 0xffe070, 0xfff4c0);
@@ -615,7 +615,7 @@ const COPPER: Ramp = Ramp::new(0x5a2a14, 0x8a4220, 0xb86430, 0xd8884a, 0xf4c088)
 const WROUGHT: Ramp = Ramp::new(0x2e3a3c, 0x46545a, 0x5e6e74, 0x7c8c90, 0xa4b2b4);
 const FOOTING: Ramp = Ramp::new(0x605a5d, 0x857d7c, 0xa69d94, 0xc2baae, 0xdcd5c8);
 const STALK: Rgba = rgb(0x5a6a34);
-const STRING: Rgba = rgb(0x8a7a64);
+pub(super) const STRING: Rgba = rgb(0x8a7a64);
 const SILK_THREAD: Rgba = rgba(0xd8d0bc, 200);
 
 // ---------------------------------------------------------------------------------------------
@@ -876,10 +876,10 @@ fn berry_bush() -> Piece {
 }
 
 /// One berry, round and shiny.
-const BERRY: [&str; 3] = [".#.", "#*o", ".os"];
+pub(super) const BERRY: [&str; 3] = [".#.", "#*o", ".os"];
 
 /// A low patch of dandelions: flowers open, and clocks gone to seed.
-fn dandelion_patch() -> Piece {
+pub(super) fn dandelion_patch() -> Piece {
     let mut s = Canvas::new(30, 20);
     let (cx, ground) = (15, 16);
     ellipse(&mut s, cx, ground, 13, 2, SHADOW);
@@ -1545,12 +1545,12 @@ fn tone(ramp: Ramp, lit: f32, x: i32, y: i32, salt: u32) -> Rgba {
 }
 
 /// A clump of leaves in a bush: its middle and its size.
-type Clump = ((i32, i32), (i32, i32));
+pub(super) type Clump = ((i32, i32), (i32, i32));
 
 /// A bush's worth of leaves: rounded clumps, each lit from the upper left, the clumps parted by
 /// shade and the whole outlined in the leaves' own darkest green, with leaves catching the light
 /// all over and poking out round the edge.
-fn foliage(s: &mut Canvas, clumps: &[Clump], ramp: Ramp, salt: u32) {
+pub(super) fn foliage(s: &mut Canvas, clumps: &[Clump], ramp: Ramp, salt: u32) {
     let mut layer = Canvas::new(s.width(), s.height());
     for (index, &(centre, size)) in clumps.iter().enumerate() {
         model(&mut layer, ramp, ROUND, 40, salt + index as u32, |x, y| {

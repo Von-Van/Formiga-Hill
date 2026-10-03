@@ -93,6 +93,21 @@ pub enum Brushing {
     Done,
 }
 
+/// How a companion lends a hand when the colony builds something on the Hilltop.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Knack {
+    /// Off to fetch things and back with them.
+    Fetching,
+    /// Knocking it all together and stamping it down.
+    Hammering,
+    /// Holding things steady while the others work.
+    Steadying,
+    /// Standing back and pointing out where everything goes.
+    Directing,
+    /// Supervising, sitting down. Mostly asleep.
+    Supervising,
+}
+
 /// What a traveller sets out to do next, on its own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Idea {
@@ -576,6 +591,88 @@ impl Character {
         }
     }
 
+    /// How it lends a hand building something: a lazybones supervises, a scholar directs, a little
+    /// one fetches, and the rest as their energy, feistiness and affection take them.
+    pub fn knack(&self) -> Knack {
+        let a = self.axes;
+        match self.kind {
+            _ if self.parent.is_some() => Knack::Fetching,
+            TemperamentKind::Lazybones => Knack::Supervising,
+            TemperamentKind::Scholar => Knack::Directing,
+            TemperamentKind::Guardian => Knack::Steadying,
+            TemperamentKind::Grump | TemperamentKind::Troublemaker => Knack::Hammering,
+            TemperamentKind::Explorer => Knack::Fetching,
+            _ if a.energy > 0.6 => Knack::Fetching,
+            _ if a.feistiness > 0.5 => Knack::Hammering,
+            _ if a.affection > 0.55 => Knack::Steadying,
+            _ if a.boldness > 0.6 => Knack::Directing,
+            _ => Knack::Fetching,
+        }
+    }
+
+    /// Its work at the building, once there, for as long as the building lasts: each beat goes on
+    /// until the work is done and something else is asked of it. A fetcher's trips to and fro are
+    /// the scene's; this is what it does with what it carried.
+    pub fn work(&self, knack: Knack) -> Vec<Beat> {
+        const UNTIL_DONE: f32 = 600.0;
+        match knack {
+            Knack::Hammering => {
+                let mut beats = Vec::new();
+                for _ in 0..4 {
+                    beats.push(Beat::new(Gesture::Stomp, ExpressionKind::Determined, 0.7));
+                    beats.push(Beat::new(Gesture::Reach, ExpressionKind::Determined, 0.5));
+                }
+                beats.push(Beat::new(
+                    Gesture::Stomp,
+                    ExpressionKind::Determined,
+                    UNTIL_DONE,
+                ));
+                beats
+            }
+            Knack::Steadying => vec![Beat::new(
+                Gesture::Heave,
+                ExpressionKind::Determined,
+                UNTIL_DONE,
+            )],
+            Knack::Directing => vec![
+                Beat::new(Gesture::Reach, ExpressionKind::Focused, 1.0),
+                Beat::new(Gesture::Watch, ExpressionKind::Focused, 1.4),
+                Beat::new(Gesture::Reach, ExpressionKind::Focused, 0.8),
+                Beat::new(Gesture::Watch, ExpressionKind::Focused, UNTIL_DONE),
+            ],
+            Knack::Supervising => vec![
+                Beat::new(Gesture::Sit, ExpressionKind::Content, 1.8),
+                Beat::new(Gesture::Yawn, ExpressionKind::Yawning, 1.0),
+                Beat::new(ActionKind::Sleep, ExpressionKind::Sleepy, UNTIL_DONE).cue(Cue::Sleep),
+            ],
+            Knack::Fetching => vec![Beat::new(
+                Gesture::Heave,
+                ExpressionKind::Determined,
+                UNTIL_DONE,
+            )],
+        }
+    }
+
+    /// Picking something up on a fetching trip.
+    pub fn pick_up(&self) -> Beat {
+        Beat::new(Gesture::Crouch, ExpressionKind::Determined, 0.6)
+    }
+
+    /// Greeting what it helped build, as it appears: its own celebration, a show-off's strut, and
+    /// a supervisor woken by the puff.
+    pub fn admire(&self, knack: Knack) -> Vec<Beat> {
+        let mut beats = Vec::new();
+        if knack == Knack::Supervising {
+            beats.push(Beat::new(Gesture::Gasp, ExpressionKind::Startled, 0.5).cue(Cue::Exclaim));
+        }
+        beats.push(self.celebrate(1.4));
+        if self.kind == TemperamentKind::Showoff {
+            beats.push(Beat::new(Gesture::Strut, ExpressionKind::Smug, 1.0));
+        }
+        beats.push(Beat::new(Gesture::Watch, ExpressionKind::Joy, 1.0).idle());
+        beats
+    }
+
     pub fn play_together(&self) -> Vec<Beat> {
         let mut beats: Vec<_> = self.flourish(HabitCue::Play).into_iter().collect();
         beats.push(
@@ -770,6 +867,37 @@ mod tests {
             ways.insert(format!("{:?}", faces(&beats)));
         }
         assert_eq!(ways.len(), tenders.len(), "some tend alike: {ways:?}");
+    }
+
+    #[test]
+    fn everyone_lends_a_hand_building_in_its_own_way_until_it_is_done() {
+        let builders = [
+            with(TemperamentKind::Lazybones, |_| {}),
+            with(TemperamentKind::Scholar, |_| {}),
+            with(TemperamentKind::Guardian, |_| {}),
+            with(TemperamentKind::Grump, |_| {}),
+            with(TemperamentKind::Explorer, |_| {}),
+        ];
+        let knacks: std::collections::HashSet<Knack> =
+            builders.iter().map(Character::knack).collect();
+        assert_eq!(knacks.len(), builders.len(), "some build alike: {knacks:?}");
+        for builder in &builders {
+            let work = builder.work(builder.knack());
+            let lasts: f32 = work.iter().map(|beat| beat.seconds).sum();
+            assert!(
+                lasts > 60.0,
+                "{:?} stops before the building does",
+                builder.kind
+            );
+            let admired = builder.admire(builder.knack());
+            assert!(
+                admired.last().is_some_and(|beat| beat.idle),
+                "free again after"
+            );
+        }
+        let mut little = with(TemperamentKind::Lazybones, |_| {});
+        little.parent = Some(1);
+        assert_eq!(little.knack(), Knack::Fetching, "a little one runs errands");
     }
 
     #[test]

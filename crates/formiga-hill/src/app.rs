@@ -8,6 +8,7 @@ mod departures;
 mod encounter;
 mod finery;
 mod fishing_trip;
+mod plans;
 mod rummaging;
 mod storytelling;
 
@@ -100,6 +101,8 @@ pub struct HillApp {
     clearing: Option<(Playground, crate::clearing::sovereign::Sovereign)>,
     /// What the person is about to stand somewhere on the Hilltop.
     placing: Option<Placing>,
+    /// The plans, and anything the colony is building on the Hilltop.
+    crafting: plans::Crafting,
     /// Where each piece on the Hilltop is drawn, for pointing at them.
     piece_bounds: Vec<(u8, (i32, i32, i32, i32))>,
     /// Whether the journal of finds is open.
@@ -204,6 +207,7 @@ impl HillApp {
             hilltop: None,
             clearing: None,
             placing: None,
+            crafting: plans::Crafting::default(),
             piece_bounds: Vec::new(),
             journal: false,
             pointer: None,
@@ -764,8 +768,8 @@ impl eframe::App for HillApp {
             let dt = (now - self.last_frame).clamp(0.0, 0.1);
             self.tick_woods(now, holding, dt);
         }
-        if let (Area::Hilltop, Some(ground)) = (self.area, &mut self.hilltop) {
-            ground.tick(&self.arrival.cast, now);
+        if self.area == Area::Hilltop {
+            self.tick_hilltop(now);
         }
         if self.area == Area::Clearing {
             self.tick_clearing(now);
@@ -1065,6 +1069,7 @@ impl eframe::App for HillApp {
         self.dress_up_window(&ctx);
         self.album_window(&ctx, now);
         self.journal_window(&ctx);
+        self.plans_window(&ctx);
         self.board_window(&ctx, now);
         self.shelf_window(&ctx);
         self.notices_window(&ctx);

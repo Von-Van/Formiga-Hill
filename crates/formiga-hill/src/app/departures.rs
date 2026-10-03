@@ -135,6 +135,8 @@ pub(super) struct Board {
     pub standing: usize,
     /// What has grown on the Hilltop since the last visit, as each is called now.
     pub grown: Vec<String>,
+    /// What there is enough in the satchel to build on the Hilltop.
+    pub buildable: Vec<String>,
     /// The quickest hide-and-seek among those here: who, and in how long.
     pub record: Option<(String, f32)>,
     /// Souvenirs that go home on the train to this Desktop.
@@ -280,6 +282,16 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
             ),
         ));
     }
+    if !board.buildable.is_empty() {
+        let names: Vec<&str> = board.buildable.iter().map(String::as_str).collect();
+        notes.push(notice(
+            "Plans",
+            format!(
+                "There is enough in the satchel to build {} on the Hilltop.",
+                listed(&names)
+            ),
+        ));
+    }
     if let Some((name, seconds)) = &board.record {
         notes.push(notice(
             "Fairground record",
@@ -420,6 +432,11 @@ impl HillApp {
             satchel: colony.satchel.values().sum::<u32>() + colony.lifted.len() as u32,
             standing: colony.hilltop.len(),
             grown: grown_names(&self.grown),
+            buildable: self
+                .ready_to_build()
+                .iter()
+                .map(|plan| plan.name.to_lowercase())
+                .collect(),
             record,
             going_home,
             problems: self.library.problems.len(),
@@ -641,6 +658,26 @@ mod tests {
         });
         assert_eq!(notes[1].heading, "On the Hilltop");
         assert_eq!(notes[1].text, line);
+    }
+
+    #[test]
+    fn plans_there_is_enough_for_are_an_invitation_on_the_board() {
+        let notes = notices(&Board {
+            visits: 2,
+            buildable: vec!["the grand cairn".into(), "a picnic table".into()],
+            ..Board::default()
+        });
+        assert_eq!(notes[1].heading, "Plans");
+        assert_eq!(
+            notes[1].text,
+            "There is enough in the satchel to build the grand cairn and a picnic table on the \
+             Hilltop."
+        );
+        let quiet = notices(&Board {
+            visits: 2,
+            ..Board::default()
+        });
+        assert!(quiet.iter().all(|note| note.heading != "Plans"));
     }
 
     #[test]

@@ -3,6 +3,7 @@
 //! upper left, outlined in a darker shade of their own colour, never black.
 
 mod brush;
+mod built;
 mod earth;
 mod hollow;
 mod relic;
@@ -11,7 +12,7 @@ mod water;
 
 use super::{Kind, find};
 use crate::paint::{Ramp, bevel, ellipse, rgba};
-use formiga_art::Canvas;
+use formiga_art::{Canvas, Rgba};
 
 /// Icons are this many pixels square.
 pub const ICON: u32 = 9;
@@ -81,6 +82,21 @@ pub fn stage(id: &str, stage: u8) -> Piece {
     piece
 }
 
+/// What a plan builds (see `finds::plans`), standing on its one spot.
+pub fn built(plan: &str) -> Piece {
+    let piece = built::piece(plan).unwrap_or_else(|| placeholder_piece(Kind::Reach));
+    debug_assert!(
+        piece.sprite.width() <= PIECE_MAX.0 && piece.sprite.height() <= PIECE_MAX.1,
+        "{plan} is too big for a spot"
+    );
+    piece
+}
+
+/// What shines from something built after dark: each light's colour, and where in the piece.
+pub fn built_lights(plan: &str) -> Vec<(Rgba, (i32, i32))> {
+    built::lights(plan)
+}
+
 fn tint(kind: Kind) -> Ramp {
     match kind {
         Kind::Dig => Ramp::new(0x4a3326, 0x6e4c36, 0x8f6747, 0xad855e, 0xc9a57c),
@@ -120,6 +136,34 @@ mod tests {
     fn rises(piece: &Piece) -> i32 {
         let (_, top, _, _) = piece.sprite.alpha_bounds().expect("nothing drawn");
         piece.anchor.1 - top as i32
+    }
+
+    #[test]
+    fn everything_built_is_drawn_bigger_than_its_finds_and_fits_any_spot() {
+        for plan in &crate::finds::plans::PLANS {
+            let drawn = built::piece(plan.id).unwrap_or_else(|| panic!("{} is not drawn", plan.id));
+            let (width, height) = (drawn.sprite.width(), drawn.sprite.height());
+            assert!(
+                width <= PIECE_MAX.0 && height <= PIECE_MAX.1,
+                "{} is {width}x{height}",
+                plan.id
+            );
+            let (x, y) = drawn.anchor;
+            assert!(x >= 0 && y >= 0 && x < width as i32 && y < height as i32);
+            // How much of a spot it takes up: its drawing's extent, across and up.
+            let extent = |piece: &Piece| {
+                let (left, top, right, bottom) =
+                    piece.sprite.alpha_bounds().expect("nothing drawn");
+                (right - left + 1) * (bottom - top + 1)
+            };
+            for (id, _) in plan.needs {
+                assert!(
+                    extent(&drawn) > extent(&piece(id)),
+                    "{} is no grander than the {id} it takes",
+                    plan.id
+                );
+            }
+        }
     }
 
     #[test]

@@ -1,6 +1,8 @@
-//! What can stand on a Hilltop spot: a find as its own piece, or a find planted and still
-//! growing. Everything that draws or uses the Hilltop asks this, not the finds, what a spot holds.
+//! What can stand on a Hilltop spot: a find as its own piece, a find planted and still growing,
+//! or something built from a plan. Everything that draws or uses the Hilltop asks this, not the
+//! finds, what a spot holds.
 
+use crate::finds::plans::{self, Plan};
 use crate::finds::{self, Use, art, growing};
 use crate::paint::rgb;
 use formiga_art::Rgba;
@@ -17,11 +19,15 @@ pub enum Standing {
     Find(String),
     /// A find planted and still growing, `stage` stages along (see `finds::growing`).
     Planted { planted: String, stage: u8 },
+    /// Something built from a plan (see `finds::plans`), out of finds that come back when it is
+    /// taken apart.
+    Built { built: String },
 }
 
 impl Standing {
-    /// Everything that can stand on the Hilltop: every find's piece and every stage of everything
-    /// that grows. For checking that each fits any spot, and for reviewing them all.
+    /// Everything that can stand on the Hilltop: every find's piece, every stage of everything
+    /// that grows and everything that can be built. For checking that each fits any spot, and for
+    /// reviewing them all.
     #[cfg(test)]
     pub fn every() -> Vec<Self> {
         let finds = finds::CATALOGUE
@@ -34,7 +40,23 @@ impl Standing {
                 stage: stage as u8,
             })
         });
-        finds.chain(stages).collect()
+        let built = plans::PLANS.iter().map(|plan| Self::built(plan.id));
+        finds.chain(stages).chain(built).collect()
+    }
+
+    /// Something built from the plan with this id.
+    pub fn built(plan: &str) -> Self {
+        Self::Built {
+            built: plan.to_owned(),
+        }
+    }
+
+    /// The plan it was built from, if it was built.
+    pub fn plan(&self) -> Option<&'static Plan> {
+        match self {
+            Self::Built { built } => plans::plan(built),
+            _ => None,
+        }
     }
 
     /// A find as it goes up from the satchel: planted, if it is one that grows.
@@ -49,16 +71,19 @@ impl Standing {
         }
     }
 
-    /// The find it is.
+    /// The find it is, or the plan it was built from.
     pub fn id(&self) -> &str {
         match self {
-            Self::Find(id) | Self::Planted { planted: id, .. } => id,
+            Self::Find(id) | Self::Planted { planted: id, .. } | Self::Built { built: id } => id,
         }
     }
 
     /// Whether Hill knows what it is. Anything it doesn't is kept, but neither drawn nor used.
     pub fn known(&self) -> bool {
-        finds::find(self.id()).is_some()
+        match self {
+            Self::Built { built } => plans::plan(built).is_some(),
+            _ => finds::find(self.id()).is_some(),
+        }
     }
 
     /// The stage it has grown to, if it is still growing.
@@ -67,7 +92,7 @@ impl Standing {
             Self::Planted { planted, stage } => growing::growth(planted)
                 .filter(|growth| usize::from(*stage) < growth.stages.len())
                 .map(|_| *stage),
-            Self::Find(_) => None,
+            Self::Find(_) | Self::Built { .. } => None,
         }
     }
 
@@ -95,13 +120,22 @@ impl Standing {
     }
 
     /// Whether, taken up, it goes back among the finds in the satchel: only a find that never
-    /// grows. Anything planted is lifted whole, and keeps how far it has grown.
+    /// grows. Anything planted is lifted whole, and keeps how far it has grown; anything built
+    /// comes apart into its finds (see `comes_apart`).
     pub fn back_among_finds(&self) -> bool {
         matches!(self, Self::Find(id) if growing::growth(id).is_none())
     }
 
-    /// What the person calls it: "A clump of bluebells", "Bluebells in bud".
+    /// What it comes apart into, if it was built: every find its plan took, and how many.
+    pub fn comes_apart(&self) -> Option<&'static [(&'static str, u32)]> {
+        self.plan().map(|plan| plan.needs)
+    }
+
+    /// What the person calls it: "A clump of bluebells", "Bluebells in bud", "The grand cairn".
     pub fn name(&self) -> &'static str {
+        if let Self::Built { built } = self {
+            return plans::plan(built).map_or("", |plan| plan.name);
+        }
         let Some(find) = finds::find(self.id()) else {
             return "";
         };
@@ -116,28 +150,38 @@ impl Standing {
         if self.growing() {
             return Some(Use::Tend);
         }
-        finds::find(self.id()).map(|find| find.use_)
+        match self {
+            Self::Built { built } => plans::plan(built).map(|plan| plan.use_),
+            _ => finds::find(self.id()).map(|find| find.use_),
+        }
     }
 
-    /// The finds it is made of.
+    /// The finds it is made of: the one find, or every find its plan took.
     pub fn finds(&self) -> Vec<&'static str> {
-        finds::find(self.id())
-            .map(|find| vec![find.id])
-            .unwrap_or_default()
+        match self {
+            Self::Built { built } => plans::plan(built).map(Plan::finds).unwrap_or_default(),
+            _ => finds::find(self.id())
+                .map(|find| vec![find.id])
+                .unwrap_or_default(),
+        }
     }
 
-    /// Whether it is something to look up at the sky with, or made with one.
+    /// Whether it is something to look up at the sky with, or made with one: the great telescope
+    /// is as much for stargazing as the little one it was made from.
     pub fn sky_gazing(&self) -> bool {
-        self.finds()
-            .iter()
-            .any(|id| finds::find(id).is_some_and(|find| find.use_ == Use::Gaze))
+        self.use_() == Some(Use::Gaze)
+            || self
+                .finds()
+                .iter()
+                .any(|id| finds::find(id).is_some_and(|find| find.use_ == Use::Gaze))
     }
 
     /// How it looks, standing on the Hilltop.
     pub fn piece(&self) -> art::Piece {
-        match self.stage() {
-            Some(stage) => art::stage(self.id(), stage),
-            None => art::piece(self.id()),
+        match (self, self.stage()) {
+            (Self::Built { built }, _) => art::built(built),
+            (_, Some(stage)) => art::stage(self.id(), stage),
+            (_, None) => art::piece(self.id()),
         }
     }
 
@@ -152,6 +196,7 @@ impl Standing {
                 _ => return Vec::new(),
             },
             Self::Planted { .. } => return Vec::new(),
+            Self::Built { built } => return art::built_lights(built),
         };
         let middle = (
             piece.sprite.width() as i32 / 2,
