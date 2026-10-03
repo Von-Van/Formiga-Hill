@@ -140,13 +140,70 @@ impl Stage {
             }
             self.current = Some((act, now));
         }
-        // Whoever is being dragged hangs from the cursor's tip.
-        if let (Move::Drag { who, .. }, since) = self.boss {
-            let tip = boss::tip(self.boss.0, now - since);
-            ground.teleport(who, (tip.0, tip.1 + 30.0));
+        // Whoever is being dragged hangs from the cursor's tip from when it takes hold to when it
+        // lets go. With motion reduced it is not carried at all: it is simply where it was
+        // dropped once the move is over.
+        if let (Move::Drag { who, .. }, since) = self.boss
+            && !ground.reduce_motion()
+        {
+            let t = now - since;
+            if (boss::HAUL.0..=boss::HAUL.1).contains(&t) {
+                let tip = boss::tip(self.boss.0, t);
+                ground.teleport(who, (tip.0, tip.1 + 30.0));
+            }
         }
         if self.bar > self.health {
             self.bar = (self.bar - BAR_SPEED * dt).max(self.health);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cast::Id;
+
+    /// Plays one drag, and says where the dragged companion was at each moment asked about.
+    fn drag(reduce_motion: bool, moments: &[f32]) -> Vec<(f32, f32)> {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        snapshot.presentation.reduce_motion = reduce_motion;
+        let cast = Cast::new(snapshot).unwrap();
+        let party: Vec<Id> = cast.ids().take(1).collect();
+        let who = party[0];
+        let mut ground = crate::clearing::open(&cast, &party, 0.0);
+        let from = (120.0, 180.0);
+        ground.teleport(who, from);
+        let mut stage = Stage::new(0.0);
+        stage.play([Act::Boss(Move::Drag {
+            who,
+            from,
+            to: (260.0, 170.0),
+        })]);
+        let mut now = 0.0;
+        let mut seen = Vec::new();
+        for &moment in moments {
+            while now < moment {
+                now += 1.0 / 60.0;
+                stage.tick(&mut ground, &cast, now);
+            }
+            seen.push(ground.position(who).unwrap());
+        }
+        seen
+    }
+
+    #[test]
+    fn whoever_is_dragged_stays_put_until_the_cursor_takes_hold() {
+        let seen = drag(false, &[0.1, 0.4, 1.2]);
+        assert_eq!(seen[0], (120.0, 180.0));
+        assert_eq!(seen[1], (120.0, 180.0));
+        assert_ne!(seen[2], (120.0, 180.0), "it was never hauled");
+    }
+
+    #[test]
+    fn with_reduced_motion_whoever_is_dragged_is_simply_dropped() {
+        let seen = drag(true, &[0.4, 1.2, 4.0]);
+        assert_eq!(seen[0], (120.0, 180.0));
+        assert_eq!(seen[1], (120.0, 180.0), "it was carried across");
+        assert_eq!(seen[2], (260.0, 170.0));
     }
 }

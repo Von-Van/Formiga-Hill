@@ -66,6 +66,9 @@ impl Move {
 }
 
 /// Where the tip is, `t` seconds into a move.
+/// When, into a drag, the cursor takes hold of whoever it drags, and when it lets go.
+pub const HAUL: (f32, f32) = (0.5, 1.9);
+
 pub fn tip(step: Move, t: f32) -> (f32, f32) {
     let ease = |a: (f32, f32), b: (f32, f32), u: f32| {
         let u = u.clamp(0.0, 1.0);
@@ -88,14 +91,15 @@ pub fn tip(step: Move, t: f32) -> (f32, f32) {
         Move::Drag { from, to, .. } => {
             let grab = (from.0, from.1 - 30.0);
             let drop = (to.0, to.1 - 30.0);
-            if t < 0.5 {
-                ease(HOME, grab, t / 0.5)
-            } else if t < 1.9 {
+            let (hold, release) = HAUL;
+            if t < hold {
+                ease(HOME, grab, t / hold)
+            } else if t < release {
                 // Hauled across, with a wobble.
-                let along = ease(grab, drop, (t - 0.5) / 1.4);
-                (along.0, along.1 - ((t - 0.5) * 7.0).sin().abs() * 10.0)
+                let along = ease(grab, drop, (t - hold) / (release - hold));
+                (along.0, along.1 - ((t - hold) * 7.0).sin().abs() * 10.0)
             } else {
-                ease(drop, HOME, (t - 1.9) / 0.7)
+                ease(drop, HOME, (t - release) / 0.7)
             }
         }
         Move::Select { area } => {
