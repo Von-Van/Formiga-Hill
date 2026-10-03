@@ -1688,9 +1688,9 @@ fn ticket_window(scene: &mut Canvas, x: i32, y: i32) {
 }
 
 /// A glass-fronted case in the wall, in the station's green enamel, lined in velvet, with a place
-/// on its two shelves for each of Hill's souvenirs. Those kept sit in their places; the rest are
+/// on its three shelves for each of Hill's souvenirs. Those kept sit in their places; the rest are
 /// empty cushions, waiting, never a list of what is missing.
-/// How many places each of the display case's two shelves has.
+/// How many places each of the display case's shelves has.
 const PER_SHELF: usize = 4;
 
 fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
@@ -1720,14 +1720,22 @@ fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
             mix(rgb(0x7a2c3a), rgb(0x3e1620), t),
         );
     }
-    // Two shelves, four places on each, in the catalogue's order.
-    let shelves = [inner_top + 8, inner_top + 20];
+    // Three shelves, four places on each, in the catalogue's order: the bottom one is the floor
+    // of the case.
+    let icon = formiga_art::SOUVENIR_ICON as i32;
+    let shelves = [
+        inner_top + icon,
+        inner_top + 2 * icon + 1,
+        inner_top + 3 * icon + 2,
+    ];
     for shelf in shelves {
         hline(scene, inner_left, shelf, inner_width, PLANK.light);
-        hline(scene, inner_left, shelf + 1, inner_width, PLANK.shadow);
+        if shelf + 1 < sill - 1 {
+            hline(scene, inner_left, shelf + 1, inner_width, PLANK.shadow);
+        }
     }
-    // The pictures are formiga-art's, so a souvenir looks the same here and in Desktop's journal.
-    let icon = formiga_art::SOUVENIR_ICON as i32;
+    // The pictures are formiga-art's, so a souvenir looks the same here and in Desktop's journal;
+    // one Desktop doesn't draw yet is drawn by Hill's own picture of it, in the same hand.
     let pitch = icon + 1;
     for (index, id) in crate::story::souvenirs::ids().into_iter().enumerate() {
         let shelf = shelves[index / PER_SHELF];
@@ -1735,11 +1743,8 @@ fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
         if keepsakes.iter().any(|kept| kept == id) {
             match formiga_core::Souvenir::from_id(id) {
                 Some(souvenir) => formiga_art::draw_souvenir(scene, souvenir, x, shelf - icon),
-                // One Hill has and Desktop doesn't draw yet: wrapped up as a little parcel.
                 None => {
-                    rect(scene, x + 1, shelf - 5, 5, 5, rgb(0xd8b26a));
-                    vline(scene, x + 3, shelf - 5, 5, rgb(0xc04a40));
-                    hline(scene, x + 1, shelf - 3, 5, rgb(0xc04a40));
+                    crate::story::souvenirs::art::draw(scene, id, x, shelf - icon);
                 }
             }
         } else {
@@ -2174,6 +2179,11 @@ mod tests {
             backdrop(&[], &Arrangement::new()),
             backdrop(&[], &Arrangement::new())
         );
+    }
+
+    #[test]
+    fn the_case_has_a_place_for_every_souvenir() {
+        assert!(crate::story::souvenirs::ids().len() <= PER_SHELF * 3);
     }
 
     #[test]
