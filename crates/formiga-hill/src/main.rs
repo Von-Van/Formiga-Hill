@@ -23,6 +23,7 @@ mod materials;
 mod meadow;
 mod memories;
 mod paint;
+mod photos;
 mod playground;
 mod sheet;
 mod station;
