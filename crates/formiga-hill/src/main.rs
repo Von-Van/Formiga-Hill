@@ -186,6 +186,7 @@ fn main() -> Result<()> {
             Area::Fairground => {
                 let until = args.at.unwrap_or(20.0);
                 let (mut fairground, _) = fairground::open(&arrival.cast, 0.0);
+                fairground.set_daylight(daylight);
                 fairground::show_hilltop(&mut fairground, &sample_arrangement());
                 let mut now = 0.0;
                 while now < until {
@@ -194,7 +195,7 @@ fn main() -> Result<()> {
                 }
                 fairground.compose(now)
             }
-            Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0)),
+            Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0), daylight),
             Area::Woods => woods_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Hilltop => {
                 let until = args.at.unwrap_or(20.0);
@@ -440,9 +441,10 @@ fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
 
 /// A game of hide-and-seek `at` seconds into the search, once the colony has settled at the
 /// Fairground and hidden.
-fn hiding_moment(cast: &Cast, at: f32) -> Canvas {
+fn hiding_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     const SETTLE: f32 = 12.0;
     let (mut ground, mut game) = fairground::open(cast, 0.0);
+    ground.set_daylight(daylight);
     let mut now = 0.0;
     let mut seeking_since = None;
     while seeking_since.is_none_or(|since| now < since + at) && now < 300.0 {
