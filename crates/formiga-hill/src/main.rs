@@ -15,6 +15,7 @@ mod fishing;
 mod font;
 mod green;
 mod hilltop;
+mod hosting;
 mod keepsake_art;
 mod kit;
 mod materials;
@@ -121,6 +122,15 @@ struct Args {
 }
 
 fn main() -> Result<()> {
+    // For the packaging scripts: the newest travel version this Hill reads, which goes in the
+    // macOS bundle and the Windows registry for Desktop to find.
+    if std::env::args_os()
+        .nth(1)
+        .is_some_and(|arg| arg == "--travel-version")
+    {
+        println!("{}", formiga_travel::TRAVEL_FORMAT_VERSION);
+        return Ok(());
+    }
     // Before anything starts a thread: see `daylight::Clock`.
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
     let Some(args) = parse_args(std::env::args_os().skip(1))? else {
@@ -133,7 +143,17 @@ fn main() -> Result<()> {
     if !args.check.is_empty() {
         return check_packages(&args.check);
     }
-    let arrival = arrive(args.source)?;
+    // A window hosts one colony at a time: see `hosting`. Drawing to a file needs no window.
+    let hosting = if args.render.is_none() {
+        memories::Memories::folder().map(|data| hosting::take(&data))
+    } else {
+        None
+    };
+    let busy = matches!(hosting, Some(Err(hosting::Busy)));
+    if busy && !matches!(args.source, Source::Trip(_)) {
+        bail!("Formiga Hill is already open, with a colony visiting");
+    }
+    let arrival = arrive(args.source, busy)?;
 
     if let Some((area, path)) = args.render {
         let daylight = daylight::Daylight::at_hour(args.hour.unwrap_or(12.0));
@@ -364,14 +384,14 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     }))
 }
 
-fn arrive(source: Source) -> Result<Arrival> {
+fn arrive(source: Source, busy: bool) -> Result<Arrival> {
     Ok(match source {
         Source::Sample => Arrival {
             cast: Cast::new(formiga_travel::sample::snapshot())?,
             visit: Visit::Rehearsal("Desktop's sample colony".to_owned()),
         },
         Source::Trip(dir) => {
-            let (trip, cast) = trip::arrive(&dir)?;
+            let (trip, cast) = trip::arrive(&dir, busy)?;
             Arrival {
                 cast,
                 visit: Visit::Trip(trip),
@@ -790,6 +810,32 @@ fn write_png(path: &Path, canvas: &Canvas, scale: u32) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Desktop finds an installed Hill by what `formiga_travel::discovery` names, so the bundle
+    /// and the installer must say exactly that.
+    #[test]
+    fn the_packaging_says_what_desktop_looks_for() {
+        use formiga_travel::discovery::*;
+        let packaging = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packaging");
+        let plist = std::fs::read_to_string(packaging.join("macos/Info.plist")).unwrap();
+        assert!(plist.contains(&format!(
+            "<key>CFBundleIdentifier</key><string>{MACOS_BUNDLE_ID}</string>"
+        )));
+        assert!(plist.contains(&format!("<key>{MACOS_TRAVEL_VERSION_KEY}</key><integer>")));
+        let installer = std::fs::read_to_string(packaging.join("windows/FormigaHill.wxs")).unwrap();
+        for value in [
+            WINDOWS_PATH_VALUE,
+            WINDOWS_VERSION_VALUE,
+            WINDOWS_TRAVEL_VERSION_VALUE,
+        ] {
+            assert!(
+                installer.contains(&format!(
+                    "Key=\"{WINDOWS_REGISTRY_KEY}\"\n              Name=\"{value}\""
+                )),
+                "the installer does not write {value}"
+            );
+        }
+    }
 
     fn parse(args: &[&str]) -> Result<Option<Args>> {
         parse_args(args.iter().map(OsString::from))

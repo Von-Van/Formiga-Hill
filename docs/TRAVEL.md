@@ -61,8 +61,15 @@ colony home exactly as it left. Hill never relies on Desktop noticing anything e
 
 - Souvenirs and keepsakes. Desktop will accept catalogue ids such as `accessory.leaf_hat` once
   it has a catalogue. None are offered yet.
-- Being found when installed. That needs the macOS bundle id `com.formiga.hill` with an integer
-  `FormigaTravelVersion` key in `Info.plist`, and on Windows the
-  `HKCU\Software\Formiga\Hill` values `Path`, `Version` and `TravelVersion`. The constants are in
-  `formiga_travel::discovery`. For development, Desktop takes `FORMIGA_HILL_PATH`.
-- Refusing as `Busy` when another Hill is already hosting a colony.
+
+## Being found, and being busy
+
+- `scripts/package-macos.sh` builds `Formiga Hill.app` with the bundle id `com.formiga.hill` and
+  an integer `FormigaTravelVersion` in its `Info.plist`. `scripts/package-windows.ps1` builds a
+  per-user installer that writes the `HKCU\Software\Formiga\Hill` values `Path`, `Version` and
+  `TravelVersion`. Both take the travel version from the binary (`--travel-version`), and a test
+  holds the plist and the installer to `formiga_travel::discovery`. For development, Desktop
+  still takes `FORMIGA_HILL_PATH`.
+- While a Hill window is open it holds `hosting.lock` in Hill's data folder. A trip that arrives
+  meanwhile is answered `Busy` and nothing else is read from it, so Desktop can try again later.
+  The lock is the operating system's, so it goes with the window however that closes.
