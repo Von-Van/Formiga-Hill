@@ -10,6 +10,8 @@
       Scope="perUser">
     <MajorUpgrade DowngradeErrorMessage="A newer Formiga Hill is already installed." />
     <MediaTemplate EmbedCab="yes" />
+    <Icon Id="HillIcon" SourceFile="$(HillIcon)" />
+    <Property Id="ARPPRODUCTICON" Value="HillIcon" />
     <Property Id="ARPCOMMENTS" Value="Somewhere your Formiga colony goes to spend time together." />
 
     <StandardDirectory Id="LocalAppDataFolder">
@@ -45,7 +47,8 @@
               Id="HillStartMenuShortcut"
               Name="Formiga Hill"
               Target="[INSTALLFOLDER]Formiga Hill.exe"
-              WorkingDirectory="INSTALLFOLDER" />
+              WorkingDirectory="INSTALLFOLDER"
+              Icon="HillIcon" />
           <RemoveFolder Id="RemoveHillProgramsFolder" On="uninstall" />
           <RegistryValue
               Root="HKCU"

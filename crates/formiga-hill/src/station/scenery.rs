@@ -8,9 +8,10 @@ use crate::hilltop::{Arrangement, Tint, Vista, skyline};
 use crate::kit::{Courses, bush, flower_box, plaster, ridge_tiles, roof, stonework, timber};
 use crate::materials::*;
 use crate::paint::{
-    Ramp, bevel, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb, rgba, vline,
+    Ramp, bevel, blit, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb, rgba,
+    vline,
 };
-use formiga_art::Canvas;
+use formiga_art::{Canvas, Rgba};
 
 use super::{SCENE_HEIGHT, SCENE_WIDTH};
 
@@ -97,11 +98,6 @@ pub const SMOKE_STEPS_PER_SECOND: f32 = 8.0;
 // ---------------------------------------------------------------------------------------------
 // Far away
 // ---------------------------------------------------------------------------------------------
-
-// What the far scenery needs besides the imports above: it builds its clouds and the old tree
-// in layers of their own before laying them over the scene.
-use crate::paint::blit;
-use formiga_art::Rgba;
 
 const WIDTH: i32 = SCENE_WIDTH as i32;
 

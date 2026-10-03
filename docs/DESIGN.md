@@ -12,6 +12,10 @@ made a decision this document left open, [TRAVEL.md](TRAVEL.md) and the README r
 > The Fairground's minigames are automated: the colony plays them and the person watches. In the
 > Woods the person actively takes part in the activities, and earns the rewards and finds that go
 > on to fill the Hilltop.
+>
+> **Owner decisions since.** Stories are staged in the Clubhouse, and the Green is for free play.
+> The Hill's light follows the person's own clock. There are no visiting creatures: every creature
+> at the Hill is one of the colony's own, brought by the train.
 
 ## 1. Purpose and scope
 
@@ -57,7 +61,7 @@ The first Hill should be compact and readable as a storybook diorama rather than
 
 | Area | Primary mode | Examples |
 | --- | --- | --- |
-| Station | Arrival / return / visitors | Train handoff, notices, visiting creatures, activity board |
+| Station | Arrival / return | Train handoff, notices, activity board |
 | Village Green | Pet-sim / free play | Petting, toys, snacks, grooming, dressing, photos |
 | Clubhouse | Authored scenes | Conversations, mysteries, short stories, relationship scenes |
 | Woods | RPG-lite expeditions / skill minigames | Fishing, foraging, bug catching, scavenging, treasure hunting, rare encounters |
@@ -146,7 +150,7 @@ A content package should request intent and presentation categories rather than 
 | Free-play scene | Open-ended | Area state only | Petting, toys, snacks, posing, decorating |
 | Activity | 2-10 min | Scores/unlocks optional | Race, fishing, hide-and-seek, cooking |
 | Story scene | 1-5 min | Completion + souvenir optional | Conversation, discovery, comic incident |
-| Story | 5-20 min | Chapter progress | Mystery, outing, visitor episode |
+| Story | 5-20 min | Chapter progress | Mystery, outing, relationship episode |
 | Adventure | Multiple sessions | Hill-owned campaign state | Several locations and authored chapters |
 | Woods expedition | 5-15 min | Discoveries + Hilltop possibilities | Fishing, foraging, bug catching, scavenging, treasure routes, rare encounters |
 | Secret set piece | 5-10 min | Rare completion + landmark | Interactive cinematic encounter: attack-menu choices trigger authored animations/cutscenes |
