@@ -268,9 +268,10 @@ pub struct Hunt {
     /// How dark the hour has made the meadow already, so the outing's own dusk only darkens it
     /// past that.
     hour_dark: f32,
-    /// Whether the person is holding to creep, and when the one with the net last moved.
+    /// Whether the person is holding to creep.
     holding: bool,
-    last_moved: f32,
+    /// Where the dozy one was last seen, and since when it has kept to that spot.
+    still: Option<Stillness>,
     /// From who came along: how little a creep rattles a bug, how fast the creep is, how much
     /// further the net reaches, how readily bugs come near, who can creep into the brambles, and
     /// who dozes.
@@ -378,7 +379,7 @@ impl Hunt {
             clock: now,
             hour_dark: 0.0,
             holding: false,
-            last_moved: now,
+            still: None,
             hush: if close_pair { hush + 0.1 } else { hush },
             creep,
             reach,
@@ -649,9 +650,6 @@ impl Hunt {
                 now,
             );
         }
-        if moved > 0.0 {
-            self.last_moved = now;
-        }
         let speed = if dt > 0.0 { moved / dt } else { 0.0 };
         let at = ground.position(netter).unwrap_or(at);
         let mut startled = Vec::new();
@@ -743,8 +741,9 @@ impl Hunt {
                 };
             }
             Err(why) => {
+                // The miss says why, which is the lesson in it; the bug just goes.
                 self.events.push(Event::Missed { bug: bug.id, why });
-                self.frighten(target, now);
+                self.send_off(target, now);
                 let kind = match bug.haunt {
                     Haunt::Log | Haunt::Stump => Kind::Reach,
                     Haunt::Reeds => Kind::Scoop,
@@ -775,14 +774,21 @@ impl Hunt {
         };
     }
 
-    /// Sends a bug off: across its haunt if this is the first fright in a while, out of the
-    /// meadow altogether if it is the second.
+    /// Sends a bug off, frightened, and says so.
     fn frighten(&mut self, index: usize, now: f32) {
+        self.events.push(Event::Startled {
+            bug: self.fliers[index].bug.id,
+        });
+        self.send_off(index, now);
+    }
+
+    /// Sends a bug off: across its haunt if this is the first fright in a while, out of the
+    /// meadow altogether if it is the second. Says nothing: a miss has already said why.
+    fn send_off(&mut self, index: usize, now: f32) {
         let far = self.far_perch(index);
         let flier = &mut self.fliers[index];
         flier.riding = None;
         flier.nerve = 0.3;
-        self.events.push(Event::Startled { bug: flier.bug.id });
         if now - flier.startled_at < 10.0 {
             flier.flight = Flight::Away {
                 until: now + AWAY_SECS,
@@ -820,9 +826,17 @@ impl Hunt {
     /// Every bug about its business: settling, moving on, coming back.
     fn fly(&mut self, ground: &mut Playground, now: f32) {
         let netter_at = self.party.first().and_then(|id| ground.position(*id));
+        // The dozy one is judged by its own stillness, whoever is carrying the net.
+        let dozing = self
+            .dozer
+            .and_then(|id| ground.position(id))
+            .is_some_and(|at| {
+                let still = self.still.get_or_insert(Stillness { at, since: now });
+                still.seen(at, now) >= DOZE_SECS
+            });
         let dozer = self
             .dozer
-            .filter(|_| now - self.last_moved >= DOZE_SECS && self.phase == Phase::Hunting);
+            .filter(|_| dozing && self.phase == Phase::Hunting);
         for index in 0..self.fliers.len() {
             let flier = &self.fliers[index];
             if !flier.out {
@@ -1127,6 +1141,24 @@ impl Hunt {
     }
 }
 
+/// How long someone has kept to one spot.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Stillness {
+    at: (f32, f32),
+    since: f32,
+}
+
+impl Stillness {
+    /// Notes where they are now, and says how long they have kept still: any move starts it
+    /// again.
+    fn seen(&mut self, at: (f32, f32), now: f32) -> f32 {
+        if distance(at, self.at) > 0.5 {
+            *self = Self { at, since: now };
+        }
+        now - self.since
+    }
+}
+
 /// The way a kind of bug goes from one perch to the next.
 fn path(way: Way, from: (f32, f32), to: (f32, f32), t: f32, clock: f32) -> (f32, f32) {
     let straight = (from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t);
@@ -1311,6 +1343,57 @@ mod tests {
         assert_eq!(flier.open(1.0), Err(Why::InFlight));
         flier.bug = bugs::bug("stag_beetle").unwrap();
         assert_eq!(flier.open(1.0), Ok(()));
+    }
+
+    #[test]
+    fn a_swing_at_the_wrong_moment_says_why_rather_than_only_that_it_flew() {
+        let (cast, mut ground, mut hunt) = hunt_with(1, 3);
+        let mut now = run(&cast, &mut ground, &mut hunt, 0.0, 8.0);
+        assert_eq!(hunt.phase(), Phase::Hunting);
+        // A cabbage white just settled, wings open and watching, with the net right before it.
+        let index = 0;
+        let perch = bugs::bug("cabbage_white").unwrap().haunt.perches()[0];
+        let flier = &mut hunt.fliers[index];
+        flier.bug = bugs::bug("cabbage_white").unwrap();
+        flier.out = true;
+        flier.perch = 0;
+        flier.pos = perch;
+        flier.flight = Flight::Settled {
+            since: now,
+            until: now + 60.0,
+        };
+        let stand = hunt.stand_for(perch, (192.0, 180.0));
+        ground.teleport(hunt.party[0], stand);
+        hunt.target = Some(index);
+        hunt.take_events();
+        hunt.swing(&mut ground, now);
+        now += SWING_SECS + 0.05;
+        hunt.tick(&mut ground, now);
+        let events = hunt.take_events();
+        assert!(
+            events.contains(&Event::Missed {
+                bug: "cabbage_white",
+                why: Why::WingsOpen
+            }),
+            "{events:?}"
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, Event::Startled { .. })),
+            "the miss was talked over: {events:?}"
+        );
+    }
+
+    #[test]
+    fn keeping_still_is_counted_from_the_last_move() {
+        let mut still = Stillness {
+            at: (10.0, 10.0),
+            since: 0.0,
+        };
+        assert_eq!(still.seen((10.0, 10.0), 4.0), 4.0);
+        assert_eq!(still.seen((14.0, 10.0), 5.0), 0.0, "a move starts it again");
+        assert_eq!(still.seen((14.0, 10.0), 11.0), 6.0);
     }
 
     #[test]
