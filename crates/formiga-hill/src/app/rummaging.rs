@@ -21,6 +21,7 @@ pub enum Activity {
     #[default]
     Rummage,
     Fish,
+    Bugs,
 }
 
 #[derive(Default)]
@@ -33,6 +34,11 @@ pub struct Woods {
     pub pool: Option<Playground>,
     pub outing: Option<(Playground, Rummage)>,
     pub fishing: Option<(Playground, crate::fishing::angling::Angling)>,
+    /// The meadow with nobody there between hunts, and a hunt under way.
+    pub meadow: Option<Playground>,
+    pub hunt: Option<(Playground, crate::meadow::catching::Hunt)>,
+    /// Whether the person is holding to creep up on a bug.
+    pub creeping: bool,
 }
 
 impl HillApp {
@@ -43,6 +49,10 @@ impl HillApp {
         }
         if self.woods.pool.is_none() {
             self.woods.pool = Some(crate::fishing::open(&self.arrival.cast, &[], now));
+        }
+        if self.woods.meadow.is_none() {
+            let hilltop = &self.memories.colony().hilltop;
+            self.woods.meadow = Some(crate::meadow::open(&self.arrival.cast, &[], now, hilltop));
         }
         if self.woods.party.is_empty()
             && let Some(first) = self.arrival.cast.members.first()
@@ -95,6 +105,10 @@ impl HillApp {
         let cast = &self.arrival.cast;
         if self.woods.fishing.is_some() {
             self.tick_fishing(now, holding);
+            return;
+        }
+        if self.woods.hunt.is_some() {
+            self.tick_bug_hunt(now, self.woods.creeping);
             return;
         }
         if let Some(empty) = &mut self.woods.empty
@@ -184,6 +198,15 @@ impl HillApp {
         if let Some(scene) = self.compose_pool(now) {
             return scene;
         }
+        if let Some(scene) = self.compose_meadow(now) {
+            return scene;
+        }
+        if self.woods.activity == Activity::Bugs
+            && self.woods.outing.is_none()
+            && let Some(meadow) = &mut self.woods.meadow
+        {
+            return meadow.compose(now);
+        }
         if self.woods.activity == Activity::Fish
             && self.woods.outing.is_none()
             && let Some(pool) = &mut self.woods.pool
@@ -205,6 +228,10 @@ impl HillApp {
     pub(super) fn woods_click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
         if self.woods.fishing.is_some() {
             self.fishing_click(pointer, now);
+            return;
+        }
+        if self.woods.hunt.is_some() {
+            self.bug_hunt_click(pointer, now);
             return;
         }
         let Some((ground, rummage)) = &mut self.woods.outing else {
@@ -229,6 +256,7 @@ impl HillApp {
     /// The key for catching, for anyone not using the pointer.
     pub(super) fn woods_strike(&mut self, now: f32) {
         self.fishing_strike(now);
+        self.bug_hunt_swing(now);
         if let Some((ground, rummage)) = &mut self.woods.outing
             && matches!(rummage.phase(), Phase::Catching(_))
             && !ground.reduce_motion()
@@ -241,6 +269,9 @@ impl HillApp {
     pub(super) fn woods_hover(&self, pointer: Option<(f32, f32)>) -> Option<(String, (f32, f32))> {
         if self.woods.fishing.is_some() {
             return self.fishing_hover(pointer);
+        }
+        if self.woods.hunt.is_some() {
+            return self.bug_hunt_hover(pointer);
         }
         let (_, rummage) = self.woods.outing.as_ref()?;
         if !matches!(rummage.phase(), Phase::Exploring | Phase::Catching(_)) {
@@ -266,10 +297,20 @@ impl HillApp {
             }
             return;
         }
+        if self.woods.hunt.is_some() {
+            self.bug_hunt_bar(ui, now);
+            if ui.button("Journal").clicked() {
+                self.journal = !self.journal;
+            }
+            return;
+        }
         match &self.woods.outing {
             None => {
-                for (activity, label) in [(Activity::Rummage, "Rummage"), (Activity::Fish, "Fish")]
-                {
+                for (activity, label) in [
+                    (Activity::Rummage, "Rummage"),
+                    (Activity::Fish, "Fish"),
+                    (Activity::Bugs, "Catch bugs"),
+                ] {
                     ui.selectable_value(&mut self.woods.activity, activity, label);
                 }
                 ui.separator();
@@ -292,6 +333,7 @@ impl HillApp {
                             plural(outings as usize)
                         ),
                         Activity::Fish => angler(&character).to_owned(),
+                        Activity::Bugs => crate::meadow::catching::netter(&character).to_owned(),
                     };
                     if ui
                         .selectable_label(chosen, &member.name)
@@ -344,6 +386,7 @@ impl HillApp {
             match self.woods.activity {
                 Activity::Rummage => self.set_off(now),
                 Activity::Fish => self.set_off_fishing(now),
+                Activity::Bugs => self.set_off_bug_hunting(now),
             }
         }
         if home && let Some((ground, rummage)) = &mut self.woods.outing {

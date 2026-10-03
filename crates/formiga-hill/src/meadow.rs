@@ -4,11 +4,9 @@
 //! something without startling it, learn its rhythm, and swing the net at the one moment it
 //! will not see coming.
 
-// Being built: the catching itself is still to come.
-#![allow(dead_code)]
-
 pub mod art;
 pub mod bugs;
+pub mod catching;
 mod scenery;
 
 use crate::cast::{Cast, Id};

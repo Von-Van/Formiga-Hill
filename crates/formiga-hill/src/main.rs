@@ -64,6 +64,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-fish <PNG>      Draw every fish as it is held up, and its icon, for review
   --render-meadow <PNG>    Draw the meadow at the Woods' edge, every bug settled in its haunt
   --render-bugs <PNG>      Draw every bug in each of its poses, close up, and its icon, for review
+  --render-bug-hunt <PNG>  Draw a bug hunt in the meadow, --at seconds in, played by a patient hand
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
   --render-story <PNG>     Draw a story in the Clubhouse --at seconds after it starts, reading each
@@ -104,6 +105,8 @@ enum Area {
     Meadow,
     /// Not an area: the review sheet of every bug.
     Bugs,
+    /// The meadow, a bug hunt under way.
+    BugHunt,
     /// The clearing that isn't on any map, the Sovereign met.
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
@@ -246,6 +249,7 @@ fn main() -> Result<()> {
             Area::Fish => fish_sheet(),
             Area::Meadow => meadow_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Bugs => bug_sheet(),
+            Area::BugHunt => bug_hunt_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Story => {
@@ -345,6 +349,9 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Meadow, value("--render-meadow")?));
             }
             Some("--render-bugs") => render = Some((Area::Bugs, value("--render-bugs")?)),
+            Some("--render-bug-hunt") => {
+                render = Some((Area::BugHunt, value("--render-bug-hunt")?));
+            }
             Some("--render-sovereign") => {
                 render = Some((Area::Sovereign, value("--render-sovereign")?));
             }
@@ -688,6 +695,63 @@ fn meadow_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
         let (ax, ay) = meadow::art::anchor(bug.id, meadow::art::Pose::Settled);
         paint::blit(&mut scene, &sprite, x as i32 - ax, y as i32 - ay);
     }
+    scene
+}
+
+/// A bug hunt `at` seconds in, played by a patient hand: it goes after the nearest bug, creeps
+/// up while it is out of reach, and swings only when the bug is open to the net.
+fn bug_hunt_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    use meadow::catching::{Hunt, Outset, Phase};
+    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let mut ground = meadow::open(cast, &party, 0.0, &sample_arrangement());
+    ground.set_daylight(daylight);
+    let outset = Outset {
+        party: party.clone(),
+        drought: 0,
+        close_pair: false,
+        influence: woods::influence(&sample_arrangement()),
+        seed: 11,
+    };
+    let mut hunt = Hunt::new(&mut ground, outset, |_| false, |_| false, 0.0);
+    hunt.set_hour_dark(daylight.darkness());
+    let mut now = 0.0;
+    while now < at {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        if hunt.phase() == Phase::Hunting {
+            if hunt.target().is_none() {
+                let netter = ground.position(party[0]).unwrap_or((192.0, 180.0));
+                let mut best: Option<(f32, f32)> = None;
+                for y in (60..210).step_by(2) {
+                    for x in (0..384).step_by(2) {
+                        if hunt.bug_at(x as f32, y as f32).is_some() {
+                            let here = (x as f32, y as f32);
+                            if best.is_none_or(|b| {
+                                playground::distance(b, netter) > playground::distance(here, netter)
+                            }) {
+                                best = Some(here);
+                            }
+                        }
+                    }
+                }
+                if let Some((x, y)) = best {
+                    hunt.choose(&mut ground, x, y, now);
+                }
+            }
+            // Creeps while it is out of reach, and keeps still while the bug is jittery.
+            hunt.hold(!hunt.in_reach(&ground) && hunt.nerve() < 0.55);
+            if hunt.open_now(&ground, now) && now + 0.5 < at {
+                hunt.swing(&mut ground, now);
+            }
+        }
+        hunt.tick(&mut ground, now);
+        for event in hunt.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    ground.set_fliers(hunt.fliers(now));
+    let mut scene = ground.compose(now);
+    hunt.draw(&mut scene, &ground, now);
     scene
 }
 
