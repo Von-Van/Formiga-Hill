@@ -802,6 +802,7 @@ impl eframe::App for HillApp {
                 };
 
                 let mut fixture = None;
+                let mut on_box = false;
                 self.pointer = pointer;
                 // With the camera out, the scene is only for framing photos.
                 camera_click = self.camera.out && response.clicked();
@@ -939,6 +940,20 @@ impl eframe::App for HillApp {
                                     tag(&member.name, to_screen(x, y - 6.0));
                                 }
                             }
+                            // The dress-up box opens with a click, as well as from the bar.
+                            let (left, top, right, bottom) = crate::green::DRESS_UP;
+                            on_box = hovered.is_none()
+                                && pointer.is_some_and(|(x, y)| {
+                                    (left as f32..right as f32).contains(&x)
+                                        && (top as f32..bottom as f32).contains(&y)
+                                });
+                            if on_box {
+                                ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+                                if response.clicked() {
+                                    self.dress_up = !self.dress_up;
+                                    self.picked = None;
+                                }
+                            }
                             hovered
                         }
                         _ => {
@@ -975,7 +990,17 @@ impl eframe::App for HillApp {
                     }
                 };
                 self.hovered = hovered;
-                if fixture == Some(Fixture::Notices) && hovered.is_none() {
+                if on_box {
+                    let open = self.dress_up;
+                    response.on_hover_ui_at_pointer(|ui| {
+                        ui.strong("The dress-up box");
+                        ui.label(if open {
+                            "Click to close it."
+                        } else {
+                            "Click to open it and dress someone up."
+                        });
+                    });
+                } else if fixture == Some(Fixture::Notices) && hovered.is_none() {
                     let notes = departures::notices(&self.board()).len();
                     response.on_hover_ui_at_pointer(|ui| {
                         ui.strong("The notice board");
