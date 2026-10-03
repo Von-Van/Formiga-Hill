@@ -43,6 +43,13 @@ pub fn draw_souvenir(scene: &mut Canvas, id: &str, x: i32, y: i32) {
             ],
             [0x7a8590, 0xd8dde2, 0xffffff, 0xffffff],
         ),
+        // A glass marble with an amber twist through it.
+        "chest_marble" => (
+            [
+                "..###..", ".#*oo#.", "#*oxxo#", "#oxooo#", "#ooxxo#", ".#ooo#.", "..###..",
+            ],
+            [0x2c5a86, 0x5c9bd2, 0xe6f4ff, 0xf0b44c],
+        ),
         // A ticket stub, torn along its perforations.
         "fair_ticket" => (
             [
