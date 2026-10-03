@@ -83,18 +83,19 @@ impl Album {
         Ok(())
     }
 
-    /// Takes a photo out of the album, and off the disk.
+    /// Takes a photo off the disk, and out of the album. The disk goes first: a photo that cannot
+    /// be deleted stays in the album, rather than vanishing now and coming back next visit.
     pub fn remove(&mut self, index: usize) -> Result<()> {
-        if index >= self.photos.len() {
+        let Some(photo) = self.photos.get(index) else {
             return Ok(());
-        }
-        let photo = self.photos.remove(index);
+        };
         if let Some(folder) = &self.folder {
             let path = folder.join(format!("{}.png", photo.name));
             if path.exists() {
                 fs::remove_file(path)?;
             }
         }
+        self.photos.remove(index);
         Ok(())
     }
 }
@@ -225,6 +226,22 @@ mod tests {
         album.keep(picture(), at).unwrap();
         album.remove(0).unwrap();
         assert!(Album::open(Some(&data), "c").photos.is_empty());
+    }
+
+    #[test]
+    fn a_photo_that_cannot_be_deleted_stays_in_the_album() {
+        let data = scratch("stuck");
+        let at = OffsetDateTime::from_unix_timestamp(1_790_000_000).unwrap();
+        let mut album = Album::open(Some(&data), "c");
+        album.keep(picture(), at).unwrap();
+        // Something in the way of deleting it: a folder, not empty, where its file was.
+        let folder = album.folder.clone().unwrap();
+        let path = folder.join(format!("{}.png", album.photos[0].name));
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join("in-the-way"), b"").unwrap();
+        assert!(album.remove(0).is_err());
+        assert_eq!(album.photos.len(), 1, "it is still there, to try again");
     }
 
     #[test]

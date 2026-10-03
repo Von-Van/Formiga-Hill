@@ -657,6 +657,13 @@ impl eframe::App for HillApp {
         ctx.input(|input| {
             let onwards =
                 input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Enter);
+            // The camera comes out, and goes away, wherever the person is, a story included.
+            if input.key_pressed(egui::Key::C) {
+                self.camera.out = !self.camera.out;
+            }
+            if input.key_pressed(egui::Key::Escape) {
+                self.camera.out = false;
+            }
             match &mut self.story {
                 Some((_, director)) if self.area == Area::Clubhouse => {
                     if onwards && director.shown().is_some() {
@@ -699,10 +706,6 @@ impl eframe::App for HillApp {
                     }
                     if input.key_pressed(egui::Key::Escape) {
                         self.placing = None;
-                        self.camera.out = false;
-                    }
-                    if input.key_pressed(egui::Key::C) {
-                        self.camera.out = !self.camera.out;
                     }
                     if input.key_pressed(egui::Key::Escape)
                         && self.area == Area::Fairground

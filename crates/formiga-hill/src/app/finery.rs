@@ -123,6 +123,7 @@ impl HillApp {
             self.woods.outing.as_mut().map(|(ground, _)| ground),
             self.woods.fishing.as_mut().map(|(ground, _)| ground),
             self.woods.hunt.as_mut().map(|(ground, _)| ground),
+            self.clearing.as_mut().map(|(ground, _)| ground),
         ];
         for ground in grounds.into_iter().flatten() {
             ground.dress(costumes, groomed);

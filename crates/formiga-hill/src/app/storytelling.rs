@@ -118,6 +118,8 @@ impl HillApp {
 
     pub(super) fn clubhouse_bar(&mut self, ui: &mut egui::Ui, now: f32) {
         if self.story.is_some() {
+            // The camera is to hand during a story too: what is played out is worth a photo.
+            self.camera_buttons(ui);
             self.story_panel(ui);
             return;
         }

@@ -362,18 +362,38 @@ impl Actor {
         )
     }
 
-    /// The opaque part of what it shows at `now`, in scene pixels, inclusive.
+    /// The opaque part of what it shows at `now`, in scene pixels, inclusive: what it wears too,
+    /// so a tall hat is pointed at, and tagged above, along with its wearer.
     pub fn bounds(&mut self, now: f32) -> (i32, i32, i32, i32) {
         let key = self.pose(now);
         let (x, y) = self.origin();
-        let (left, top, right, bottom) = self.frame(key).bounds;
-        (x + left, y + top, x + right, y + bottom)
+        let frame = self.frame(key);
+        let (left, top, right, bottom) = frame.bounds;
+        let crown = (x + frame.crown.0, y + frame.crown.1);
+        let body = (x + left, y + top, x + right, y + bottom);
+        let worn = self.costume.and_then(|id| {
+            let (sprite, at) = placed_costume(id, crown, self.face_below_crown, key.facing_right)?;
+            let (l, t, r, b) = sprite.alpha_bounds()?;
+            Some((
+                at.0 + l as i32,
+                at.1 + t as i32,
+                at.0 + r as i32,
+                at.1 + b as i32,
+            ))
+        });
+        match worn {
+            Some((l, t, r, b)) => (body.0.min(l), body.1.min(t), body.2.max(r), body.3.max(b)),
+            None => body,
+        }
     }
 
-    /// The shade under its feet. Drawn for everyone before anyone, so nobody's shadow falls on
-    /// somebody else.
+    /// The shade under its feet, as wide as its body whatever it wears. Drawn for everyone
+    /// before anyone, so nobody's shadow falls on somebody else.
     pub fn draw_shadow(&mut self, scene: &mut Canvas, now: f32) {
-        let (left, _, right, _) = self.bounds(now);
+        let key = self.pose(now);
+        let (x, _) = self.origin();
+        let (left, _, right, _) = self.frame(key).bounds;
+        let (left, right) = (x + left, x + right);
         let half = ((right - left) / 2 - 2).max(4);
         let (cx, cy) = (self.pos.0.round() as i32, self.pos.1.round() as i32 + 1);
         ellipse(scene, cx, cy, half, 1, rgba(0x2c3a24, 60));
@@ -509,9 +529,19 @@ fn draw_costume(
     face_below_crown: i32,
     facing_right: bool,
 ) {
-    let Some(piece) = crate::costume::piece(id) else {
-        return;
-    };
+    if let Some((sprite, at)) = placed_costume(id, crown, face_below_crown, facing_right) {
+        blit(scene, &sprite, at.0, at.1);
+    }
+}
+
+/// A costume piece as it is drawn on its wearer, and where its top-left corner goes in the scene.
+fn placed_costume(
+    id: &str,
+    crown: (i32, i32),
+    face_below_crown: i32,
+    facing_right: bool,
+) -> Option<(Canvas, (i32, i32))> {
+    let piece = crate::costume::piece(id)?;
     let mut sprite = crate::costume::art::sprite(id);
     let (mut ax, ay) = crate::costume::art::anchor(id);
     if !facing_right {
@@ -530,7 +560,7 @@ fn draw_costume(
         // The throat: just under the face, however tall the head above it.
         crate::costume::Slot::Neck => (crown.0, crown.1 + face_below_crown + THROAT_BELOW_FACE),
     };
-    blit(scene, &sprite, point.0 - ax, point.1 - ay);
+    Some((sprite, (point.0 - ax, point.1 - ay)))
 }
 
 fn frame_of(clip: BodyClip, elapsed: f32, still: bool) -> u8 {
@@ -633,6 +663,35 @@ mod tests {
             (bottom - 180).abs() <= 1,
             "feet at {bottom}, standing at 180"
         );
+    }
+
+    #[test]
+    fn what_it_wears_is_part_of_it() {
+        let mut actor = actor();
+        let bare = actor.bounds(0.0);
+        actor.wear(Some("top_hat"));
+        let hatted = actor.bounds(0.0);
+        assert!(
+            hatted.1 < bare.1,
+            "the hat rises above {bare:?}: {hatted:?}"
+        );
+        // Every pixel of the hat as drawn is within what can be pointed at.
+        let mut scene = Canvas::new(200, 216);
+        actor.draw(&mut scene, 0.0);
+        let mut bare_scene = Canvas::new(200, 216);
+        actor.wear(None);
+        actor.draw(&mut bare_scene, 0.0);
+        for y in 0..216 {
+            for x in 0..200 {
+                if scene.get(x, y) != bare_scene.get(x, y) {
+                    let (l, t, r, b) = hatted;
+                    assert!(
+                        (l..=r).contains(&x) && (t..=b).contains(&y),
+                        "({x}, {y}) of the hat is outside {hatted:?}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
