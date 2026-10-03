@@ -219,6 +219,7 @@ fn main() -> Result<()> {
                     &arrival.cast,
                     story_to_draw(&library)?,
                     args.at.unwrap_or(12.0),
+                    daylight,
                 )?
             }
         };
@@ -396,10 +397,16 @@ fn story_to_draw(library: &story::Library) -> Result<&story::Story> {
 
 /// A story `at` seconds in, with each line read after two and a half seconds and the first choice
 /// always taken, for seeing how it is staged.
-fn story_moment(cast: &Cast, chosen: &story::Story, at: f32) -> Result<Canvas> {
+fn story_moment(
+    cast: &Cast,
+    chosen: &story::Story,
+    at: f32,
+    daylight: daylight::Daylight,
+) -> Result<Canvas> {
     // The colony comes in and settles first, as it would before anyone opens a story.
     const SETTLE: f32 = 12.0;
     let mut room = clubhouse::Clubhouse::open(cast, 0.0, &sample_arrangement(), vec![false]);
+    room.set_daylight(daylight);
     let mut now = 0.0;
     while now < SETTLE {
         now += 1.0 / 30.0;
@@ -698,6 +705,13 @@ fn check_packages(folders: &[PathBuf]) -> Result<()> {
                         "  \u{201c}{}\u{201d}, for {} or more travellers",
                         story.title, story.min_cast
                     );
+                    // A story written for the green is played in the Clubhouse; say how it is read.
+                    if story.api == 1 {
+                        println!("    written for content API 1, so played in the Clubhouse");
+                        for (green, clubhouse) in &story.read_as {
+                            println!("    \"{green}\" is read as \"{clubhouse}\"");
+                        }
+                    }
                 }
             }
             Err(problem) => {
@@ -776,6 +790,16 @@ mod tests {
         let problem = story_to_draw(&library).unwrap_err().to_string();
         assert!(problem.contains("package.formiga-hill"), "{problem}");
         assert!(story_to_draw(&story::Library::load(&[])).is_ok());
+    }
+
+    #[test]
+    fn a_story_is_drawn_at_the_hour_asked_for() {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let library = story::Library::load(&[]);
+        let chosen = story_to_draw(&library).unwrap();
+        let at =
+            |hour| story_moment(&cast, chosen, 1.0, daylight::Daylight::at_hour(hour)).unwrap();
+        assert_ne!(at(12.0), at(0.0), "midnight looks like noon");
     }
 
     #[test]

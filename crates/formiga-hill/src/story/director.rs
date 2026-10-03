@@ -486,6 +486,7 @@ mod tests {
             "#,
             &Lines::parse(r#"title = "Test""#).unwrap(),
             1,
+            2,
         )
         .unwrap();
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();

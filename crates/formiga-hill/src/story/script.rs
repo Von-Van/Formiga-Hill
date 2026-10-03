@@ -26,7 +26,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 
 /// The official areas a story can be staged in. Stories moved indoors when the Clubhouse was
-/// built, and the green went back to free play.
+/// built, in content API 2, and the green went back to free play.
 pub const AREAS: [&str; 1] = ["clubhouse"];
 /// The named spots of the Clubhouse a beat can send someone to.
 pub const PLACES: [&str; 13] = [
@@ -44,6 +44,25 @@ pub const PLACES: [&str; 13] = [
     "front",
     "back",
 ];
+/// Content API 1 staged stories on the green. A story written for it still loads, and is played
+/// in the Clubhouse: its area is read as the Clubhouse, and each of the green's places as its
+/// counterpart there.
+pub const API_1_AREA: &str = "green";
+pub const API_1_PLACES: [(&str, &str); 10] = [
+    // Where everyone gathers, sits and eats.
+    ("blanket", "rug"),
+    // The centrepiece at the back.
+    ("well", "hearth"),
+    // The tall thing at the back on the left, and somewhere to clamber beside it.
+    ("oak", "bookshelf"),
+    ("swing", "armchair"),
+    ("chest", "chest"),
+    ("centre", "centre"),
+    ("left", "left"),
+    ("right", "right"),
+    ("front", "front"),
+    ("back", "back"),
+];
 pub const MAX_ROLES: usize = 12;
 pub const MAX_SCENES: usize = 64;
 pub const MAX_BEATS: usize = 200;
@@ -56,7 +75,13 @@ pub struct Story {
     pub id: String,
     /// The title, in the package's own words.
     pub title: String,
+    /// Where it is staged, whatever the content API it was written for called it.
     pub area: &'static str,
+    /// The content API it was written for.
+    pub api: u32,
+    /// For a story written for content API 1, each of the green's places it names that the
+    /// Clubhouse calls something else, and what it is read as, for telling its author.
+    pub read_as: Vec<(&'static str, &'static str)>,
     pub roles: Vec<Role>,
     pub scenes: Vec<Scene>,
     pub start: usize,
@@ -312,23 +337,20 @@ struct RawChoice {
 
 /// Parses and checks a story file against the package's lines. Any problem is reported with
 /// where it is, in the author's terms.
-pub fn parse_story(text: &str, lines: &Lines, package_min_cast: usize) -> Result<Story, String> {
+/// Parses and checks a story file written for content API `api` against the package's lines.
+pub fn parse_story(
+    text: &str,
+    lines: &Lines,
+    package_min_cast: usize,
+    api: u32,
+) -> Result<Story, String> {
     let raw: RawStory = toml::from_str(text).map_err(|error| error.to_string())?;
     let header = raw.story;
     if !is_id(&header.id) {
         return Err("story.id must be short, lowercase, letters, digits and '-'".into());
     }
-    let area = AREAS
-        .iter()
-        .copied()
-        .find(|area| *area == header.area)
-        .ok_or_else(|| {
-            format!(
-                "story.area \"{}\" is not one of {}",
-                header.area,
-                AREAS.join(", ")
-            )
-        })?;
+    let area =
+        staged_area(api, &header.area).map_err(|problem| format!("story.area: {problem}"))?;
 
     // Roles, in casting order.
     if raw.roles.is_empty() || raw.roles.len() > MAX_ROLES {
@@ -412,6 +434,14 @@ pub fn parse_story(text: &str, lines: &Lines, package_min_cast: usize) -> Result
         Ok(key.to_owned())
     };
 
+    let mut read_as = Vec::new();
+    let mut place = |written: &str| -> Result<&'static str, String> {
+        let (written, staged) = staged_place(api, written)?;
+        if written != staged && !read_as.contains(&(written, staged)) {
+            read_as.push((written, staged));
+        }
+        Ok(staged)
+    };
     let mut flags = std::collections::BTreeSet::new();
     let mut scenes = Vec::new();
     for raw_scene in &raw.scenes {
@@ -426,7 +456,8 @@ pub fn parse_story(text: &str, lines: &Lines, package_min_cast: usize) -> Result
             let at = |problem: String| {
                 format!("scene \"{}\", beat {}: {problem}", raw_scene.id, number + 1)
             };
-            let beat = parse_beat(raw_beat, &role, &scene, &check_line, &mut flags).map_err(at)?;
+            let beat = parse_beat(raw_beat, &role, &scene, &check_line, &mut place, &mut flags)
+                .map_err(at)?;
             beats.push(beat);
         }
         scenes.push(Scene { beats });
@@ -439,6 +470,8 @@ pub fn parse_story(text: &str, lines: &Lines, package_min_cast: usize) -> Result
         id: header.id,
         title,
         area,
+        api,
+        read_as,
         roles,
         scenes,
         start,
@@ -452,6 +485,7 @@ fn parse_beat(
     role: &dyn Fn(&str) -> Option<usize>,
     scene: &dyn Fn(&str) -> Result<usize, String>,
     check_line: &dyn Fn(&str) -> Result<String, String>,
+    place: &mut dyn FnMut(&str) -> Result<&'static str, String>,
     flags: &mut std::collections::BTreeSet<String>,
 ) -> Result<Beat, String> {
     let named = |text: &str| role(text).ok_or_else(|| format!("there is no role \"{text}\""));
@@ -497,18 +531,7 @@ fn parse_beat(
         let place = if let Some(other) = to.strip_prefix("beside:") {
             Place::Beside(named(other)?)
         } else {
-            Place::Named(
-                PLACES
-                    .iter()
-                    .copied()
-                    .find(|place| *place == to)
-                    .ok_or_else(|| {
-                        format!(
-                            "\"{to}\" is not a place in the clubhouse ({}), or beside:<role>",
-                            PLACES.join(", ")
-                        )
-                    })?,
-            )
+            Place::Named(place(&to)?)
         };
         Action::Walk {
             who: who(text)?,
@@ -609,6 +632,52 @@ fn parse_beat(
         meanwhile: raw.meanwhile,
         when,
     })
+}
+
+/// Where a story written for content API `api`, naming `area`, is staged.
+pub fn staged_area(api: u32, area: &str) -> Result<&'static str, String> {
+    if api == 1 {
+        return if area == API_1_AREA {
+            Ok("clubhouse")
+        } else {
+            Err(format!(
+                "\"{area}\" is not an area content API 1 knows: it knows only \"{API_1_AREA}\""
+            ))
+        };
+    }
+    AREAS
+        .iter()
+        .copied()
+        .find(|known| *known == area)
+        .ok_or_else(|| format!("\"{area}\" is not one of {}", AREAS.join(", ")))
+}
+
+/// A place as a story written for content API `api` names it, and where in the Clubhouse that is.
+fn staged_place(api: u32, place: &str) -> Result<(&'static str, &'static str), String> {
+    if api == 1 {
+        return API_1_PLACES
+            .iter()
+            .copied()
+            .find(|(green, _)| *green == place)
+            .ok_or_else(|| {
+                let names: Vec<&str> = API_1_PLACES.iter().map(|(green, _)| *green).collect();
+                format!(
+                    "\"{place}\" is not a place on the green ({}), or beside:<role>",
+                    names.join(", ")
+                )
+            });
+    }
+    PLACES
+        .iter()
+        .copied()
+        .find(|known| *known == place)
+        .map(|known| (known, known))
+        .ok_or_else(|| {
+            format!(
+                "\"{place}\" is not a place in the clubhouse ({}), or beside:<role>",
+                PLACES.join(", ")
+            )
+        })
 }
 
 fn parse_selector(text: &str, earlier: &[String]) -> Result<Selector, String> {
@@ -828,7 +897,7 @@ mod tests {
             {body}
             "#
         );
-        parse_story(&text, &Lines::parse(LINES).unwrap(), 1)
+        parse_story(&text, &Lines::parse(LINES).unwrap(), 1, 2)
     }
 
     #[test]
@@ -918,6 +987,16 @@ mod tests {
     }
 
     #[test]
+    fn every_place_on_the_green_is_read_as_a_place_in_the_clubhouse() {
+        for (green, clubhouse) in API_1_PLACES {
+            assert!(
+                PLACES.contains(&clubhouse),
+                "{green} is read as {clubhouse}"
+            );
+        }
+    }
+
+    #[test]
     fn a_role_that_must_be_cast_needs_a_fallback() {
         let text = r#"
             [story]
@@ -930,7 +1009,7 @@ mod tests {
             [[scenes]]
             id = "one"
         "#;
-        let error = parse_story(text, &Lines::parse(LINES).unwrap(), 1).unwrap_err();
+        let error = parse_story(text, &Lines::parse(LINES).unwrap(), 1, 2).unwrap_err();
         assert!(error.contains("must end its select"));
     }
 }

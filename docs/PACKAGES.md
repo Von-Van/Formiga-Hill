@@ -45,7 +45,7 @@ package_id = "org.example.lost-kite"   # yours: lowercase, with at least one dot
 title = "The Lost Kite"
 author = "Your name"
 version = "1.0.0"
-hill_api = 1                           # the content API you wrote for
+hill_api = 2                           # the content API you wrote for
 content_types = ["story"]
 entry_points = ["content/lost-kite.toml"]
 default_locale = "en"
@@ -62,6 +62,24 @@ Hill refuses a package that:
 - has an entry point outside `content/`.
 
 Hill ignores fields it doesn't know, so a package written for a later Hill can still load.
+
+### Written for content API 1
+
+Content API 2 moved stories indoors, to the Clubhouse. A package written for API 1, when stories
+were staged on the green, still loads as it was written, with `area = "green"` and the green's
+places, and is played in the Clubhouse. Each place on the green is read as its counterpart there:
+
+| On the green | In the Clubhouse |
+| --- | --- |
+| `blanket` | `rug` |
+| `well` | `hearth` |
+| `oak` | `bookshelf` |
+| `swing` | `armchair` |
+| `chest`, `centre`, `left`, `right`, `front`, `back` | the same |
+
+`--check-package` says how such a story is read. To use the Clubhouse's own places, write for
+`hill_api = 2` and `area = "clubhouse"`; a package speaks one API's places or the other's, never
+both.
 
 ## A story file
 

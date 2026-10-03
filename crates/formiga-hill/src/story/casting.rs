@@ -99,7 +99,7 @@ mod tests {
         let text = format!(
             "[story]\nid = \"t\"\ntitle = \"title\"\narea = \"clubhouse\"\nstart = \"one\"\n{roles}\n[[scenes]]\nid = \"one\"\n"
         );
-        parse_story(&text, &Lines::parse("title = \"Test\"").unwrap(), 1).unwrap()
+        parse_story(&text, &Lines::parse("title = \"Test\"").unwrap(), 1, 2).unwrap()
     }
 
     #[test]
