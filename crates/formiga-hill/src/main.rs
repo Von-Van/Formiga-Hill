@@ -19,6 +19,7 @@ mod hosting;
 mod keepsake_art;
 mod kit;
 mod materials;
+mod meadow;
 mod memories;
 mod paint;
 mod playground;
@@ -61,6 +62,8 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-finds <PNG>     Draw every find's icon and Hilltop piece on one sheet, for review
   --render-fishing <PNG>   Draw a fishing trip at the pool, --at seconds into it
   --render-fish <PNG>      Draw every fish as it is held up, and its icon, for review
+  --render-meadow <PNG>    Draw the meadow at the Woods' edge, every bug settled in its haunt
+  --render-bugs <PNG>      Draw every bug in each of its poses, close up, and its icon, for review
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
   --render-story <PNG>     Draw a story in the Clubhouse --at seconds after it starts, reading each
@@ -97,6 +100,10 @@ enum Area {
     Fishing,
     /// Not an area: the review sheet of every fish.
     Fish,
+    /// The meadow at the Woods' edge, every bug settled in its haunt.
+    Meadow,
+    /// Not an area: the review sheet of every bug.
+    Bugs,
     /// The clearing that isn't on any map, the Sovereign met.
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
@@ -237,6 +244,8 @@ fn main() -> Result<()> {
             Area::Finds => finds_sheet(),
             Area::Fishing => fishing_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Fish => fish_sheet(),
+            Area::Meadow => meadow_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
+            Area::Bugs => bug_sheet(),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Story => {
@@ -332,6 +341,10 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Fishing, value("--render-fishing")?));
             }
             Some("--render-fish") => render = Some((Area::Fish, value("--render-fish")?)),
+            Some("--render-meadow") => {
+                render = Some((Area::Meadow, value("--render-meadow")?));
+            }
+            Some("--render-bugs") => render = Some((Area::Bugs, value("--render-bugs")?)),
             Some("--render-sovereign") => {
                 render = Some((Area::Sovereign, value("--render-sovereign")?));
             }
@@ -652,6 +665,64 @@ fn fish_sheet() -> Canvas {
         let catch = fishing::art::catch(fish.id);
         let at = (24, top + (ROW - catch.height() as i32) / 2);
         paint::blit(&mut sheet, &catch, at.0, at.1);
+    }
+    sheet
+}
+
+/// The meadow `at` seconds after the first two travellers walk out into it, with every bug in
+/// the catalogue settled on a perch in its haunt, for seeing the place and its bugs together.
+fn meadow_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let mut ground = meadow::open(cast, &party, 0.0, &sample_arrangement());
+    ground.set_daylight(daylight);
+    let mut now = 0.0;
+    while now < at {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+    }
+    let mut scene = ground.compose(now);
+    for (index, bug) in meadow::bugs::CATALOGUE.iter().enumerate() {
+        let perches = bug.haunt.perches();
+        let (x, y) = perches[index % perches.len()];
+        let sprite = meadow::art::sprite(bug.id, meadow::art::Pose::Settled, 0);
+        let (ax, ay) = meadow::art::anchor(bug.id, meadow::art::Pose::Settled);
+        paint::blit(&mut scene, &sprite, x as i32 - ax, y as i32 - ay);
+    }
+    scene
+}
+
+/// Every bug, a row each: its icon, each frame of flying, settled and crawling on a strip of
+/// meadow, and close up as it is held in the net.
+fn bug_sheet() -> Canvas {
+    use meadow::art::{Pose, close_up, frames, icon, sprite};
+    const ROW: i32 = 36;
+    let mut sheet = Canvas::new(384, (ROW * meadow::bugs::CATALOGUE.len() as i32) as u32);
+    for (row, bug) in meadow::bugs::CATALOGUE.iter().enumerate() {
+        let top = row as i32 * ROW;
+        let shade = if row % 2 == 0 { 0xcfe3bf } else { 0xc2d9b2 };
+        sheet.fill_rect(0, top, 384, ROW, paint::rgb(shade));
+        paint::blit(&mut sheet, &icon(bug.id), 4, top + 4);
+        let mut x = 20;
+        for pose in [Pose::Flying, Pose::Settled, Pose::Crawling] {
+            for frame in 0..frames(bug.id, pose) {
+                let picture = sprite(bug.id, pose, frame);
+                paint::blit(
+                    &mut sheet,
+                    &picture,
+                    x,
+                    top + (ROW - picture.height() as i32) / 2,
+                );
+                x += picture.width() as i32 + 4;
+            }
+            x += 8;
+        }
+        let close = close_up(bug.id);
+        paint::blit(
+            &mut sheet,
+            &close,
+            384 - close.width() as i32 - 4,
+            top + (ROW - close.height() as i32) / 2,
+        );
     }
     sheet
 }
