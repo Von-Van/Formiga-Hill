@@ -76,7 +76,15 @@ written here.
 **The Hilltop.** The colony's own place, empty at first.
 - **Arranging.** Any find can stand on any of its eighteen spots, wherever you like, and the colony
   goes to visit what stands there.
-- **The journal.** It records every find, who found it first, and hints of the rest.
+- **Growing.** Bluebells, an oak, a berry bush and five more grow once planted. They start as a
+  sprout in turned earth and grow a stage with every visit, and the colony tends them, each in
+  its own way. Nothing wilts while the colony is away.
+- **Building.** A plan comes to mind with the first find that goes into it: ten of them, from a
+  grand cairn and a picnic table to the great telescope, a wishing well and the bandstand. Build
+  one from the satchel, and the colony gathers round to lend a hand before it appears in a puff of
+  dust. Taking it apart gives every find back.
+- **The journal.** It records every find, who found it first, and hints of the rest, with what is
+  growing and every plan.
 - **Changing the Woods.** What stands on the Hilltop changes the Woods: a lantern lends light, a
   telescope brings rare signs out sooner.
 - **On the skyline.** It shows on the skylines of the station, the green and the Fairground, and
@@ -107,8 +115,6 @@ written here.
 - **The Fairground:** races, timing games, toy challenges, and co-op and competitive games.
 - **The Woods:** foraging, scavenging and treasure routes, and longer expeditions that combine
   activities.
-- **The Hilltop:** finds that combine into variants, things that grow, and structures built from
-  several finds.
 
 ## Getting there
 
@@ -176,9 +182,11 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | `--render-woods`, `--render-fishing`, `--render-bug-hunt` | A Woods outing, `--at` seconds in |
 | `--render-meadow` | The meadow |
 | `--render-hilltop` | The Hilltop; `--sample-hilltop` fills it |
+| `--render-building` | The colony building on the Hilltop, `--at` seconds in |
 | `--render-story` | A story, `--at` seconds in |
 | `--render-sovereign` | The secret, `--at` seconds in |
 | `--render-finds`, `--render-fish`, `--render-bugs` | Sheets of every find, fish and bug |
+| `--render-growing`, `--render-plans` | Every growing thing at every stage, and every plan |
 | `--render-reactions` | Every traveller answering a pat, a snack and a toy |
 | `--render-costumes` | Every traveller in every costume piece |
 
