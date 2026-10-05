@@ -92,6 +92,9 @@ impl HillApp {
         if let Some(meadow) = &mut self.woods.meadow {
             crate::meadow::show_hilltop(meadow, &up);
         }
+        if let Some(lane) = &mut self.woods.hedgerow {
+            crate::hedgerow::show_hilltop(lane, &up);
+        }
     }
 
     /// The spot under a point: a piece standing there, front-most first, or an open spot.

@@ -16,11 +16,11 @@ impl HillApp {
     /// Readies the hedgerow, with nobody foraging, and shows the Hilltop through its gate as it
     /// stands now.
     pub(super) fn open_hedgerow(&mut self, now: f32) {
-        let hilltop = &self.memories.colony().hilltop;
+        let hilltop = self.hilltop_standing();
         match &mut self.woods.hedgerow {
-            Some(lane) => hedgerow::show_hilltop(lane, hilltop),
+            Some(lane) => hedgerow::show_hilltop(lane, &hilltop),
             None => {
-                let mut lane = hedgerow::open(&self.arrival.cast, &[], now, hilltop);
+                let mut lane = hedgerow::open(&self.arrival.cast, &[], now, &hilltop);
                 lane.set_fliers(hedgerow::growing());
                 lane.set_daylight(self.daylight);
                 self.woods.hedgerow = Some(lane);
