@@ -72,6 +72,7 @@ pub fn stage(id: &str, stage: u8) -> Piece {
         return placeholder_piece(Kind::Dig);
     };
     let drawn = match find.kind {
+        _ if super::is_foraged(id) => hedgerow::stage(id, stage),
         Kind::Dig => earth::stage(id, stage),
         Kind::Reach => hollow::stage(id, stage),
         Kind::Shake => undergrowth::stage(id, stage),

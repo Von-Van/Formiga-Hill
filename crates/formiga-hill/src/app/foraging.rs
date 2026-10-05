@@ -326,11 +326,16 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
     for find in &FORAGED {
         match colony.finds.get(find.id) {
             Some(record) => {
+                let becomes = if finds::growing::growth(find.id).is_some() {
+                    "Grows into"
+                } else {
+                    "Becomes"
+                };
                 ui.label(egui::RichText::new(find.name).strong());
                 ui.label(egui::RichText::new(find.blurb).small());
                 ui.label(
                     egui::RichText::new(format!(
-                        "Becomes {} \u{b7} brought home {}\u{d7} \u{b7} first picked with {}",
+                        "{becomes} {} \u{b7} brought home {}\u{d7} \u{b7} first picked with {}",
                         find.piece.to_lowercase(),
                         record.count,
                         who(&record.first_by)

@@ -32,6 +32,7 @@ impl Standing {
     pub fn every() -> Vec<Self> {
         let finds = finds::CATALOGUE
             .iter()
+            .chain(finds::FORAGED.iter())
             .chain(finds::RELICS.iter())
             .map(|find| Self::from(find.id));
         let stages = growing::GROWING.iter().flat_map(|growth| {

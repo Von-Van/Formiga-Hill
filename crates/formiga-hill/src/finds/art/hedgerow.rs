@@ -1,14 +1,15 @@
 //! The finds picked at the hedgerow: their icons and their Hilltop pieces. Fruit and flowers
-//! mostly, in their ripe colours, and what each becomes: a pie cooling on a stool, a strawberry
-//! bed, a fairy ring, a rack of drying herbs, a table set with elderflower cordial, a golden
-//! toadstool to sit on, a honeysuckle bower and a fountain shaped like a clover; and the things
-//! for planting grown into what they will be, a hazel, a crab apple, a wild rose and a cushion of
-//! thyme.
+//! mostly, in their ripe colours, and what each becomes: a pie cooling on a stool, a fairy ring, a
+//! rack of drying herbs, a table set with elderflower cordial, a golden toadstool to sit on, a
+//! honeysuckle bower and a fountain shaped like a clover; and the things for planting, which come
+//! up a stage with every visit from a sprout in turned earth to what they grow into: a strawberry
+//! bed, a hazel, a crab apple, a wild rose and a cushion of thyme.
 
 #[cfg(test)]
 use super::ICON;
 use super::Piece;
 use super::brush::*;
+use super::hollow::stick;
 use crate::paint::{Ramp, chance, hline, mix, noise, put, rgb, rgba, vline};
 use formiga_art::{Canvas, Rgba};
 
@@ -54,6 +55,20 @@ const STRING: Rgba = rgb(0xc8b48a);
 const CATKIN: Ramp = Ramp::new(0x8a7a2a, 0xb8a03a, 0xd8c050, 0xece070, 0xfff4a8);
 const BEE: Rgba = rgb(0x2a2018);
 const BEE_GOLD: Rgba = rgb(0xf0c040);
+const ROSE_CANE: Ramp = Ramp::new(0x2a3a1c, 0x3e5228, 0x566e34, 0x6e8a42, 0x8aa858);
+/// A wild rose's buds, pink at the tip of their green sepals.
+const ROSE_BUD: Ramp = Ramp::new(0x8a3a54, 0xb85a74, 0xd87a92, 0xf0a0b4, 0xfcd0dc);
+/// The thyme's flowers still in bud, pale pink.
+const THYME_BUD: Ramp = Ramp::new(0x7a5068, 0xa87a90, 0xcca0b4, 0xe4c4d0, 0xf8e8f0);
+/// A crab-apple pip, glossy and dark.
+const PIP: Ramp = Ramp::new(0x241208, 0x3e2210, 0x5a3418, 0x7a4c24, 0xc89a6a);
+/// The rose hip that was planted, gone soft and dark.
+const OLD_HIP: Ramp = Ramp::new(0x2e0e10, 0x4a1618, 0x6a2220, 0x86342a, 0xa85a46);
+/// The thyme cutting's woody stem.
+const THYME_STEM: Rgba = rgb(0x6a5236);
+/// The gold middles of the crab apple's blossom and the rose's flowers.
+const BLOSSOM_EYE: Rgba = rgb(0xf0d060);
+const ROSE_EYE: Rgba = rgb(0xf0c840);
 
 /// The icon for one of these finds, nine pixels square, or `None` if it isn't drawn yet.
 pub fn icon(id: &str) -> Option<Canvas> {
@@ -313,6 +328,29 @@ pub fn piece(id: &str) -> Option<Piece> {
     })
 }
 
+/// One of these finds planted, at `stage` of its growing (see `finds::growing`), or `None` if it
+/// isn't drawn.
+pub fn stage(id: &str, stage: u8) -> Option<Piece> {
+    Some(match (id, stage) {
+        ("strawberry_runner", 0) => strawberry_plantlet(),
+        ("strawberry_runner", 1) => spreading_strawberries(),
+        ("strawberry_runner", _) => strawberries_in_flower(),
+        ("hazelnut", 0) => sprouting_hazelnut(),
+        ("hazelnut", 1) => hazel_seedling(),
+        ("hazelnut", _) => hazel_in_catkin(),
+        ("crab_apple_pip", 0) => sprouting_pip(),
+        ("crab_apple_pip", 1) => crab_apple_seedling(),
+        ("crab_apple_pip", _) => crab_apple_in_blossom(),
+        ("rose_hip_seeds", 0) => rose_seedlings(),
+        ("rose_hip_seeds", 1) => little_rose_bush(),
+        ("rose_hip_seeds", _) => wild_rose_in_bud(),
+        ("thyme_cutting", 0) => rooted_thyme_cutting(),
+        ("thyme_cutting", 1) => tuft_of_thyme(),
+        ("thyme_cutting", _) => thyme_in_bud(),
+        _ => return None,
+    })
+}
+
 // ---------------------------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------------------------
@@ -530,12 +568,52 @@ fn pie_on_a_stool() -> Piece {
     }
 }
 
+/// Where the strawberry bed's plants grow, back to front, when it is grown.
+const STRAWBERRY_PLANTS: [(i32, i32); 6] = [(7, 9), (14, 7), (21, 8), (27, 10), (11, 11), (24, 11)];
+/// Where its first flowers open among the leaves.
+const STRAWBERRY_FLOWERS: [(i32, i32); 3] = [(12, 6), (19, 5), (26, 7)];
+/// Where its berries lie on the straw once the flowers are over.
+const STRAWBERRIES: [(i32, i32); 5] = [(9, 12), (17, 11), (25, 13), (13, 13), (29, 12)];
+/// The red of a strawberry's runner.
+const RUNNER: Rgba = rgb(0xa04a3a);
+/// A white strawberry flower's gold middle.
+const STRAWBERRY_EYE: Rgba = rgb(0xf0d050);
+
 /// A bed of wild strawberries edged with straw: plants with leaves in threes, white flowers and
 /// red berries lying on the straw, and a runner reaching out to root a new plant.
 fn strawberry_bed() -> Piece {
     let mut s = Canvas::new(34, 18);
     let ground = 15;
-    shadow(&mut s, 17, ground, 15, 2);
+    strawberry_plants(&mut s, ground);
+    // Berries on the straw, and white flowers.
+    for &(x, y) in &STRAWBERRIES {
+        stamp(
+            &mut s,
+            (x, y),
+            &["#*o#", "#yoy", ".#s."],
+            &[
+                (b'#', STRAWBERRY.edge),
+                (b'o', STRAWBERRY.base),
+                (b'*', STRAWBERRY.shine),
+                (b'y', SEED),
+                (b's', STRAWBERRY.shadow),
+            ],
+            false,
+        );
+    }
+    for &at in &STRAWBERRY_FLOWERS {
+        bloom(&mut s, at, STAR, STRAWBERRY_EYE);
+    }
+    Piece {
+        sprite: s,
+        anchor: (17, ground),
+    }
+}
+
+/// The strawberry bed as it is grown, before anything flowers: dark soil mounded and straw laid
+/// over it, the plants on it, and a runner arching off to the right to root a new little plant.
+fn strawberry_plants(s: &mut Canvas, ground: i32) {
+    shadow(s, 17, ground, 15, 2);
     // The bed: dark soil mounded, straw laid over it.
     for y in 10..ground + 1 {
         for x in 2..32 {
@@ -554,42 +632,24 @@ fn strawberry_bed() -> Piece {
             } else {
                 SOIL.base
             };
-            put(&mut s, x, y, color);
+            put(s, x, y, color);
         }
     }
-    hline(&mut s, 4, ground, 26, SOIL.edge);
-    // The plants.
-    for &(x, y) in &[(7, 9), (14, 7), (21, 8), (27, 10), (11, 11), (24, 11)] {
-        strawberry_plant(&mut s, (x, y));
+    hline(s, 4, ground, 26, SOIL.edge);
+    for &at in &STRAWBERRY_PLANTS {
+        strawberry_plant(s, at);
     }
-    // Berries on the straw, and white flowers.
-    for &(x, y) in &[(9, 12), (17, 11), (25, 13), (13, 13), (29, 12)] {
-        stamp(
-            &mut s,
-            (x, y),
-            &["#*o#", "#yoy", ".#s."],
-            &[
-                (b'#', STRAWBERRY.edge),
-                (b'o', STRAWBERRY.base),
-                (b'*', STRAWBERRY.shine),
-                (b'y', SEED),
-                (b's', STRAWBERRY.shadow),
-            ],
-            false,
-        );
+    runner(s, &[(28, 9), (31, 7), (33, 10)]);
+}
+
+/// A strawberry's runner arching along `path`, and the new little plant rooting at its end.
+fn runner(s: &mut Canvas, path: &[(i32, i32)]) {
+    for &(x, y) in &trace(path) {
+        put(s, x, y, RUNNER);
     }
-    for &(x, y) in &[(12, 6), (19, 5), (26, 7)] {
-        bloom(&mut s, (x, y), STAR, rgb(0xf0d050));
-    }
-    // A runner arching off to the right, rooting a new little plant.
-    for &(x, y) in &trace(&[(28, 9), (31, 7), (33, 10)]) {
-        put(&mut s, x, y, rgb(0xa04a3a));
-    }
-    put(&mut s, 32, 9, LEAF.light);
-    put(&mut s, 33, 8, LEAF.base);
-    Piece {
-        sprite: s,
-        anchor: (17, ground),
+    if let Some(&(x, y)) = path.last() {
+        put(s, x - 1, y - 1, LEAF.light);
+        put(s, x, y - 2, LEAF.base);
     }
 }
 
@@ -641,45 +701,25 @@ fn hazel_sapling() -> Piece {
         311,
     );
     // Round leaves catching the sun at the edges.
-    for &(x, y) in &[(2, 9), (25, 11), (14, 0), (5, 18), (23, 20)] {
+    for &at in &[(2, 9), (25, 11), (14, 0), (5, 18), (23, 20)] {
         stamp(
             &mut s,
-            (x, y),
-            &[".##.", "#*lo", "#los", ".##."],
+            at,
+            &HAZEL_ROUND,
             &letters(HAZEL_LEAF, b"#sol*"),
             false,
         );
     }
-    // Catkins hanging, pale gold.
-    for &(x, y) in &[(4, 15), (24, 17), (11, 24), (18, 25)] {
-        for dy in 0..4 {
-            put(
-                &mut s,
-                x,
-                y + dy,
-                if dy % 2 == 0 {
-                    CATKIN.light
-                } else {
-                    CATKIN.base
-                },
-            );
-        }
-        put(&mut s, x + 1, y + 1, CATKIN.shadow);
+    for &at in &[(4, 15), (24, 17), (11, 24), (18, 25)] {
+        catkin(&mut s, at);
     }
     // A cluster of nuts in their frilled husks.
-    for &(x, y) in &[(15, 26), (18, 27)] {
+    for &at in &[(15, 26), (18, 27)] {
         stamp(
             &mut s,
-            (x, y),
+            at,
             &["EOE", "#*o", "#os", ".#."],
-            &[
-                (b'E', HUSK.edge),
-                (b'O', HUSK.light),
-                (b'#', NUT.edge),
-                (b'*', NUT.shine),
-                (b'o', NUT.base),
-                (b's', NUT.shadow),
-            ],
+            &nut_inks(),
             false,
         );
     }
@@ -688,6 +728,35 @@ fn hazel_sapling() -> Piece {
         sprite: s,
         anchor: (14, ground),
     }
+}
+
+/// A hazel's round leaf, catching the sun at the edge of its crown.
+const HAZEL_ROUND: [&str; 4] = [".##.", "#*lo", "#los", ".##."];
+
+/// A hazelnut's tones by letter, and its husk's: `E` and `O` for the husk, the nut edge to shine.
+fn nut_inks() -> [(u8, Rgba); 7] {
+    [
+        (b'E', HUSK.edge),
+        (b'O', HUSK.light),
+        (b'#', NUT.edge),
+        (b's', NUT.shadow),
+        (b'o', NUT.base),
+        (b'l', NUT.light),
+        (b'*', NUT.shine),
+    ]
+}
+
+/// A catkin hanging from `(x, y)`: a lamb's tail of pale gold.
+fn catkin(s: &mut Canvas, (x, y): (i32, i32)) {
+    for dy in 0..4 {
+        let color = if dy % 2 == 0 {
+            CATKIN.light
+        } else {
+            CATKIN.base
+        };
+        put(s, x, y + dy, color);
+    }
+    put(s, x + 1, y + 1, CATKIN.shadow);
 }
 
 /// A fairy ring: a ring of lusher grass in the turf with white field mushrooms all round it, the
@@ -997,7 +1066,7 @@ fn crab_apple_sapling() -> Piece {
         (22, 19),
         (6, 19),
     ] {
-        bloom(&mut s, (x, y), BLOSSOM, rgb(0xf0d060));
+        bloom(&mut s, (x, y), BLOSSOM, BLOSSOM_EYE);
     }
     for &(x, y) in &[(10, 21), (19, 22), (14, 21), (4, 16)] {
         stamp(
@@ -1026,38 +1095,9 @@ fn crab_apple_sapling() -> Piece {
 fn wild_rose() -> Piece {
     let mut s = Canvas::new(32, 30);
     let ground = 28;
-    shadow(&mut s, 16, ground, 13, 2);
-    foliage(
-        &mut s,
-        &[
-            ((9, 17), (7, 6)),
-            ((23, 17), (7, 6)),
-            ((16, 11), (8, 6)),
-            ((16, 21), (11, 6)),
-        ],
-        ROSE_LEAF,
-        351,
-    );
-    let cane = Ramp::new(0x2a3a1c, 0x3e5228, 0x566e34, 0x6e8a42, 0x8aa858);
-    for path in [
-        &[(10, 25), (5, 14), (2, 8), (4, 4)][..],
-        &[(22, 25), (27, 15), (30, 9), (28, 5)],
-    ] {
-        bough(&mut s, path, cane);
-    }
-    for &(x, y) in &[
-        (4, 6),
-        (27, 7),
-        (10, 9),
-        (19, 7),
-        (6, 16),
-        (14, 14),
-        (24, 15),
-        (18, 21),
-        (9, 21),
-        (27, 19),
-    ] {
-        bloom(&mut s, (x, y), ROSE, rgb(0xf0c840));
+    wild_rose_bush(&mut s, ground);
+    for &at in &ROSES {
+        bloom(&mut s, at, ROSE, ROSE_EYE);
     }
     for &(x, y) in &[(12, 18), (21, 12), (3, 12), (25, 22), (15, 24)] {
         stamp(
@@ -1076,29 +1116,54 @@ fn wild_rose() -> Piece {
     }
 }
 
+/// Where the wild rose's flowers open when it is grown, or its buds are before they do.
+const ROSES: [(i32, i32); 10] = [
+    (4, 6),
+    (27, 7),
+    (10, 9),
+    (19, 7),
+    (6, 16),
+    (14, 14),
+    (24, 15),
+    (18, 21),
+    (9, 21),
+    (27, 19),
+];
+
+/// The wild rose grown, before it flowers: its shadow, its rounded mass of small dark leaves and
+/// its thorny canes arching up out of it.
+fn wild_rose_bush(s: &mut Canvas, ground: i32) {
+    shadow(s, 16, ground, 13, 2);
+    foliage(
+        s,
+        &[
+            ((9, 17), (7, 6)),
+            ((23, 17), (7, 6)),
+            ((16, 11), (8, 6)),
+            ((16, 21), (11, 6)),
+        ],
+        ROSE_LEAF,
+        351,
+    );
+    for path in [
+        &[(10, 25), (5, 14), (2, 8), (4, 4)][..],
+        &[(22, 25), (27, 15), (30, 9), (28, 5)],
+    ] {
+        bough(s, path, ROSE_CANE);
+    }
+}
+
 /// A cushion of wild thyme, low and soft enough to sit on, covered in purple flowers with a bee
 /// at work, and a flat warm stone beside it.
 fn thyme_cushion() -> Piece {
     let mut s = Canvas::new(30, 16);
     let ground = 13;
-    shadow(&mut s, 15, ground, 14, 2);
-    // The flat stone, at the right.
-    lump(&mut s, 24.0, 11.0, 5.0, 2.4, STONE, 361);
-    // The cushion: a low mound of tiny leaves.
-    model(&mut s, THYME, ROUND, 70, 362, |x, y| {
-        in_ellipse(x, y, (12, 9), (11, 5))
-    });
+    thyme_by_its_stone(&mut s, ground);
     // Flowers all over its top.
-    for index in 0..34 {
-        let x = 2 + (noise(index, 0, 363) % 21) as i32;
-        let y = 5 + (noise(index, 1, 363) % 6) as i32;
-        let (u, v) = ((x - 12) as f32 / 11.0, (y - 9) as f32 / 5.0);
-        if u * u + v * v > 0.9 || v > 0.4 {
-            continue;
-        }
-        let color = if u + v < -0.5 {
+    for (x, y, lit) in thyme_tips() {
+        let color = if lit < -0.5 {
             THYME_FLOWER.shine
-        } else if u + v < 0.0 {
+        } else if lit < 0.0 {
             THYME_FLOWER.light
         } else {
             THYME_FLOWER.base
@@ -1118,6 +1183,27 @@ fn thyme_cushion() -> Piece {
         sprite: s,
         anchor: (14, ground),
     }
+}
+
+/// The thyme grown into its cushion before it flowers: its shadow, the flat warm stone at its
+/// right, and the low mound of tiny leaves.
+fn thyme_by_its_stone(s: &mut Canvas, ground: i32) {
+    shadow(s, 15, ground, 14, 2);
+    lump(s, 24.0, 11.0, 5.0, 2.4, STONE, 361);
+    model(s, THYME, ROUND, 70, 362, |x, y| {
+        in_ellipse(x, y, (12, 9), (11, 5))
+    });
+}
+
+/// Where the thyme cushion's flowering tips are, all over its top, and how much each faces the
+/// light (below -0.5 most, above 0 least).
+fn thyme_tips() -> impl Iterator<Item = (i32, i32, f32)> {
+    (0..34).filter_map(|index| {
+        let x = 2 + (noise(index, 0, 363) % 21) as i32;
+        let y = 5 + (noise(index, 1, 363) % 6) as i32;
+        let (u, v) = ((x - 12) as f32 / 11.0, (y - 9) as f32 / 5.0);
+        (u * u + v * v <= 0.9 && v <= 0.4).then_some((x, y, u + v))
+    })
 }
 
 /// The golden toadstool: a great chanterelle big enough to sit on, its cap a wide golden cup
@@ -1391,6 +1477,440 @@ fn clover_fountain() -> Piece {
     Piece {
         sprite: s,
         anchor: (22, ground),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Growing
+// ---------------------------------------------------------------------------------------------
+
+/// Just planted: the runner's plantlet pegged into a mound of turned earth with its first leaves
+/// in threes, and the runner it grew on trailing away down the mound.
+fn strawberry_plantlet() -> Piece {
+    let mut s = Canvas::new(16, 13);
+    let (cx, ground) = (8, 11);
+    mound(&mut s, cx, ground, (6, 3), 401);
+    for &(x, y) in &trace(&[(7, 9), (4, 9), (2, 10), (0, 11)]) {
+        put(&mut s, x, y, RUNNER);
+    }
+    strawberry_plant(&mut s, (cx, 8));
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: the plantlet grown into a plant with a second beside it, and runners reaching out
+/// over the bare earth either side to root more.
+fn spreading_strawberries() -> Piece {
+    let mut s = Canvas::new(28, 14);
+    let (cx, ground) = (14, 11);
+    shadow(&mut s, cx, ground, 11, 2);
+    mound(&mut s, cx, ground, (8, 1), 402);
+    runner(&mut s, &[(10, 9), (6, 7), (2, 10)]);
+    runner(&mut s, &[(18, 8), (22, 6), (26, 9)]);
+    strawberry_plant(&mut s, (11, 8));
+    strawberry_plant(&mut s, (17, 7));
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: the bed as it will be, straw laid and the plants all in leaf, covered in
+/// white flowers where the berries will be.
+fn strawberries_in_flower() -> Piece {
+    let mut s = Canvas::new(34, 18);
+    let ground = 15;
+    strawberry_plants(&mut s, ground);
+    for &at in STRAWBERRY_FLOWERS
+        .iter()
+        .chain(&[(6, 7), (16, 9), (23, 6), (29, 8)])
+    {
+        bloom(&mut s, at, STAR, STRAWBERRY_EYE);
+    }
+    Piece {
+        sprite: s,
+        anchor: (17, ground),
+    }
+}
+
+/// A hazelnut lying on its side, its husk frilled about its base: `E` and `O` for the husk, the
+/// nut by its own tones.
+const LYING_NUT: [&str; 4] = ["..###.", "EO*lo#", "EOlos#", "..###."];
+
+/// Just planted: the nut lying in its husk on a mound of turned earth, and the shoot it sent up
+/// beside it, with its first two round leaves.
+fn sprouting_hazelnut() -> Piece {
+    let mut s = Canvas::new(16, 17);
+    let (cx, ground) = (8, 15);
+    mound(&mut s, cx, ground, (6, 4), 411);
+    stamp(&mut s, (1, 9), &LYING_NUT, &nut_inks(), false);
+    for y in 6..ground - 3 {
+        let color = if y < 8 {
+            RUSTIC.light
+        } else {
+            HAZEL_LEAF.shadow
+        };
+        put(&mut s, cx + 1, y, color);
+    }
+    let leaf = letters(HAZEL_LEAF, b"#sol*");
+    stamp(&mut s, (cx - 3, 3), &HAZEL_ROUND, &leaf, false);
+    stamp(&mut s, (cx + 2, 2), &HAZEL_ROUND, &leaf, false);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: a slim stem a hand high with round leaves off it, and the empty shell at its foot.
+fn hazel_seedling() -> Piece {
+    let mut s = Canvas::new(18, 26);
+    let (cx, ground) = (9, 24);
+    shadow(&mut s, cx, ground, 6, 2);
+    mound(&mut s, cx, ground, (6, 2), 412);
+    stick(&mut s, (9.5, 15.0), (5.5, 11.5), (1.2, 1.0), RUSTIC);
+    stick(&mut s, (10.0, 11.0), (13.5, 8.0), (1.2, 1.0), RUSTIC);
+    stick(
+        &mut s,
+        (9.5, ground as f32 + 0.5),
+        (10.0, 5.0),
+        (2.0, 1.2),
+        RUSTIC,
+    );
+    let leaf = letters(HAZEL_LEAF, b"#sol*");
+    for &at in &[(2, 9), (12, 5), (6, 2), (10, 1), (4, 14)] {
+        stamp(&mut s, at, &HAZEL_ROUND, &leaf, false);
+    }
+    stamp(&mut s, (11, ground - 3), &LYING_NUT, &nut_inks(), true);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: a young hazel short of its full height, its stems fanning up from its foot
+/// and its round leaves in loose clumps, hung with pale gold catkins before any nuts.
+fn hazel_in_catkin() -> Piece {
+    let mut s = Canvas::new(24, 36);
+    let (cx, ground) = (12, 34);
+    shadow(&mut s, cx, ground, 8, 2);
+    mound(&mut s, cx, ground, (6, 1), 413);
+    for path in [
+        &[(11, 33), (10, 24), (7, 13), (6, 7)][..],
+        &[(12, 33), (12, 22), (12, 10), (13, 3)],
+        &[(13, 33), (15, 24), (18, 14), (19, 8)],
+    ] {
+        bough(&mut s, path, RUSTIC);
+    }
+    foliage(
+        &mut s,
+        &[
+            ((6, 9), (4, 4)),
+            ((18, 10), (4, 4)),
+            ((12, 5), (5, 4)),
+            ((9, 16), (4, 3)),
+            ((16, 17), (4, 3)),
+            ((12, 11), (4, 3)),
+        ],
+        HAZEL_LEAF,
+        414,
+    );
+    let leaf = letters(HAZEL_LEAF, b"#sol*");
+    for &at in &[(1, 8), (20, 9), (11, 0), (3, 15)] {
+        stamp(&mut s, at, &HAZEL_ROUND, &leaf, false);
+    }
+    for &at in &[(3, 12), (21, 13), (8, 19), (15, 20), (12, 14)] {
+        catkin(&mut s, at);
+    }
+    tuft(&mut s, cx, ground, 4, 415);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Just planted: the pip lying on a mound of turned earth, and the shoot it sent up with its two
+/// round seed leaves spread and its first true leaf between them.
+fn sprouting_pip() -> Piece {
+    let mut s = Canvas::new(16, 15);
+    let (cx, ground) = (8, 13);
+    mound(&mut s, cx, ground, (6, 4), 421);
+    stamp(
+        &mut s,
+        (2, 8),
+        &[".##.", "#*os", ".##."],
+        &letters(PIP, b"#sol*"),
+        false,
+    );
+    for y in 4..ground - 3 {
+        put(&mut s, cx, y, FRESH.shadow);
+    }
+    tilted_lump(&mut s, (5.6, 4.6), (2.4, 1.3), 0.35, FRESH, 422);
+    tilted_lump(&mut s, (11.4, 4.6), (2.4, 1.3), -0.35, FRESH, 423);
+    tilted_lump(&mut s, (8.5, 2.2), (1.2, 1.9), 0.15, FRESH, 424);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A young apple leaf off the stem, oval and pointing up and away from it: `k` its stalk, where it
+/// joins the stem. Drawn for the right of a stem; flipped, for the left.
+const APPLE_LEAF: [&str; 4] = ["...lo", "..l*o", ".loos", "kos.."];
+
+/// A visit on: a slim stem a hand high, the seed leaves drooping low on it, and its first true
+/// leaves up it, oval and fresh, either side in turn.
+fn crab_apple_seedling() -> Piece {
+    let mut s = Canvas::new(18, 26);
+    let (cx, ground) = (9, 24);
+    shadow(&mut s, cx, ground, 6, 2);
+    mound(&mut s, cx, ground, (6, 2), 425);
+    stick(
+        &mut s,
+        (9.5, ground as f32 + 0.5),
+        (9.5, 5.0),
+        (2.0, 1.2),
+        BARK,
+    );
+    // The seed leaves, round and drooping now.
+    for (x, lean) in [(cx - 1, -1), (cx + 1, 1)] {
+        put(&mut s, x, 19, FRESH.base);
+        put(&mut s, x + lean, 19, FRESH.light);
+        put(&mut s, x + 2 * lean, 20, FRESH.base);
+        put(&mut s, x + lean, 20, FRESH.shadow);
+    }
+    let leaf = [&letters(FRESH, b"#sol*")[..], &[(b'k', BARK.base)]].concat();
+    for &(y, right) in &[(15, false), (12, true), (9, false), (6, true)] {
+        let x = if right { cx + 1 } else { cx - 5 };
+        stamp(&mut s, (x, y - 3), &APPLE_LEAF, &leaf, !right);
+    }
+    spike(&mut s, (cx, 5), 4, 0, FRESH);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: a sapling, staked and tied, its crown of fresh leaves smaller than it will be
+/// and covered in pink-white blossom, where the apples will be.
+fn crab_apple_in_blossom() -> Piece {
+    let mut s = Canvas::new(26, 38);
+    let (cx, ground) = (13, 36);
+    shadow(&mut s, cx, ground, 8, 2);
+    post(&mut s, 16, (17, ground), 2, WOOD, 433);
+    for path in [
+        &[(12, 35), (12, 25), (11, 17)][..],
+        &[(12, 23), (7, 17), (4, 12)],
+        &[(12, 21), (17, 15), (21, 12)],
+        &[(11, 18), (11, 10), (12, 5)],
+    ] {
+        bough(&mut s, path, BARK);
+    }
+    hline(&mut s, 12, 26, 5, STRING);
+    foliage(
+        &mut s,
+        &[
+            ((5, 11), (5, 4)),
+            ((20, 11), (5, 4)),
+            ((12, 6), (7, 5)),
+            ((12, 14), (7, 4)),
+        ],
+        FRESH,
+        434,
+    );
+    for &at in &[
+        (3, 9),
+        (10, 3),
+        (16, 4),
+        (22, 9),
+        (7, 13),
+        (13, 9),
+        (18, 14),
+        (5, 16),
+        (11, 16),
+        (20, 7),
+        (8, 7),
+        (15, 12),
+    ] {
+        bloom(&mut s, at, BLOSSOM, BLOSSOM_EYE);
+    }
+    tuft(&mut s, cx, ground, 4, 435);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// One wild rose seedling standing at `(x, foot)`, `tall` pixels high: its two oval seed leaves,
+/// and its first true leaf of three leaflets above them once it has one.
+fn rose_seedling(s: &mut Canvas, (x, foot): (i32, i32), tall: i32, true_leaf: bool) {
+    vline(s, x, foot - tall, tall, ROSE_CANE.base);
+    let top = foot - tall;
+    // The seed leaves, opening upwards either side of the tip.
+    stamp(
+        s,
+        (x - 2, top - 1),
+        &["l.k.o", ".lko.", "..k.."],
+        &[
+            (b'l', ROSE_LEAF.light),
+            (b'o', ROSE_LEAF.base),
+            (b'k', ROSE_CANE.base),
+        ],
+        false,
+    );
+    if true_leaf {
+        // Its first true leaf above them: three toothed leaflets on a stalk.
+        stamp(
+            s,
+            (x - 2, top - 5),
+            &["..l..", "l.lo.", "lokos", "..k.."],
+            &[
+                (b'l', ROSE_LEAF.light),
+                (b'o', ROSE_LEAF.base),
+                (b's', ROSE_LEAF.shadow),
+                (b'k', ROSE_CANE.base),
+            ],
+            false,
+        );
+    }
+}
+
+/// Just planted: the hip that was planted, gone soft and dark on a mound of turned earth, and its
+/// seedlings come up round it, each with its two seed leaves, the tallest with a true leaf.
+fn rose_seedlings() -> Piece {
+    let mut s = Canvas::new(16, 14);
+    let (cx, ground) = (8, 12);
+    mound(&mut s, cx, ground, (6, 3), 431);
+    stamp(
+        &mut s,
+        (10, 7),
+        &[".#.", "#lo#", "#os#", ".##."],
+        &letters(OLD_HIP, b"#sol*"),
+        false,
+    );
+    rose_seedling(&mut s, (4, 10), 2, false);
+    rose_seedling(&mut s, (8, 9), 3, true);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: a little rounded bush of the rose's small dark leaves, its first thorny canes
+/// arching up out of it.
+fn little_rose_bush() -> Piece {
+    let mut s = Canvas::new(22, 20);
+    let (cx, ground) = (11, 17);
+    shadow(&mut s, cx, ground, 9, 2);
+    mound(&mut s, cx, ground, (7, 1), 432);
+    foliage(
+        &mut s,
+        &[
+            ((7, 13), (4, 3)),
+            ((15, 13), (4, 3)),
+            ((11, 10), (5, 4)),
+            ((11, 14), (7, 3)),
+        ],
+        ROSE_LEAF,
+        433,
+    );
+    for path in [
+        &[(8, 14), (5, 8), (3, 4), (5, 2)][..],
+        &[(14, 14), (17, 9), (19, 5)],
+    ] {
+        bough(&mut s, path, ROSE_CANE);
+    }
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A wild rose's bud at `(x, y)`, tight and pink in its green sepals.
+fn rose_bud(s: &mut Canvas, (x, y): (i32, i32)) {
+    put(s, x, y - 1, ROSE_BUD.light);
+    put(s, x, y, ROSE_BUD.base);
+    put(s, x + 1, y, ROSE_BUD.shadow);
+    put(s, x - 1, y + 1, ROSE_LEAF.light);
+    put(s, x, y + 1, ROSE_BUD.edge);
+    put(s, x + 1, y + 1, ROSE_LEAF.base);
+}
+
+/// Another visit on: the bush grown, its canes arching out, and buds all over it, tight and pink,
+/// where the roses will open.
+fn wild_rose_in_bud() -> Piece {
+    let mut s = Canvas::new(32, 30);
+    let ground = 28;
+    wild_rose_bush(&mut s, ground);
+    for &at in &ROSES {
+        rose_bud(&mut s, at);
+    }
+    tuft(&mut s, 7, ground, 3, 352);
+    tuft(&mut s, 25, ground, 3, 353);
+    Piece {
+        sprite: s,
+        anchor: (16, ground),
+    }
+}
+
+/// Just planted: the cutting pushed into a mound of turned earth beside a flat warm stone, a
+/// woody sprig forking in two, its tiny leaves in pairs along it.
+fn rooted_thyme_cutting() -> Piece {
+    let mut s = Canvas::new(22, 12);
+    let (cx, ground) = (8, 10);
+    mound(&mut s, cx, ground, (5, 3), 441);
+    lump(&mut s, 16.0, 8.6, 4.0, 2.0, STONE, 442);
+    stamp(
+        &mut s,
+        (cx - 3, 3),
+        &["..l..l", ".lkl.k", "..k.lk", ".lkok.", "..kk..", "...k.."],
+        &[(b'l', THYME.light), (b'o', THYME.base), (b'k', THYME_STEM)],
+        false,
+    );
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: a little tuft of thyme, its sprigs spreading low over the bare earth by its stone.
+fn tuft_of_thyme() -> Piece {
+    let mut s = Canvas::new(24, 13);
+    let (cx, ground) = (9, 11);
+    shadow(&mut s, 11, ground, 10, 2);
+    mound(&mut s, cx, ground, (7, 1), 443);
+    lump(&mut s, 18.0, 9.6, 4.0, 2.0, STONE, 444);
+    model(&mut s, THYME, ROUND, 70, 445, |x, y| {
+        in_ellipse(x, y, (9, 8), (6, 3))
+    });
+    for &(x, top) in &[(5, 5), (8, 3), (11, 4), (13, 6)] {
+        vline(&mut s, x, top, 2, THYME.light);
+        put(&mut s, x + 1, top + 1, THYME.base);
+    }
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: the cushion grown low and soft beside its stone, and dotted all over with
+/// pale pink buds where its flowers will be.
+fn thyme_in_bud() -> Piece {
+    let mut s = Canvas::new(30, 16);
+    let ground = 13;
+    thyme_by_its_stone(&mut s, ground);
+    for (x, y, lit) in thyme_tips() {
+        let color = if lit < -0.5 {
+            THYME_BUD.light
+        } else {
+            THYME_BUD.base
+        };
+        put(&mut s, x, y, color);
+    }
+    Piece {
+        sprite: s,
+        anchor: (14, ground),
     }
 }
 
