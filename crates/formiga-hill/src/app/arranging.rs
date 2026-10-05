@@ -491,6 +491,7 @@ impl HillApp {
                         }
                     }
                     super::foraging::journal(ui, colony, &who);
+                    super::expedition::journal(ui, colony, &who);
                     if !colony.outings_by.is_empty() {
                         ui.add_space(6.0);
                         ui.strong("Who has been");

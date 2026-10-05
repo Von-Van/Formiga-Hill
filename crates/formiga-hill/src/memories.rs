@@ -93,10 +93,76 @@ pub struct ColonyMemories {
     /// How many tugs-of-war each traveller has been on the winning side of, by its Desktop id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub tug_wins: BTreeMap<String, u32>,
+    /// Expeditions into the Woods, all told and by each traveller's Desktop id.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub expeditions: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub expeditions_by: BTreeMap<String, u32>,
+    /// The furthest into the Woods any expedition has gone, and who got there first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub furthest: Option<Furthest>,
+    /// The places only an expedition reaches that the colony has been to, by their ids on the
+    /// map, so the map shows them from then on.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub far_places: BTreeSet<String>,
+    /// Visits to the far places in a row that brought home nothing new from afar.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub far_drought: u32,
+    /// The latest expeditions' pages in the journal, the latest last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub expedition_pages: Vec<ExpeditionPage>,
 }
 
 fn is_zero(count: &u32) -> bool {
     *count == 0
+}
+
+/// How many expeditions' pages the journal keeps, the oldest giving way.
+pub const PAGES_KEPT: usize = 12;
+
+/// The furthest into the Woods an expedition has gone.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Furthest {
+    /// Where, by its id on the map.
+    pub place: String,
+    /// How far in that is: the edge of the Woods is nought.
+    pub depth: u8,
+    /// Who got there, by Desktop id.
+    pub party: Vec<String>,
+}
+
+/// One expedition's page in the journal: the way it went, who came, and what came home.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ExpeditionPage {
+    /// Every place it went, in order, by their ids on the map.
+    pub route: Vec<String>,
+    /// Where it stopped to play, or rest, in order.
+    pub stops: Vec<String>,
+    /// Who came, by Desktop id; the first led the way.
+    pub party: Vec<String>,
+    /// What came home in the basket, each with who found it.
+    pub found: Vec<(String, String)>,
+    /// Fish and bugs caught on the way, and let go.
+    pub caught: Vec<String>,
+}
+
+/// An expedition coming home: what `Memories::back_from_the_expedition` keeps of it.
+#[derive(Debug, Default)]
+pub struct Homecoming<'a> {
+    /// Who came, by Desktop id; the first led the way.
+    pub party: &'a [u64],
+    /// Every place it went, in order, and where it stopped, by their ids on the map.
+    pub route: &'a [&'a str],
+    pub stops: &'a [&'a str],
+    /// The furthest place it reached, and how far in that is.
+    pub furthest: (&'a str, u8),
+    /// The places only an expedition reaches that it went to.
+    pub far: &'a [&'a str],
+    /// What came home in the basket, each with who found it.
+    pub found: &'a [(&'a str, u64)],
+    /// Fish landed and bugs caught on the way, each with its size and who caught it.
+    pub fish: &'a [(&'a str, f32, u64)],
+    pub bugs: &'a [(&'a str, f32, u64)],
 }
 
 /// One kind of fish in the journal.
@@ -424,6 +490,81 @@ impl Memories {
         new
     }
 
+    /// Remembers an expedition: who went, the way it went, and what came home. Each find goes
+    /// into the journal and the satchel as first found by whoever found it, and the fish and bugs
+    /// caught on the way into the journal, as they were let go. The furthest yet is kept with who
+    /// got there, and the far places the map is to show. Each activity's own outings and dry
+    /// spells are its own, and are left as they are. Says which finds were new.
+    pub fn back_from_the_expedition(&mut self, home: &Homecoming) -> Vec<&'static str> {
+        let colony = self.colony_mut();
+        colony.expeditions += 1;
+        let party: Vec<String> = home.party.iter().map(u64::to_string).collect();
+        for id in &party {
+            *colony.expeditions_by.entry(id.clone()).or_default() += 1;
+        }
+        let (place, depth) = home.furthest;
+        if colony.furthest.as_ref().is_none_or(|was| depth > was.depth) {
+            colony.furthest = Some(Furthest {
+                place: place.to_owned(),
+                depth,
+                party: party.clone(),
+            });
+        }
+        colony
+            .far_places
+            .extend(home.far.iter().map(|place| (*place).to_owned()));
+        let new = keep_found(colony, home.found);
+        if !home.far.is_empty() {
+            let new_from_afar = new.iter().any(|id| crate::finds::is_from_afar(id));
+            colony.far_drought = if new_from_afar {
+                0
+            } else {
+                colony.far_drought + 1
+            };
+        }
+        let mut caught = Vec::new();
+        for &(id, length, by) in home.fish {
+            let Some(fish) = crate::fishing::fish::fish(id) else {
+                continue;
+            };
+            let record = colony.fish.entry(fish.id.to_owned()).or_default();
+            if record.count == 0 {
+                record.first_by = by.to_string();
+            }
+            record.count += 1;
+            record.longest = record.longest.max(length);
+            caught.push(fish.id.to_owned());
+        }
+        for &(id, size, by) in home.bugs {
+            let Some(bug) = crate::meadow::bugs::bug(id) else {
+                continue;
+            };
+            let record = colony.bugs.entry(bug.id.to_owned()).or_default();
+            if record.count == 0 {
+                record.first_by = by.to_string();
+            }
+            record.count += 1;
+            record.biggest = record.biggest.max(size);
+            caught.push(bug.id.to_owned());
+        }
+        colony.expedition_pages.push(ExpeditionPage {
+            route: home.route.iter().map(|place| (*place).to_owned()).collect(),
+            stops: home.stops.iter().map(|place| (*place).to_owned()).collect(),
+            party,
+            found: home
+                .found
+                .iter()
+                .filter(|(id, _)| crate::finds::find(id).is_some())
+                .map(|(id, by)| ((*id).to_owned(), by.to_string()))
+                .collect(),
+            caught,
+        });
+        let over = colony.expedition_pages.len().saturating_sub(PAGES_KEPT);
+        colony.expedition_pages.drain(..over);
+        self.keep();
+        new
+    }
+
     /// Remembers the Cursor Sovereign seen off by `party`. The first time, its arrow comes home for
     /// the Hilltop; after that it is only a story worth telling again. Says whether it was the
     /// first time.
@@ -594,6 +735,25 @@ fn keep_finds(colony: &mut ColonyMemories, party: &[u64], finds: &[&str]) -> Vec
         let record = colony.finds.entry(find.id.to_owned()).or_default();
         if record.count == 0 {
             record.first_by.clone_from(&leader);
+            new.push(find.id);
+        }
+        record.count += 1;
+        *colony.satchel.entry(find.id.to_owned()).or_default() += 1;
+    }
+    new
+}
+
+/// Puts finds into the journal and the satchel, each as found by whoever is given for it. Says
+/// which were new.
+fn keep_found(colony: &mut ColonyMemories, found: &[(&str, u64)]) -> Vec<&'static str> {
+    let mut new = Vec::new();
+    for &(id, by) in found {
+        let Some(find) = crate::finds::find(id) else {
+            continue;
+        };
+        let record = colony.finds.entry(find.id.to_owned()).or_default();
+        if record.count == 0 {
+            record.first_by = by.to_string();
             new.push(find.id);
         }
         record.count += 1;
@@ -1028,6 +1188,105 @@ mod tests {
         assert_eq!(again.colony().hilltop[&9], Standing::from("acorn_stash"));
         assert_eq!(again.colony().visits, 5);
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_expedition_is_remembered_with_who_found_what_and_how_far_it_went() {
+        let mut memories = Memories::open(None, "c");
+        let home = Homecoming {
+            party: &[7, 9, 11],
+            route: &["edge", "glade", "signpost", "far_falls"],
+            stops: &["glade", "far_falls"],
+            furthest: ("far_falls", 4),
+            far: &["far_falls"],
+            found: &[("pinecone", 9), ("falls_pearl", 11), ("nonsense", 7)],
+            fish: &[("perch", 21.0, 9)],
+            bugs: &[("ladybird", 6.5, 7)],
+        };
+        let new = memories.back_from_the_expedition(&home);
+        assert_eq!(new, vec!["pinecone", "falls_pearl"]);
+        let colony = memories.colony();
+        assert_eq!(colony.expeditions, 1);
+        assert_eq!(colony.expeditions_by["11"], 1);
+        assert_eq!(
+            colony.finds["falls_pearl"].first_by, "11",
+            "found first by whoever found it, not whoever led"
+        );
+        assert_eq!(colony.finds["pinecone"].first_by, "9");
+        assert_eq!(colony.satchel["falls_pearl"], 1);
+        assert_eq!(colony.fish["perch"].first_by, "9");
+        assert_eq!(colony.bugs["ladybird"].biggest, 6.5);
+        let furthest = colony.furthest.as_ref().unwrap();
+        assert_eq!((furthest.place.as_str(), furthest.depth), ("far_falls", 4));
+        assert_eq!(furthest.party, vec!["7", "9", "11"]);
+        assert!(colony.far_places.contains("far_falls"));
+        assert_eq!(colony.far_drought, 0, "something new came from afar");
+        let page = &colony.expedition_pages[0];
+        assert_eq!(page.route, vec!["edge", "glade", "signpost", "far_falls"]);
+        assert_eq!(page.stops, vec!["glade", "far_falls"]);
+        assert_eq!(page.found.len(), 2, "only what Hill knows goes on the page");
+        assert_eq!(page.caught, vec!["perch", "ladybird"]);
+        // Each activity's own counts and dry spells, the secret's among them, are its own.
+        assert_eq!(colony.outings, 0);
+        assert_eq!(colony.drought, 0);
+        assert_eq!(colony.fishing_trips, 0);
+        assert_eq!(colony.bug_hunts, 0);
+        assert_eq!(colony.forays, 0);
+        assert!(colony.outings_by.is_empty());
+        // A shorter one is not the furthest, and nothing new from afar is a dry spell.
+        let nearer = Homecoming {
+            party: &[9],
+            route: &["edge", "meadow", "log", "far_falls"],
+            stops: &["far_falls"],
+            furthest: ("far_falls", 4),
+            far: &["far_falls"],
+            found: &[("falls_pearl", 9)],
+            ..Homecoming::default()
+        };
+        memories.back_from_the_expedition(&nearer);
+        let colony = memories.colony();
+        assert_eq!(colony.far_drought, 1);
+        assert_eq!(
+            colony.furthest.as_ref().unwrap().party,
+            vec!["7", "9", "11"]
+        );
+        assert_eq!(colony.finds["falls_pearl"].first_by, "11");
+        assert_eq!(colony.finds["falls_pearl"].count, 2);
+        // Not going far leaves the dry spell as it was.
+        let short = Homecoming {
+            party: &[9],
+            route: &["edge", "hedgerow"],
+            furthest: ("hedgerow", 1),
+            ..Homecoming::default()
+        };
+        for _ in 0..PAGES_KEPT + 3 {
+            memories.back_from_the_expedition(&short);
+        }
+        let colony = memories.colony();
+        assert_eq!(colony.far_drought, 1);
+        assert_eq!(colony.expeditions as usize, PAGES_KEPT + 5);
+        assert_eq!(
+            colony.expedition_pages.len(),
+            PAGES_KEPT,
+            "the oldest pages give way"
+        );
+        assert_eq!(colony.expedition_pages[0].route, vec!["edge", "hedgerow"]);
+    }
+
+    #[test]
+    fn a_book_from_before_expeditions_reads_as_none_yet() {
+        let book: Book = serde_json::from_str(
+            r#"{"version": 2, "colonies": {"c": {"visits": 3, "outings": 4}}}"#,
+        )
+        .unwrap();
+        let colony = &book.colonies["c"];
+        assert_eq!(colony.outings, 4);
+        assert_eq!(colony.expeditions, 0);
+        assert!(colony.furthest.is_none() && colony.far_places.is_empty());
+        assert!(colony.expedition_pages.is_empty());
+        // And nothing about expeditions is written until there has been one.
+        let written = serde_json::to_string(colony).unwrap();
+        assert!(!written.contains("expedition") && !written.contains("furthest"));
     }
 
     #[test]

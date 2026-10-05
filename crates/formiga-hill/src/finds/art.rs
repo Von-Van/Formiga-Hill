@@ -2,6 +2,7 @@
 //! becomes on the Hilltop. Drawn to the same standard as the areas: shaded with ramps, lit from the
 //! upper left, outlined in a darker shade of their own colour, never black.
 
+mod afar;
 mod brush;
 mod built;
 mod earth;
@@ -35,6 +36,7 @@ pub fn icon(id: &str) -> Canvas {
     let drawn = match find.kind {
         _ if super::is_relic(id) => relic::icon(id),
         _ if super::is_foraged(id) => hedgerow::icon(id),
+        _ if super::is_from_afar(id) => afar::icon(id),
         Kind::Dig => earth::icon(id),
         Kind::Reach => hollow::icon(id),
         Kind::Scoop => water::icon(id),
@@ -51,6 +53,7 @@ pub fn piece(id: &str) -> Piece {
     let drawn = match find.kind {
         _ if super::is_relic(id) => relic::piece(id),
         _ if super::is_foraged(id) => hedgerow::piece(id),
+        _ if super::is_from_afar(id) => afar::piece(id),
         Kind::Dig => earth::piece(id),
         Kind::Reach => hollow::piece(id),
         Kind::Scoop => water::piece(id),

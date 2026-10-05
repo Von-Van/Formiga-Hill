@@ -348,6 +348,21 @@ impl Rummage {
         }
     }
 
+    /// Starts this rummage partway through a longer day than an outing's own, as a leg of an
+    /// expedition: with `light` left of that day's `full`, so the rarest signs wait for the
+    /// expedition's dusk, and the basket carried in already in it, so it holds only what fits.
+    pub fn partway(mut self, light: f32, full: f32, basket: Vec<&'static str>) -> Self {
+        self.light = light;
+        self.full = full;
+        self.basket = basket;
+        self
+    }
+
+    /// The light left, on the day's own scale.
+    pub fn light(&self) -> f32 {
+        self.light
+    }
+
     pub fn phase(&self) -> Phase {
         self.phase
     }

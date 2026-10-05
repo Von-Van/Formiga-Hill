@@ -10,7 +10,9 @@ mod costume;
 mod cues;
 mod daylight;
 mod dice;
+mod expedition;
 mod fairground;
+mod falls;
 mod finds;
 mod fishing;
 mod font;
@@ -78,6 +80,10 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-bugs <PNG>      Draw every bug in each of its poses, close up, and its icon, for review
   --render-bug-hunt <PNG>  Draw a bug hunt in the meadow, --at seconds in, played by a patient hand
   --render-hedgerow <PNG>  Draw a foray along the hedgerow, --at seconds in, played by a canny hand
+  --render-expedition <PNG>
+                           Draw an expedition --at seconds in, played by a steady hand: the map
+                           of the Woods, and the stops along the way
+  --render-falls <PNG>     Draw a visit to the Far Falls, --at seconds in, played by a steady hand
   --render-produce <PNG>   Draw everything that grows on the hedgerow at each stage, for review
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
@@ -140,6 +146,10 @@ enum Area {
     Hedgerow,
     /// Not an area: the review sheet of everything the hedgerow grows, at every stage.
     Produce,
+    /// An expedition under way: the map, or a stop along the way.
+    Expedition,
+    /// The Far Falls, a visit under way.
+    Falls,
     /// The clearing that isn't on any map, the Sovereign met.
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
@@ -312,6 +322,8 @@ fn main() -> Result<()> {
             Area::BugHunt => bug_hunt_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
             Area::Hedgerow => foray_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
             Area::Produce => produce_sheet(),
+            Area::Expedition => expedition_moment(&arrival.cast, args.at.unwrap_or(8.0), daylight),
+            Area::Falls => falls_moment(&arrival.cast, args.at.unwrap_or(14.0), daylight),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Costumes => sheet::costumes(&arrival.cast),
@@ -453,6 +465,10 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             Some("--render-produce") => {
                 render = Some((Area::Produce, value("--render-produce")?));
             }
+            Some("--render-expedition") => {
+                render = Some((Area::Expedition, value("--render-expedition")?));
+            }
+            Some("--render-falls") => render = Some((Area::Falls, value("--render-falls")?)),
             Some("--render-sovereign") => {
                 render = Some((Area::Sovereign, value("--render-sovereign")?));
             }
@@ -1038,6 +1054,105 @@ fn foray_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     scene
 }
 
+/// An expedition `at` seconds in, played by a steady hand. A parent and its little one go with
+/// whoever is boldest, if the colony has them, so the ways only some company opens show on the
+/// map. From the edge of the Woods it rummages in the glade, rests on the fallen log, takes the
+/// steep way up the crag to the Far Falls and wades in there, and goes down the stream to fish at
+/// the pool. The Hilltop has no telescope, so the falls are found out of the mist.
+fn expedition_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    use expedition::map::{FAR_FALLS, GLADE, LOG, POOL};
+    use expedition::{Expedition, Known, Outset, Phase};
+    let family = cast
+        .members
+        .iter()
+        .find_map(|member| member.parent().map(|parent| vec![parent, member.id]));
+    let mut party: Vec<cast::Id> = family.unwrap_or_else(|| cast.ids().take(1).collect());
+    let boldest = cast
+        .members
+        .iter()
+        .filter(|member| !party.contains(&member.id))
+        .max_by(|a, b| a.axes().boldness.total_cmp(&b.axes().boldness))
+        .map(|member| member.id);
+    party.insert(0, boldest.unwrap_or(party[0]));
+    party.dedup();
+    let mut hilltop = sample_arrangement();
+    hilltop.retain(|_, standing| !standing.finds().contains(&"brass_lens"));
+    let known = Known {
+        hilltop: hilltop.clone(),
+        ..Known::default()
+    };
+    let outset = Outset {
+        party,
+        influence: woods::influence(&hilltop),
+        seed: 3,
+    };
+    let mut trip = Expedition::new(cast, outset, known, 0.0);
+    trip.set_daylight(daylight);
+    let route = [GLADE, LOG, FAR_FALLS, POOL];
+    let mut next = 0;
+    let mut now = 0.0;
+    while now < at {
+        now += 1.0 / 30.0;
+        let input = trip
+            .leg_mut()
+            .map(|leg| leg.steady(now))
+            .unwrap_or_default();
+        trip.tick(cast, input, now);
+        match trip.phase() {
+            Phase::Choosing if next < route.len() => {
+                if trip.at() == route[next] {
+                    next += 1;
+                    trip.stop(cast, now);
+                } else {
+                    trip.go(route[next], now);
+                }
+            }
+            Phase::Choosing => trip.head_home(now),
+            Phase::MakingRoom => {
+                trip.leave_behind(0, now);
+            }
+            _ => {}
+        }
+        for event in trip.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    trip.compose(now, None)
+}
+
+/// A visit to the Far Falls `at` seconds in, played by a steady hand: it catches whatever comes
+/// down as the eddy brings it past the wading stone.
+fn falls_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    use falls::wading::{Outset, Wading};
+    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let mut pool = falls::open(cast, &party, 0.0);
+    pool.set_daylight(daylight);
+    let outset = Outset {
+        party,
+        drought: 0,
+        close_pair: false,
+        influence: woods::influence(&sample_arrangement()),
+        seed: 7,
+    };
+    let mut visit = Wading::new(&mut pool, outset, |_| false, 0.0);
+    visit.set_hour_dark(daylight.darkness());
+    let mut now = 0.0;
+    while now < at {
+        now += 1.0 / 30.0;
+        pool.tick(cast, now);
+        visit.tick(&mut pool, now);
+        if visit.at_the_stone(now) && now + 0.5 < at {
+            visit.strike(&mut pool, now);
+        }
+        for event in visit.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    let mut scene = pool.compose(now);
+    visit.draw(&mut scene, now);
+    scene
+}
+
 /// Everything the hedgerow grows, a row each, at each stage of ripeness: unripe, turning, ripe and
 /// over, on a strip of hedge green and close up.
 fn produce_sheet() -> Canvas {
@@ -1116,7 +1231,7 @@ fn sample_arrangement() -> hilltop::Arrangement {
 fn finds_sheet() -> Canvas {
     const CELL: (i32, i32) = (56, 70);
     let columns = 7;
-    // A row for each kind, a row for the relics, and the hedgerow's finds after.
+    // A row for each kind, a row for the relics, the hedgerow's finds, and the finds from afar.
     let rows: Vec<Vec<&finds::Find>> = finds::Kind::ALL
         .into_iter()
         .map(|kind| {
@@ -1131,6 +1246,7 @@ fn finds_sheet() -> Canvas {
                 .chunks(columns as usize)
                 .map(|row| row.iter().collect()),
         )
+        .chain(std::iter::once(finds::AFAR.iter().collect()))
         .collect();
     let mut sheet = Canvas::new(
         (CELL.0 * columns) as u32,
