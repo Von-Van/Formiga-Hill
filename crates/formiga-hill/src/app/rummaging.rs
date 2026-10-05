@@ -24,6 +24,10 @@ pub enum Activity {
     Bugs,
     Forage,
     Expedition,
+    /// Scavenging the heaps along the old track.
+    Scavenge,
+    /// Following a torn map along the old track.
+    Treasure,
 }
 
 #[derive(Default)]
@@ -47,6 +51,12 @@ pub struct Woods {
     /// An expedition under way, and the map as planned for whoever is chosen.
     pub expedition: Option<crate::expedition::Expedition>,
     pub plan: Option<(PlannedFor, Canvas)>,
+    /// The old track with nobody there, a scavenge under way, and a map being followed, and
+    /// which of the colony's maps is chosen to follow.
+    pub track: Option<Playground>,
+    pub scavenge: Option<(Playground, crate::track::scavenging::Scavenge)>,
+    pub treasure: Option<(Playground, crate::track::treasure::Hunt)>,
+    pub map: usize,
 }
 
 /// What the planning map was drawn for, so it is drawn again whenever any of it changes: who is
@@ -72,6 +82,7 @@ impl HillApp {
             self.woods.meadow = Some(crate::meadow::open(&self.arrival.cast, &[], now, &hilltop));
         }
         self.open_hedgerow(now);
+        self.open_track(now);
         if self.woods.party.is_empty()
             && let Some(first) = self.arrival.cast.members.first()
         {
@@ -135,6 +146,14 @@ impl HillApp {
         }
         if self.woods.foray.is_some() {
             self.tick_foraging(now);
+            return;
+        }
+        if self.woods.scavenge.is_some() {
+            self.tick_scavenging(now);
+            return;
+        }
+        if self.woods.treasure.is_some() {
+            self.tick_treasure(now);
             return;
         }
         if let Some(empty) = &mut self.woods.empty
@@ -205,7 +224,15 @@ impl HillApp {
         };
         let basket = rummage.basket().to_vec();
         let new = self.memories.back_from_the_woods(rummage.party(), &basket);
-        let line = match (basket.len(), new.len()) {
+        // Now and then, rolled up in a hollow with whatever was found there: a torn map.
+        let outings = self.memories.colony().outings;
+        let map = !basket.is_empty()
+            && crate::track::stray_map(outings, &self.arrival.cast.snapshot.colony_id)
+            && rummage
+                .party()
+                .first()
+                .is_some_and(|leader| self.memories.found_a_map(*leader));
+        let mut line = match (basket.len(), new.len()) {
             (0, _) => "Home from the Woods, empty-pawed this time.".to_owned(),
             (count, 0) => format!(
                 "Home with {count} find{}. They're in the satchel, for the Hilltop.",
@@ -217,6 +244,9 @@ impl HillApp {
                 plural(count)
             ),
         };
+        if map {
+            line.push_str(" And rolled up in a hollow with them: a torn map!");
+        }
         self.notice = Some((line, now));
     }
 
@@ -232,6 +262,18 @@ impl HillApp {
         }
         if let Some(scene) = self.compose_foray(now) {
             return scene;
+        }
+        if let Some(scene) = self.compose_scavenge(now) {
+            return scene;
+        }
+        if let Some(scene) = self.compose_treasure(now) {
+            return scene;
+        }
+        if matches!(self.woods.activity, Activity::Scavenge | Activity::Treasure)
+            && self.woods.outing.is_none()
+            && let Some(track) = &mut self.woods.track
+        {
+            return track.compose(now);
         }
         if self.woods.activity == Activity::Forage
             && self.woods.outing.is_none()
@@ -280,6 +322,14 @@ impl HillApp {
             self.foraging_click(pointer, now);
             return;
         }
+        if self.woods.scavenge.is_some() {
+            self.scavenging_click(pointer, now);
+            return;
+        }
+        if self.woods.treasure.is_some() {
+            self.treasure_click(pointer, now);
+            return;
+        }
         let Some((ground, rummage)) = &mut self.woods.outing else {
             return;
         };
@@ -326,6 +376,12 @@ impl HillApp {
         if self.woods.foray.is_some() {
             return self.foraging_hover(pointer);
         }
+        if self.woods.scavenge.is_some() {
+            return self.scavenging_hover(pointer);
+        }
+        if self.woods.treasure.is_some() {
+            return self.treasure_hover(pointer);
+        }
         let (_, rummage) = self.woods.outing.as_ref()?;
         if !matches!(rummage.phase(), Phase::Exploring | Phase::Catching(_)) {
             return None;
@@ -371,6 +427,20 @@ impl HillApp {
             }
             return;
         }
+        if self.woods.scavenge.is_some() {
+            self.scavenging_bar(ui, now);
+            if ui.button("Journal").clicked() {
+                self.journal = !self.journal;
+            }
+            return;
+        }
+        if self.woods.treasure.is_some() {
+            self.treasure_bar(ui, now);
+            if ui.button("Journal").clicked() {
+                self.journal = !self.journal;
+            }
+            return;
+        }
         match &self.woods.outing {
             None => {
                 for (activity, label) in [
@@ -382,6 +452,7 @@ impl HillApp {
                 ] {
                     ui.selectable_value(&mut self.woods.activity, activity, label);
                 }
+                self.track_activities(ui);
                 // Only an expedition takes three.
                 let most = if self.woods.activity == Activity::Expedition {
                     crate::expedition::PARTY
@@ -416,6 +487,10 @@ impl HillApp {
                         Activity::Expedition => {
                             super::expedition::expeditioner_hint(colony, member.id, &character)
                         }
+                        Activity::Scavenge => {
+                            super::scavenging::scavenger_hint(colony, member.id, &character)
+                        }
+                        Activity::Treasure => super::scavenging::reader_hint(&character),
                     };
                     if ui
                         .selectable_label(chosen, &member.name)
@@ -471,6 +546,8 @@ impl HillApp {
                 Activity::Bugs => self.set_off_bug_hunting(now),
                 Activity::Forage => self.set_off_foraging(now),
                 Activity::Expedition => self.set_off_expedition(now),
+                Activity::Scavenge => self.set_off_scavenging(now),
+                Activity::Treasure => self.set_off_treasure(now),
             }
         }
         if home && let Some((ground, rummage)) = &mut self.woods.outing {

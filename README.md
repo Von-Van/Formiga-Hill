@@ -93,6 +93,19 @@ changes how it goes and what turns up, but never rules anything out.
   cap. Pick it ripe, and choose what is worth a place in a small basket. The rarest are ripe only
   briefly, and late. A food-inspector knows ripe at a glance, a little one reaches the tucked-in
   places, a bold one climbs for the high branches, and a sweetheart leaves some for the birds.
+- **Scavenging along the old track.** A woodcutter's hut with its roof fallen in, a broken cart and
+  a tumbledown wall, with the Hilltop small on the skyline. Lift things off each heap in the right
+  order: a heap shifts as it is moved, and anything fragile it jolts cracks into something lesser,
+  though nothing already in the basket is ever touched. Heavy things need someone strong, or two
+  together. A little one squeezes into the gaps, a patient one lifts without shifting anything, a
+  curious one peeks underneath first, an impulsive one yanks, and a food-inspector knows what is
+  in every sack and tin.
+- **Treasure maps.** Torn maps turn up in the heaps, and now and then rolled up in a hollow in the
+  glade, and are kept until followed. Each sketches its own route in landmarks and turns
+  ("Between the old gatepost and the split oak", "Over the stream"), ending some paces from the
+  old milestone. A scholar reads the faded words, an explorer has a hunch, a suspicious one doubts
+  aloud, and a curious one spots a landmark far down a way. A wrong turn costs light and leads to
+  a heap; the right way ends at a dig, with a chest.
 - **Expeditions.** A whole day out on the Woods' map with up to three companions, on one day's
   light. Choose the way at each fork; every path spends some of the light. Stop on the way for a
   short go at rummaging, fishing, bug catching or foraging, or for a picnic on the fallen log, and
@@ -111,8 +124,8 @@ written here.
   hedgerow's seeds and cuttings, into a strawberry bed, a hazel, a crab apple, a wild rose and a
   cushion of thyme. They start as a sprout in turned earth and grow a stage with every visit, and
   the colony tends them, each in its own way. Nothing wilts while the colony is away.
-- **Building.** A plan comes to mind with the first find that goes into it: ten of them, from a
-  grand cairn and a picnic table to the great telescope, a wishing well and the bandstand. Build
+- **Building.** A plan comes to mind with the first find that goes into it: twelve of them, from
+  a grand cairn and a tea party to the great telescope, a woodshed and the bandstand. Build
   one from the satchel, and the colony gathers round to lend a hand before it appears in a puff of
   dust. Taking it apart gives every find back.
 - **The journal.** It records every find, who found it first, and hints of the rest, with what is
@@ -144,7 +157,7 @@ written here.
 
 ### Coming next
 
-- **The Woods:** scavenging and treasure routes at the old track.
+- **The Woods:** the old track as a stop on the expedition map.
 
 ## Getting there
 
@@ -215,6 +228,9 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | `--render-produce` | Everything the hedgerow grows, at every stage of ripeness |
 | `--render-expedition` | An expedition, `--at` seconds in: the map, each stop on the way, the picnic |
 | `--render-falls` | Wading at the Far Falls, `--at` seconds in |
+| `--render-track` | A scavenge along the old track, `--at` seconds in |
+| `--render-treasure` | A treasure hunt off the old track, `--at` seconds in |
+| `--render-landmarks` | Every landmark a map can name, near and far, and the dig |
 | `--render-hilltop` | The Hilltop; `--sample-hilltop` fills it |
 | `--render-building` | The colony building on the Hilltop, `--at` seconds in |
 | `--render-story` | A story, `--at` seconds in |
@@ -249,6 +265,7 @@ crates/formiga-hill/src/
   hedgerow/          the hedgerow, what ripens there, and foraging
   expedition/        a day out on the Woods' map: its ways, each stop, the picnic, the basket
   falls/             the Far Falls, and wading for what comes down them
+  track/             the old track, its heaps and scavenging, and treasure maps
   hilltop/           the Hilltop, and the Hilltop seen from elsewhere
   clearing/          the secret
   finds/             everything the Woods turns up, and how each looks

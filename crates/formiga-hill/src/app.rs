@@ -13,6 +13,7 @@ mod foraging;
 mod games;
 mod plans;
 mod rummaging;
+mod scavenging;
 mod storytelling;
 
 use crate::cast::{Cast, Id};
@@ -296,6 +297,7 @@ impl HillApp {
             self.woods.pool.as_mut(),
             self.woods.meadow.as_mut(),
             self.woods.hedgerow.as_mut(),
+            self.woods.track.as_mut(),
         ];
         for ground in grounds.into_iter().flatten() {
             ground.set_daylight(daylight);
@@ -318,6 +320,14 @@ impl HillApp {
         }
         if let Some(expedition) = &mut self.woods.expedition {
             expedition.set_daylight(daylight);
+        }
+        if let Some((ground, scavenge)) = &mut self.woods.scavenge {
+            ground.set_daylight(daylight);
+            scavenge.set_hour_dark(daylight.darkness());
+        }
+        if let Some((ground, hunt)) = &mut self.woods.treasure {
+            ground.set_daylight(daylight);
+            hunt.set_hour_dark(daylight.darkness());
         }
     }
 
@@ -367,6 +377,12 @@ impl HillApp {
         }
         if self.woods.expedition.is_some() {
             self.finish_expedition(now);
+        }
+        if self.woods.scavenge.is_some() {
+            self.finish_scavenging(now);
+        }
+        if self.woods.treasure.is_some() {
+            self.finish_treasure(now);
         }
         self.placing = None;
         self.notices_open = false;
@@ -724,6 +740,14 @@ impl eframe::App for HillApp {
                             }
                             if self.woods.expedition.is_some() {
                                 hovered = self.expedition_point(pointer, now);
+                            }
+                            if let Some((ground, _)) = &mut self.woods.scavenge {
+                                ground.set_pointer(pointer);
+                                hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                            }
+                            if let Some((ground, _)) = &mut self.woods.treasure {
+                                ground.set_pointer(pointer);
+                                hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
                             }
                             let spot = self.woods_hover(pointer);
                             if let Some((label, (x, y))) = &spot {

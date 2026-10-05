@@ -223,6 +223,13 @@ pub fn influence(arrangement: &Arrangement) -> Influence {
                     &mut influence.notes,
                 );
             }
+            "woodcutters_lantern" => {
+                influence.light += 8.0;
+                note(
+                    "The woodcutter's lantern on the Hilltop lights the way home: a little more light.",
+                    &mut influence.notes,
+                );
+            }
             "sun_coin" => {
                 influence.light += 6.0;
                 note(
@@ -316,6 +323,17 @@ mod tests {
         let richer = influence(&planted).richer;
         assert_eq!(richer[Kind::Shake.index()], MOST_RICHER);
         assert_eq!(richer[Kind::Dig.index()], 0.0);
+    }
+
+    #[test]
+    fn the_woodcutters_lantern_lights_the_way_home_too() {
+        let lit = influence(&Arrangement::from([(0, "woodcutters_lantern".into())]));
+        assert!(lit.light > 0.0);
+        let shed = influence(&Arrangement::from([(0, Standing::built("woodshed"))]));
+        assert!(
+            shed.light > 0.0,
+            "hung by the woodshed, it still lights the way"
+        );
     }
 
     #[test]

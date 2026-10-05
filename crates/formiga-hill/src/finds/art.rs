@@ -9,6 +9,7 @@ mod earth;
 mod hedgerow;
 mod hollow;
 mod relic;
+mod track;
 mod undergrowth;
 mod water;
 
@@ -37,6 +38,7 @@ pub fn icon(id: &str) -> Canvas {
         _ if super::is_relic(id) => relic::icon(id),
         _ if super::is_foraged(id) => hedgerow::icon(id),
         _ if super::is_from_afar(id) => afar::icon(id),
+        _ if super::is_scavenged(id) => track::icon(id),
         Kind::Dig => earth::icon(id),
         Kind::Reach => hollow::icon(id),
         Kind::Scoop => water::icon(id),
@@ -54,6 +56,7 @@ pub fn piece(id: &str) -> Piece {
         _ if super::is_relic(id) => relic::piece(id),
         _ if super::is_foraged(id) => hedgerow::piece(id),
         _ if super::is_from_afar(id) => afar::piece(id),
+        _ if super::is_scavenged(id) => track::piece(id),
         Kind::Dig => earth::piece(id),
         Kind::Reach => hollow::piece(id),
         Kind::Scoop => water::piece(id),
@@ -102,6 +105,12 @@ pub fn built(plan: &str) -> Piece {
 /// What shines from something built after dark: each light's colour, and where in the piece.
 pub fn built_lights(plan: &str) -> Vec<(Rgba, (i32, i32))> {
     built::lights(plan)
+}
+
+/// What shines from a find's own piece after dark, for a find whose drawing says where: each
+/// light's colour, and where in the piece. Empty for any other.
+pub fn find_lights(id: &str) -> Vec<(Rgba, (i32, i32))> {
+    track::lights(id)
 }
 
 fn tint(kind: Kind) -> Ramp {
@@ -210,6 +219,7 @@ mod tests {
     #[test]
     fn every_find_has_an_icon_and_a_piece_that_fits_any_spot() {
         let all = CATALOGUE.iter().chain(crate::finds::FORAGED.iter());
+        let all = all.chain(crate::finds::SCAVENGED.iter());
         for find in all.chain(crate::finds::RELICS.iter()) {
             let icon = icon(find.id);
             assert_eq!((icon.width(), icon.height()), (ICON, ICON), "{}", find.id);

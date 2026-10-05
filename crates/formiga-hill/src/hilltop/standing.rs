@@ -34,6 +34,7 @@ impl Standing {
             .iter()
             .chain(finds::FORAGED.iter())
             .chain(finds::RELICS.iter())
+            .chain(finds::SCAVENGED.iter())
             .map(|find| Self::from(find.id));
         let stages = growing::GROWING.iter().flat_map(|growth| {
             (0..growth.stages.len()).map(|stage| Self::Planted {
@@ -189,6 +190,12 @@ impl Standing {
     /// What shines from it after dark, if anything: each light's colour, and where it shines from
     /// in `piece`, its own drawing.
     pub fn lights(&self, piece: &art::Piece) -> Vec<(Rgba, (i32, i32))> {
+        if let Self::Find(id) = self {
+            let placed = art::find_lights(id);
+            if !placed.is_empty() {
+                return placed;
+            }
+        }
         let color = match self {
             Self::Find(id) => match id.as_str() {
                 "lost_lantern" => rgb(0xffcf6a),

@@ -95,6 +95,9 @@ impl HillApp {
         if let Some(lane) = &mut self.woods.hedgerow {
             crate::hedgerow::show_hilltop(lane, &up);
         }
+        if let Some(track) = &mut self.woods.track {
+            crate::track::show_hilltop(track, &up);
+        }
     }
 
     /// The spot under a point: a piece standing there, front-most first, or an open spot.
@@ -492,6 +495,7 @@ impl HillApp {
                     }
                     super::foraging::journal(ui, colony, &who);
                     super::expedition::journal(ui, colony, &who);
+                    super::scavenging::journal(ui, colony, &who);
                     if !colony.outings_by.is_empty() {
                         ui.add_space(6.0);
                         ui.strong("Who has been");

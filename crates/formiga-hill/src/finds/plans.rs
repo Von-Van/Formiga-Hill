@@ -21,7 +21,7 @@ pub struct Plan {
     pub use_: Use,
 }
 
-pub const PLANS: [Plan; 10] = [
+pub const PLANS: [Plan; 12] = [
     Plan {
         id: "grand_cairn",
         name: "The grand cairn",
@@ -106,6 +106,30 @@ pub const PLANS: [Plan; 10] = [
         blurb: "The tiny door in a hill of its own, with a pinecone porch, a window in the roof \
                 and smoke from the chimney.",
     },
+    Plan {
+        id: "woodshed",
+        name: "The woodshed",
+        needs: &[
+            ("woodcutters_lantern", 1),
+            ("carved_sign", 1),
+            ("pinecone", 2),
+        ],
+        use_: Use::Rest,
+        blurb: "Logs stacked under a little roof, the carved sign over it and the lantern hung \
+                by it: somewhere dry to doze.",
+    },
+    Plan {
+        id: "tea_party",
+        name: "A tea party",
+        needs: &[
+            ("china_teacup", 2),
+            ("copper_kettle", 1),
+            ("wild_berries", 1),
+        ],
+        use_: Use::Sit,
+        blurb: "A cloth on a stump, the kettle on, the good china out and berries in a bowl. \
+                Everyone is invited.",
+    },
 ];
 
 pub fn plan(id: &str) -> Option<&'static Plan> {
@@ -156,7 +180,7 @@ impl Plan {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::finds::{CATALOGUE, is_relic};
+    use crate::finds::{CATALOGUE, SCAVENGED, is_relic};
     use std::collections::BTreeSet;
 
     #[test]
@@ -167,7 +191,11 @@ mod tests {
             assert!(!plan.needs.is_empty(), "{} takes nothing", plan.id);
             for (id, count) in plan.needs {
                 assert!(
-                    CATALOGUE.iter().any(|find| find.id == *id) && !is_relic(id),
+                    CATALOGUE
+                        .iter()
+                        .chain(SCAVENGED.iter())
+                        .any(|find| find.id == *id)
+                        && !is_relic(id),
                     "{} takes {id}, which the Woods never turns up",
                     plan.id
                 );
