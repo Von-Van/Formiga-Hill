@@ -331,7 +331,7 @@ impl HillApp {
         }
         if area == Area::Green && self.green.is_none() {
             let mut green = crate::green::open(&self.arrival.cast, now);
-            crate::green::show_hilltop(&mut green, &self.memories.colony().hilltop);
+            crate::green::show_hilltop(&mut green, &self.hilltop_standing());
             self.green = Some(green);
         }
         if area == Area::Clubhouse {
@@ -339,7 +339,7 @@ impl HillApp {
         }
         if area == Area::Fairground && self.fairground.is_none() {
             let (mut ground, game) = fairground::open(&self.arrival.cast, now);
-            fairground::show_hilltop(&mut ground, &self.memories.colony().hilltop);
+            fairground::show_hilltop(&mut ground, &self.hilltop_standing());
             self.fairground = Some((ground, game));
         }
         if area == Area::Woods {
