@@ -534,7 +534,7 @@ fn heap_click(
 }
 
 /// What is under the pointer in a heap, and where to say so.
-fn heap_hover(
+pub(super) fn heap_hover(
     scavenge: &Scavenge,
     pointer: Option<(f32, f32)>,
     may_go: bool,
@@ -596,7 +596,7 @@ fn light_and_basket(ui: &mut egui::Ui, light: f32, basket: usize, chest: usize) 
 }
 
 /// Who can do what at a heap: one to choose for each thing the party can do.
-fn hands_bar(ui: &mut egui::Ui, cast: &Cast, scavenge: &mut Scavenge) {
+pub(super) fn hands_bar(ui: &mut egui::Ui, cast: &Cast, scavenge: &mut Scavenge) {
     let hands = scavenge.hands();
     let mut chosen = scavenge.hand();
     for (index, hand) in hands.iter().enumerate() {
@@ -655,7 +655,7 @@ fn hand_label(cast: &Cast, scavenge: &Scavenge, hand: Hand) -> (String, &'static
 }
 
 /// What to tell the person about something that happened at a heap.
-fn heap_line(cast: &Cast, event: Event) -> Option<String> {
+pub(super) fn heap_line(cast: &Cast, event: Event) -> Option<String> {
     let name = |id: Id| cast.member(id).map_or("Someone", |m| m.name.as_str());
     Some(match event {
         Event::Lifted { who, stuff, how } => match how {

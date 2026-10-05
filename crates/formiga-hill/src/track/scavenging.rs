@@ -419,6 +419,17 @@ impl Scavenge {
         }
     }
 
+    /// Starts this scavenge partway through a longer day than an outing's own, as a leg of an
+    /// expedition: with `light` left of that day's `full`, so the rare things glint only as the
+    /// expedition's light goes, and the basket carried in already in it, so it holds only what
+    /// fits.
+    pub fn partway(mut self, light: f32, full: f32, basket: Vec<&'static str>) -> Self {
+        self.light = light;
+        self.full = full;
+        self.basket = basket;
+        self
+    }
+
     pub fn phase(&self) -> Phase {
         self.phase
     }
@@ -470,6 +481,31 @@ impl Scavenge {
     #[cfg(test)]
     pub fn heap_count(&self) -> usize {
         self.heaps.len()
+    }
+
+    /// Hides a torn map, seen already, under something lying loose on top of a heap, where a
+    /// careful hand goes first: for a test elsewhere that needs one found.
+    #[cfg(test)]
+    pub fn hide_a_map(&mut self, heap: usize) {
+        let at = &self.heaps[heap];
+        let loose = (0..at.items.len()).find(|&item| {
+            let thing = &at.items[item];
+            !thing.lifted && !thing.stuff.heavy() && at.resting_on(item).is_empty()
+        });
+        let Some(item) = loose else {
+            return;
+        };
+        let middle = at.items[item].x + at.items[item].w / 2;
+        self.heaps[heap].hidden.push(heap::Hidden {
+            what: Hoard::Map,
+            place: Place::Under(item),
+            cracked: false,
+            known: true,
+            at: middle,
+            lies: 0,
+        });
+        self.signs[heap].push(Sign::default());
+        self.glinted[heap].push(false);
     }
 
     /// The heap the party is at, if it is at one.
