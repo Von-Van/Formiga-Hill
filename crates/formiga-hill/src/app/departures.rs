@@ -4,6 +4,7 @@
 //! asks anything of anyone: a notice is news or an invitation, never a chore or a reminder of
 //! time away.
 
+use super::games::reached;
 use super::{Area, HillApp, Visit, clock};
 use crate::character::Character;
 use crate::hilltop::Standing;
@@ -17,20 +18,26 @@ pub(super) enum Outing {
     Picnic,
     Stories,
     HideAndSeek,
+    SackRace,
+    HighStriker,
     Rummaging,
     Fishing,
     BugCatching,
+    Foraging,
     Hilltop,
 }
 
 impl Outing {
-    const ALL: [Self; 7] = [
+    const ALL: [Self; 10] = [
         Self::Picnic,
         Self::Stories,
         Self::HideAndSeek,
+        Self::SackRace,
+        Self::HighStriker,
         Self::Rummaging,
         Self::Fishing,
         Self::BugCatching,
+        Self::Foraging,
         Self::Hilltop,
     ];
 
@@ -39,8 +46,8 @@ impl Outing {
         match self {
             Self::Picnic => Area::Green,
             Self::Stories => Area::Clubhouse,
-            Self::HideAndSeek => Area::Fairground,
-            Self::Rummaging | Self::Fishing | Self::BugCatching => Area::Woods,
+            Self::HideAndSeek | Self::SackRace | Self::HighStriker => Area::Fairground,
+            Self::Rummaging | Self::Fishing | Self::BugCatching | Self::Foraging => Area::Woods,
             Self::Hilltop => Area::Hilltop,
         }
     }
@@ -51,9 +58,12 @@ impl Outing {
             Self::Picnic => "lie about on the picnic blanket",
             Self::Stories => "hear a story by the Clubhouse fire",
             Self::HideAndSeek => "play hide-and-seek at the Fairground",
+            Self::SackRace => "run in the sack race at the Fairground",
+            Self::HighStriker => "have a go on the high striker",
             Self::Rummaging => "go rummaging in the Woods",
             Self::Fishing => "go fishing at the pool",
             Self::BugCatching => "go bug catching in the meadow",
+            Self::Foraging => "go foraging along the hedgerow",
             Self::Hilltop => "sit up on the Hilltop",
         }
     }
@@ -61,9 +71,13 @@ impl Outing {
     /// For the departures board, where a place offers more than one thing.
     fn short(self) -> Option<&'static str> {
         match self {
+            Self::HideAndSeek => Some("hide-and-seek"),
+            Self::SackRace => Some("sack race"),
+            Self::HighStriker => Some("high striker"),
             Self::Rummaging => Some("rummaging"),
             Self::Fishing => Some("fishing"),
             Self::BugCatching => Some("bugs"),
+            Self::Foraging => Some("foraging"),
             _ => None,
         }
     }
@@ -95,12 +109,22 @@ impl Outing {
                     + 0.2 * a.impulsiveness
                     + kind(&[Troublemaker, Showoff])
             }
+            Self::SackRace => 0.45 * a.energy + 0.3 * a.playfulness + 0.25 * a.boldness,
+            Self::HighStriker => {
+                0.5 * a.feistiness + 0.3 * a.boldness + 0.2 * a.energy + kind(&[Grump])
+            }
             Self::Rummaging => 0.5 * a.curiosity + 0.5 * a.boldness + kind(&[Explorer]),
             Self::Fishing => {
                 0.6 * (1.0 - a.impulsiveness) + 0.4 * (1.0 - a.social) + kind(&[Wallflower, Grump])
             }
             Self::BugCatching => {
                 0.5 * a.energy + 0.3 * a.impulsiveness + 0.2 * a.playfulness + kind(&[Oddball])
+            }
+            Self::Foraging => {
+                0.35 * a.affection
+                    + 0.35 * (1.0 - a.impulsiveness)
+                    + 0.3 * a.curiosity
+                    + kind(&[Sweetheart])
             }
             Self::Hilltop => {
                 0.4 * (1.0 - a.energy)
@@ -139,6 +163,10 @@ pub(super) struct Board {
     pub buildable: Vec<String>,
     /// The quickest hide-and-seek among those here: who, and in how long.
     pub record: Option<(String, f32)>,
+    /// The quickest sack race among those here, and the highest swing at the high striker (from
+    /// 0 to 1, the bell).
+    pub race_record: Option<(String, f32)>,
+    pub striker_record: Option<(String, f32)>,
     /// Souvenirs that go home on the train to this Desktop.
     pub going_home: usize,
     /// Community packages that could not be read.
@@ -292,14 +320,36 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
             ),
         ));
     }
+    let mut records = Vec::new();
     if let Some((name, seconds)) = &board.record {
-        notes.push(notice(
-            "Fairground record",
-            format!(
-                "{name} found everyone at hide-and-seek in {}, the quickest yet.",
-                clock(*seconds)
-            ),
+        records.push(format!(
+            "{name} found everyone at hide-and-seek in {}, the quickest yet.",
+            clock(*seconds)
         ));
+    }
+    if let Some((name, seconds)) = &board.race_record {
+        records.push(format!(
+            "{name} hopped the sack race in {}, the quickest yet.",
+            clock(*seconds)
+        ));
+    }
+    if let Some((name, height)) = &board.striker_record {
+        records.push(if *height >= 1.0 {
+            format!("{name} rang the bell on the high striker.")
+        } else {
+            format!(
+                "{name} sent the high striker's puck up to {}, the highest yet.",
+                reached(*height)
+            )
+        });
+    }
+    if !records.is_empty() {
+        let heading = if records.len() == 1 {
+            "Fairground record"
+        } else {
+            "Fairground records"
+        };
+        notes.push(notice(heading, records.join("\n")));
     }
     if board.going_home > 0 {
         notes.push(notice(
@@ -347,13 +397,28 @@ pub(super) fn departures(board: &Board) -> Vec<Departure> {
             plural(all, "story", "stories")
         ),
     };
-    let fair = match &board.record {
-        Some((name, seconds)) => format!(
-            "Hide-and-seek, for the colony to play. Record: {name}, {}",
-            clock(*seconds)
-        ),
-        None => "Hide-and-seek, for the colony to play".to_owned(),
-    };
+    let mut fair =
+        "Hide-and-seek, the sack race and the high striker, for the colony to play".to_owned();
+    let records: Vec<String> = [
+        board
+            .record
+            .as_ref()
+            .map(|(name, seconds)| format!("hide-and-seek, {name} {}", clock(*seconds))),
+        board
+            .race_record
+            .as_ref()
+            .map(|(name, seconds)| format!("the sack race, {name} {}", clock(*seconds))),
+        board
+            .striker_record
+            .as_ref()
+            .map(|(name, height)| format!("the high striker, {name} ({})", reached(*height))),
+    ]
+    .into_iter()
+    .flatten()
+    .collect();
+    if !records.is_empty() {
+        fair.push_str(&format!("\nRecords: {}", records.join("; ")));
+    }
     let mut hilltop = if board.standing == 0 {
         "Bare for now, for whatever the Woods turns up".to_owned()
     } else {
@@ -373,7 +438,9 @@ pub(super) fn departures(board: &Board) -> Vec<Departure> {
         (
             Area::Woods,
             "The Woods",
-            "Rummaging in the glade, fishing at the pool, bugs in the meadow".to_owned(),
+            "Rummaging in the glade, fishing at the pool, bugs in the meadow, foraging along the \
+             hedgerow"
+                .to_owned(),
         ),
         (Area::Hilltop, "The Hilltop", hilltop),
     ]
@@ -438,6 +505,8 @@ impl HillApp {
                 .map(|plan| plan.name.to_lowercase())
                 .collect(),
             record,
+            race_record: self.race_record(),
+            striker_record: self.striker_record(),
             going_home,
             problems: self.library.problems.len(),
         }
@@ -556,6 +625,7 @@ mod tests {
             TemperamentKind::Wallflower,
             TemperamentKind::Oddball,
             TemperamentKind::Guardian,
+            TemperamentKind::Sweetheart,
         ] {
             for level in [0.0, 0.5, 1.0] {
                 character.kind = kind;
@@ -566,6 +636,23 @@ mod tests {
                 seen.insert(keen_on(&character, true));
             }
         }
+        // Lively, playful and bold, and patient enough not to be off bug catching: the sack race.
+        // Feisty and bold, and a grump: the high striker.
+        let mut racer = sample().remove(0);
+        racer.kind = TemperamentKind::Guardian;
+        racer.axes.energy = 1.0;
+        racer.axes.playfulness = 1.0;
+        racer.axes.boldness = 1.0;
+        racer.axes.curiosity = 0.0;
+        racer.axes.impulsiveness = 0.0;
+        racer.axes.social = 0.5;
+        seen.insert(keen_on(&racer, true));
+        let mut striker = sample().remove(0);
+        striker.kind = TemperamentKind::Grump;
+        striker.axes.feistiness = 1.0;
+        striker.axes.boldness = 1.0;
+        striker.axes.curiosity = 0.0;
+        seen.insert(keen_on(&striker, true));
         assert_eq!(seen.len(), Outing::ALL.len(), "only {seen:?}");
     }
 
@@ -678,6 +765,75 @@ mod tests {
             ..Board::default()
         });
         assert!(quiet.iter().all(|note| note.heading != "Plans"));
+    }
+
+    #[test]
+    fn the_fairground_records_are_told_together_without_any_that_are_not_set() {
+        let one = notices(&Board {
+            race_record: Some(("Pip".into(), 14.0)),
+            ..Board::default()
+        });
+        let record = one
+            .iter()
+            .find(|n| n.heading.starts_with("Fairground"))
+            .unwrap();
+        assert_eq!(record.heading, "Fairground record");
+        assert_eq!(
+            record.text,
+            "Pip hopped the sack race in 0:14, the quickest yet."
+        );
+        let all = notices(&Board {
+            record: Some(("Fern".into(), 42.0)),
+            race_record: Some(("Pip".into(), 14.0)),
+            striker_record: Some(("Moss".into(), 1.0)),
+            ..Board::default()
+        });
+        let records = all
+            .iter()
+            .find(|n| n.heading.starts_with("Fairground"))
+            .unwrap();
+        assert_eq!(records.heading, "Fairground records");
+        assert_eq!(records.text.lines().count(), 3);
+        assert!(records.text.contains("Moss rang the bell"));
+        let short = notices(&Board {
+            striker_record: Some(("Moss".into(), 0.74)),
+            ..Board::default()
+        });
+        assert!(short.iter().any(|n| n.text.contains("up to the 7th mark")));
+        assert!(
+            notices(&Board::default())
+                .iter()
+                .all(|n| !n.heading.starts_with("Fairground")),
+            "no record, no notice"
+        );
+    }
+
+    #[test]
+    fn the_fairground_row_lists_its_games_and_their_records() {
+        let fair = |board: &Board| {
+            departures(board)
+                .into_iter()
+                .find(|row| row.area == Area::Fairground)
+                .unwrap()
+        };
+        let bare = fair(&Board::default());
+        for game in ["Hide-and-seek", "the sack race", "the high striker"] {
+            assert!(bare.on.contains(game), "{}", bare.on);
+        }
+        assert!(!bare.on.contains("Records"));
+        let row = fair(&Board {
+            race_record: Some(("Pip".into(), 14.0)),
+            striker_record: Some(("Moss".into(), 1.0)),
+            wishes: vec![("Fern".into(), Outing::SackRace)],
+            ..Board::default()
+        });
+        assert!(
+            row.on
+                .ends_with("Records: the sack race, Pip 0:14; the high striker, Moss (the bell)"),
+            "{}",
+            row.on
+        );
+        assert_eq!(row.keen, ["Fern (sack race)"]);
     }
 
     #[test]

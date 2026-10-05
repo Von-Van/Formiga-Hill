@@ -101,6 +101,16 @@ const VISTA: Vista = Vista {
 /// there.
 const BARREL: (i32, i32) = (118, 134);
 const BARREL_LANTERN: (i32, i32) = (4, -5);
+/// The high striker, between the big top and the carousel: the middle of its tower, and the row
+/// its plinth stands on.
+pub const STRIKER: (i32, i32) = (129, 117);
+/// The rows the striker's puck runs between up its rail: where its top is at rest, and where it
+/// is when it strikes the bell.
+pub const PUCK_RAIL: (i32, i32) = (104, 61);
+/// The pad the mallet comes down on: its middle, and its top row.
+pub const PAD: (i32, i32) = (129, 117);
+/// The bell on top of the striker: its middle, and the row of its rim.
+pub const BELL: (i32, i32) = (129, 55);
 
 /// Everything behind the colony and its hiding places, by day.
 pub fn backdrop(hilltop: &Arrangement) -> Canvas {
@@ -140,6 +150,7 @@ fn paint(scene: &mut Canvas, lamps: &mut Canvas, hilltop: &Arrangement) {
     hoopla_stall(scene, lamps, 266);
     caravan(scene, lamps, 336);
     festoons(scene, lamps);
+    high_striker(scene, lamps);
     near_strings(scene, lamps);
     lantern_light(
         lamps,
@@ -1751,6 +1762,130 @@ fn festoons(scene: &mut Canvas, lamps: &mut Canvas) {
             );
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// The high striker
+// ---------------------------------------------------------------------------------------------
+
+/// The high striker: a tall board striped red and cream, a mark to each stripe with a gilt tick
+/// either side, a brass rail up its middle for the puck, a gilt cap on top for the bell to sit on
+/// (the bell, the puck and the mallet move, so they are drawn with the game: see `gear`), little
+/// bulbs up its edges that light after dark, a plinth painted with a star, and the pad at its
+/// foot that the mallet comes down on.
+fn high_striker(scene: &mut Canvas, lamps: &mut Canvas) {
+    let (cx, base) = STRIKER;
+    let (left, right) = (cx - 4, cx + 4);
+    let (rest, bell) = PUCK_RAIL;
+    let foot = base - 9;
+    let top = bell - 1;
+    let band = (rest + 2 - bell) as f32 / 10.0;
+    ellipse(scene, cx + 3, base, 13, 2, SHADOW);
+    // The board, one stripe to each mark, each stripe shaded in its own colour.
+    for y in top..=foot {
+        let mark = (((rest + 2 - y) as f32 / band).floor() as i32).clamp(0, 9);
+        let ramp = if mark % 2 == 0 {
+            CANVAS_RED
+        } else {
+            CANVAS_CREAM
+        };
+        for x in left..=right {
+            let color = if x == left || x == right {
+                ramp.edge
+            } else if x == left + 1 {
+                ramp.light
+            } else if x >= right - 1 || chance(x, y, 721, 30) {
+                ramp.shadow
+            } else {
+                ramp.base
+            };
+            put(scene, x, y, color);
+        }
+    }
+    // A gilt tick either side at every mark, and a bulb at every other one.
+    for mark in 1..10 {
+        let y = rest + 2 - (mark as f32 * band).round() as i32;
+        put(scene, left - 1, y, GOLD.light);
+        put(scene, right + 1, y, GOLD.base);
+        hline(
+            scene,
+            left + 1,
+            y,
+            2,
+            mix(GOLD.light, CANVAS_CREAM.base, 0.4),
+        );
+        hline(
+            scene,
+            right - 2,
+            y,
+            2,
+            mix(GOLD.shadow, CANVAS_RED.base, 0.4),
+        );
+        if mark % 2 == 1 {
+            stud(scene, lamps, left - 1, y - 2, mark as usize);
+            stud(scene, lamps, right + 1, y - 2, mark as usize + 1);
+        }
+    }
+    // The rail, brass in a groove, with a stop at the foot for the puck to rest on.
+    vline(scene, cx, top + 1, foot - top - 1, GOLD.light);
+    vline(
+        scene,
+        cx + 1,
+        top + 1,
+        foot - top - 1,
+        mix(GOLD.shadow, INK, 0.3),
+    );
+    hline(scene, cx - 1, rest + 3, 3, IRON.base);
+    hline(scene, cx - 1, rest + 4, 3, IRON.edge);
+    // A star at the top mark, for the bell.
+    let star = top + 2;
+    put(scene, cx - 2, star + 1, GOLD.light);
+    put(scene, cx + 2, star + 1, GOLD.base);
+    put(scene, cx - 1, star, GOLD.shine);
+    put(scene, cx + 1, star, GOLD.light);
+    // The gilt cap the bell sits on.
+    bevel(scene, left - 2, bell, 13, 4, GOLD);
+    hline(scene, left - 1, bell + 4, 11, mix(GOLD.edge, INK, 0.2));
+    // The plinth, painted, with a star on its front.
+    bevel(scene, cx - 8, foot + 1, 17, base - foot - 1, OAK);
+    rect(
+        scene,
+        cx - 5,
+        foot + 3,
+        11,
+        base - foot - 6,
+        CANVAS_RED.base,
+    );
+    hline(scene, cx - 5, foot + 3, 11, CANVAS_RED.light);
+    hline(scene, cx - 5, base - 4, 11, CANVAS_RED.shadow);
+    put(scene, cx, foot + 4, GOLD.shine);
+    hline(scene, cx - 1, foot + 5, 3, GOLD.light);
+    put(scene, cx - 1, foot + 6, GOLD.base);
+    put(scene, cx + 1, foot + 6, GOLD.shadow);
+    // The pad on its lever, out in front of the plinth: red leather, plump, lit along its top,
+    // on an oak block.
+    let (pad_x, pad_top) = PAD;
+    ellipse(scene, pad_x + 1, pad_top + 5, 6, 1, SHADOW);
+    bevel(scene, pad_x - 3, pad_top + 2, 7, 3, OAK);
+    for y in pad_top..pad_top + 3 {
+        for x in pad_x - 4..=pad_x + 4 {
+            let row = y - pad_top;
+            let corner = (x == pad_x - 4 || x == pad_x + 4) && row == 0;
+            if corner {
+                continue;
+            }
+            let edge = x == pad_x - 4 || x == pad_x + 4 || row == 0 || row == 2;
+            let color = if edge {
+                CANVAS_RED.edge
+            } else if x < pad_x - 1 {
+                CANVAS_RED.light
+            } else {
+                CANVAS_RED.base
+            };
+            put(scene, x, y, color);
+        }
+    }
+    put(scene, pad_x - 2, pad_top + 1, CANVAS_RED.shine);
 }
 
 // ---------------------------------------------------------------------------------------------

@@ -478,9 +478,138 @@ pub const RELICS: [Find; 1] = [Find {
     blurb: "A great white arrow, still faintly warm. Yes, that really happened.",
 }];
 
+/// What the hedgerow gives, picked ripe off its bushes and banks: a catalogue of its own, so
+/// that nothing foraged turns up rummaging and nothing rummaged turns up foraging. Each grows on
+/// one plant of the hedgerow (see `hedgerow::Plant`). Their `kind` is only the sort of place
+/// in the glade each draws the eye to once it stands on the Hilltop. The strawberry runner, the
+/// hazelnut, the crab-apple pip, the rose hip's seeds and the thyme cutting are for planting.
+pub const FORAGED: [Find; 12] = [
+    Find {
+        id: "blackberries",
+        name: "A punnet of blackberries",
+        piece: "A pie on a stool",
+        kind: Shake,
+        tier: Common,
+        leanings: &[Cosy, Growing],
+        use_: Use::Look,
+        blurb: "Glossy and black and warm from the sun. Some of them even made it home.",
+    },
+    Find {
+        id: "strawberry_runner",
+        name: "A strawberry runner",
+        piece: "A wild strawberry bed",
+        kind: Shake,
+        tier: Common,
+        leanings: &[Tiny, Growing],
+        use_: Use::Rest,
+        blurb: "The berries were eaten on the lane. The runner came home to be planted, roots and all.",
+    },
+    Find {
+        id: "hazelnut",
+        name: "A hazelnut",
+        piece: "A hazel sapling",
+        kind: Shake,
+        tier: Common,
+        leanings: &[Wild, Growing],
+        use_: Use::Rest,
+        blurb: "Brown and loose in its frilly husk. Planted, it will be a hazel one day.",
+    },
+    Find {
+        id: "field_mushrooms",
+        name: "Field mushrooms",
+        piece: "A fairy ring",
+        kind: Dig,
+        tier: Common,
+        leanings: &[Odd, Tiny],
+        use_: Use::Play,
+        blurb: "They came up in a ring overnight, which everyone agrees is a sign of something.",
+    },
+    Find {
+        id: "wild_garlic",
+        name: "A bunch of wild garlic",
+        piece: "A herb drying rack",
+        kind: Dig,
+        tier: Common,
+        leanings: &[Growing, Old],
+        use_: Use::Look,
+        blurb: "Starry white flowers, and a smell that follows you all the way home.",
+    },
+    Find {
+        id: "elderflower",
+        name: "A head of elderflower",
+        piece: "A cordial table",
+        kind: Shake,
+        tier: Uncommon,
+        leanings: &[Cosy, Old],
+        use_: Use::Sit,
+        blurb: "A plate of tiny cream flowers that smells of summer. Enough for a jug of cordial.",
+    },
+    Find {
+        id: "crab_apple_pip",
+        name: "A crab-apple pip",
+        piece: "A crab-apple sapling",
+        kind: Shake,
+        tier: Uncommon,
+        leanings: &[Growing, Wild],
+        use_: Use::Rest,
+        blurb: "Too sour to eat, which nobody believed until they tried. The pips are for planting.",
+    },
+    Find {
+        id: "rose_hip_seeds",
+        name: "A rose hip, full of seeds",
+        piece: "A wild rose bush",
+        kind: Shake,
+        tier: Uncommon,
+        leanings: &[Shiny, Growing],
+        use_: Use::Look,
+        blurb: "Scarlet and glossy, and full of seeds that will grow into a wild rose.",
+    },
+    Find {
+        id: "thyme_cutting",
+        name: "A thyme cutting",
+        piece: "A thyme cushion",
+        kind: Dig,
+        tier: Uncommon,
+        leanings: &[Tiny, Cosy],
+        use_: Use::Sit,
+        blurb: "A sprig of wild thyme with a root on it, for planting. It smells of warm stones.",
+    },
+    Find {
+        id: "golden_chanterelle",
+        name: "A golden chanterelle",
+        piece: "The golden toadstool",
+        kind: Dig,
+        tier: Rare,
+        leanings: &[Shiny, Wild],
+        use_: Use::Sit,
+        blurb: "Gold as an egg yolk and frilled like a trumpet. It smells faintly of apricots.",
+    },
+    Find {
+        id: "honeysuckle",
+        name: "A sprig of honeysuckle",
+        piece: "A honeysuckle bower",
+        kind: Shake,
+        tier: Rare,
+        leanings: &[Cosy, Odd],
+        use_: Use::Rest,
+        blurb: "It only opens properly as the evening comes, and then the whole lane smells of it.",
+    },
+    Find {
+        id: "four_leaf_clover",
+        name: "A four-leaf clover",
+        piece: "The clover fountain",
+        kind: Dig,
+        tier: Exceptional,
+        leanings: &[Odd, Tiny],
+        use_: Use::Look,
+        blurb: "Found in the last of the light, just where everyone had already looked. Lucky.",
+    },
+];
+
 pub fn find(id: &str) -> Option<&'static Find> {
     CATALOGUE
         .iter()
+        .chain(FORAGED.iter())
         .chain(RELICS.iter())
         .find(|find| find.id == id)
 }
@@ -488,6 +617,11 @@ pub fn find(id: &str) -> Option<&'static Find> {
 /// Whether a find is one of the secret relics.
 pub fn is_relic(id: &str) -> bool {
     RELICS.iter().any(|relic| relic.id == id)
+}
+
+/// Whether a find is picked at the hedgerow rather than turned up rummaging.
+pub fn is_foraged(id: &str) -> bool {
+    FORAGED.iter().any(|find| find.id == id)
 }
 
 /// How likely `find` is to turn up for this party, before rarity.
@@ -708,6 +842,37 @@ mod tests {
                 }
                 drought = if new { 0 } else { drought + 1 };
             }
+        }
+    }
+
+    #[test]
+    fn nothing_foraged_turns_up_rummaging() {
+        let ids: BTreeSet<&str> = CATALOGUE
+            .iter()
+            .chain(FORAGED.iter())
+            .chain(RELICS.iter())
+            .map(|find| find.id)
+            .collect();
+        assert_eq!(ids.len(), CATALOGUE.len() + FORAGED.len() + RELICS.len());
+        let characters = characters();
+        let party: Vec<&Character> = characters.iter().collect();
+        let mut dice = Dice::new(13);
+        for _ in 0..300 {
+            let stocked = stock(&SPOTS, &party, |_| false, 3, &[0.2; 4], &mut dice);
+            for find in stocked.iter().flatten() {
+                assert!(!is_foraged(find.id), "{} turned up rummaging", find.id);
+            }
+            for kind in Kind::ALL {
+                let surely = surely(kind, &stocked, &party, |_| false, &mut dice);
+                assert!(surely.is_some_and(|find| !is_foraged(find.id)));
+            }
+        }
+        for find in &FORAGED {
+            assert_eq!(super::find(find.id).map(|f| f.id), Some(find.id));
+            assert!(find.blurb.len() < 120, "{}'s blurb is too long", find.id);
+            assert!(!find.leanings.is_empty(), "{} leans nowhere", find.id);
+            // A sky-gazing piece is part of the secret's trigger, and nothing here is one.
+            assert_ne!(find.use_, Use::Gaze, "{} would gaze at the sky", find.id);
         }
     }
 

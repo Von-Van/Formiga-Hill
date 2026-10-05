@@ -361,6 +361,20 @@ impl Playground {
         }
     }
 
+    /// Puts a traveller in a sack for the sack race, the one with this band, or takes it out.
+    pub fn sack(&mut self, id: Id, sack: Option<u8>) {
+        if let Some(index) = self.index_of(id) {
+            self.actors[index].sack(sack);
+        }
+    }
+
+    /// Tips a traveller over on its side, or stands it up again.
+    pub fn tip(&mut self, id: Id, tipped: bool) {
+        if let Some(index) = self.index_of(id) {
+            self.actors[index].tip(tipped);
+        }
+    }
+
     /// Someone else of the colony comes along partway, by the layout's way in, to `to`.
     pub fn join(&mut self, cast: &Cast, id: Id, to: (f32, f32), now: f32) {
         if self.index_of(id).is_some() {

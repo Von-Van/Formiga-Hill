@@ -8,6 +8,8 @@ mod departures;
 mod encounter;
 mod finery;
 mod fishing_trip;
+mod foraging;
+mod games;
 mod plans;
 mod rummaging;
 mod storytelling;
@@ -16,7 +18,7 @@ use crate::cast::{Cast, Id};
 use crate::character::Offer;
 use crate::clubhouse::{self, Clubhouse};
 use crate::daylight::{Clock, Daylight};
-use crate::fairground::{self, Event, HideAndSeek, Phase};
+use crate::fairground::{self, Game, Games, Picks};
 use crate::memories::Memories;
 use crate::playground::{Playground, Trust};
 use crate::station::{Fixture, Journey, SCENE_HEIGHT, SCENE_WIDTH, STAND_Y, Station};
@@ -89,10 +91,11 @@ pub struct HillApp {
     /// The packages the person has set aside, and where community packages go.
     set_aside: SetAside,
     packages_folder: Option<std::path::PathBuf>,
-    /// The same, and the game of hide-and-seek played there.
-    fairground: Option<(Playground, HideAndSeek)>,
-    /// Who the person has asked to be "it" at hide-and-seek, if anyone in particular.
-    it: Option<Id>,
+    /// The same, and the games played there.
+    fairground: Option<(Playground, Games)>,
+    /// The game chosen to watch next, and who the person has picked to play each game.
+    game: Game,
+    picks: Picks,
     /// Who is going to the Woods, and the outing under way.
     woods: rummaging::Woods,
     /// The summit, made the first time anyone goes up.
@@ -202,7 +205,8 @@ impl HillApp {
             set_aside: SetAside::open(Memories::folder().as_deref()),
             packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
             fairground: None,
-            it: None,
+            game: Game::HideAndSeek,
+            picks: Picks::default(),
             woods: rummaging::Woods::default(),
             hilltop: None,
             clearing: None,
@@ -290,6 +294,7 @@ impl HillApp {
             self.woods.empty.as_mut(),
             self.woods.pool.as_mut(),
             self.woods.meadow.as_mut(),
+            self.woods.hedgerow.as_mut(),
         ];
         for ground in grounds.into_iter().flatten() {
             ground.set_daylight(daylight);
@@ -305,6 +310,10 @@ impl HillApp {
         if let Some((ground, hunt)) = &mut self.woods.hunt {
             ground.set_daylight(daylight);
             hunt.set_hour_dark(daylight.darkness());
+        }
+        if let Some((ground, foray)) = &mut self.woods.foray {
+            ground.set_daylight(daylight);
+            foray.set_hour_dark(daylight.darkness());
         }
     }
 
@@ -349,6 +358,9 @@ impl HillApp {
         if self.woods.hunt.is_some() {
             self.finish_bug_hunt(now);
         }
+        if self.woods.foray.is_some() {
+            self.finish_foraging(now);
+        }
         self.placing = None;
         self.notices_open = false;
         self.departures_open = false;
@@ -356,10 +368,10 @@ impl HillApp {
             self.pin_notices();
         }
         // Walking away calls a game off.
-        if let Some((ground, game)) = &mut self.fairground
-            && game.phase() != Phase::Ready
+        if let Some((ground, games)) = &mut self.fairground
+            && games.playing().is_some()
         {
-            game.stop(ground, now);
+            games.stop(ground, now);
         }
         self.area = area;
         self.shown_frames.clear();
@@ -395,64 +407,6 @@ impl HillApp {
             self.go_to(area, now);
         }
         self.camera_buttons(ui);
-    }
-
-    /// Tells the person what is happening in the game, and remembers how it went once it is over.
-    fn fairground_events(&mut self, now: f32) {
-        let Some((_, game)) = &mut self.fairground else {
-            return;
-        };
-        let cast = &self.arrival.cast;
-        let name = |id: Option<Id>| {
-            id.and_then(|id| cast.member(id))
-                .map_or("Someone".to_owned(), |member| member.name.clone())
-        };
-        let it = game.seeker();
-        for event in game.take_events() {
-            let line = match event {
-                Event::Dozed => format!("{} has nodded off mid-count.", name(it)),
-                Event::Coming => format!(
-                    "\u{201c}Ready or not, here I come!\u{201d} calls {}.",
-                    name(it)
-                ),
-                Event::Noticed { place } => {
-                    format!(
-                        "{} heard something by {}.",
-                        name(it),
-                        game.place_name(place)
-                    )
-                }
-                Event::Nobody { place } => format!("Nobody behind {}.", game.place_name(place)),
-                Event::Found { hider, place } => format!(
-                    "{} found {} behind {}!",
-                    name(it),
-                    name(Some(hider)),
-                    game.place_name(place)
-                ),
-                Event::AllFound { took } => {
-                    let ticket = souvenirs::FAIR_TICKET;
-                    let first = !self
-                        .memories
-                        .colony()
-                        .souvenirs
-                        .iter()
-                        .any(|kept| kept == ticket);
-                    let quickest = it.is_some_and(|it| self.memories.found_everyone(it, took));
-                    let mut line = format!("{} found everyone in {}", name(it), clock(took));
-                    if quickest {
-                        line.push_str(", the quickest yet");
-                    }
-                    line.push('!');
-                    if first && let Some(kept) = souvenirs::name(ticket) {
-                        line.push_str(&format!(" Kept: {}.", kept.to_lowercase()));
-                    }
-                    self.station
-                        .show_keepsakes(&self.memories.colony().souvenirs);
-                    line
-                }
-            };
-            self.notice = Some((line, now));
-        }
     }
 
     fn refresh_scene(&mut self, ctx: &egui::Context, now: f32) -> egui::TextureId {
@@ -551,75 +505,6 @@ impl HillApp {
         });
         ui.add_space(6.0);
     }
-
-    /// The game under way, or the offers and a game to watch when nobody is playing.
-    fn fairground_bar(&mut self, ui: &mut egui::Ui, now: f32) {
-        let Some((ground, game)) = &mut self.fairground else {
-            return;
-        };
-        let cast = &self.arrival.cast;
-        let name = |id: Option<Id>| {
-            id.and_then(|id| cast.member(id))
-                .map_or("Someone".to_owned(), |member| member.name.clone())
-        };
-        let mut start = false;
-        match game.phase() {
-            Phase::Ready => {
-                tools(ui, &mut self.tool);
-                ui.separator();
-                start = ui.button("Watch hide-and-seek").clicked();
-                let turn = game.next_it().map_or("Whoever's keenest".to_owned(), |id| {
-                    format!("{}'s turn", name(Some(id)))
-                });
-                let chosen = self.it.map_or(turn.clone(), |id| name(Some(id)));
-                egui::ComboBox::from_id_salt("it")
-                    .selected_text(format!("It: {chosen}"))
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut self.it, None, turn);
-                        for member in &cast.members {
-                            ui.selectable_value(&mut self.it, Some(member.id), &member.name);
-                        }
-                    });
-                if let Some(best) = self
-                    .it
-                    .or(game.next_it())
-                    .and_then(|id| self.memories.colony().quickest_seekers.get(&id.to_string()))
-                {
-                    ui.label(format!("Quickest: {}", clock(*best)));
-                }
-            }
-            Phase::Counting { .. } => {
-                ui.label(format!(
-                    "{} is counting. Everyone's hiding!",
-                    name(game.seeker())
-                ));
-                if ui.button("Call it off").clicked() {
-                    game.stop(ground, now);
-                }
-            }
-            Phase::Seeking { .. } => {
-                let (found, of) = game.tally();
-                ui.label(format!(
-                    "{} is looking  \u{b7}  found {found} of {of}  \u{b7}  {}",
-                    name(game.seeker()),
-                    clock(game.searching_for(now))
-                ));
-                if ui.button("Call it off").clicked() {
-                    game.stop(ground, now);
-                }
-            }
-            Phase::Over { .. } => {}
-        }
-        if start {
-            game.start(ground, self.it.take(), now);
-        }
-        if let Some((notice, _)) = &self.notice {
-            ui.label(egui::RichText::new(notice).italics());
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            self.go_menu(ui, now);
-        });
-    }
 }
 
 const TOOLS: [(Offer, &str, &str); 4] = [
@@ -716,10 +601,10 @@ impl eframe::App for HillApp {
                     }
                     if input.key_pressed(egui::Key::Escape)
                         && self.area == Area::Fairground
-                        && let Some((ground, game)) = &mut self.fairground
-                        && game.phase() != Phase::Ready
+                        && let Some((ground, games)) = &mut self.fairground
+                        && games.playing().is_some()
                     {
-                        game.stop(ground, now);
+                        games.stop(ground, now);
                     }
                     for (key, (offer, _, _)) in [
                         egui::Key::Num1,
@@ -826,6 +711,10 @@ impl eframe::App for HillApp {
                                 ground.set_pointer(pointer);
                                 hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
                             }
+                            if let Some((ground, _)) = &mut self.woods.foray {
+                                ground.set_pointer(pointer);
+                                hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                            }
                             let spot = self.woods_hover(pointer);
                             if let Some((label, (x, y))) = &spot {
                                 ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -865,10 +754,10 @@ impl eframe::App for HillApp {
                             }
                             hovered.filter(|_| piece.is_none())
                         }
-                        (Area::Fairground, _, Some((ground, game))) => {
+                        (Area::Fairground, _, Some((ground, games))) => {
                             ground.set_pointer(pointer);
                             let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
-                            let playing = game.phase() != Phase::Ready;
+                            let playing = games.playing().is_some();
                             // During a game the person only watches; otherwise, as on the green.
                             if let (false, Some(id)) = (playing, hovered) {
                                 ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -876,17 +765,21 @@ impl eframe::App for HillApp {
                                     ground.offer(id, self.tool, &mut self.trust, now);
                                 }
                             }
-                            // "It" wears its name all game, so the watcher can follow it about.
-                            let tagged =
-                                hovered.into_iter().chain(game.seeker()).collect::<Vec<_>>();
-                            for id in tagged {
+                            // "It", whoever is in front, or whoever is having a go wears its name
+                            // all game, so the watcher can follow it about.
+                            let tags = games.tags();
+                            let tagged = hovered
+                                .into_iter()
+                                .filter(|id| tags.iter().all(|(tagged, _)| tagged != id))
+                                .map(|id| (id, None))
+                                .chain(tags.iter().map(|(id, role)| (*id, Some(*role))));
+                            for (id, role) in tagged {
                                 if let (Some((x, y)), Some(member)) =
                                     (ground.head(id, now), self.arrival.cast.member(id))
                                 {
-                                    let label = if game.seeker() == Some(id) {
-                                        format!("{} \u{b7} it", member.name)
-                                    } else {
-                                        member.name.clone()
+                                    let label = match role {
+                                        Some(role) => format!("{} \u{b7} {role}", member.name),
+                                        None => member.name.clone(),
                                     };
                                     tag(&label, to_screen(x, y - 6.0));
                                 }

@@ -29,7 +29,7 @@ impl HillApp {
             Area::Fairground => self
                 .fairground
                 .as_mut()
-                .filter(|(_, game)| game.phase() == crate::fairground::Phase::Ready)
+                .filter(|(_, games)| games.playing().is_none())
                 .map(|(ground, _)| ground),
             _ => None,
         }

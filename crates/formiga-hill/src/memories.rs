@@ -32,6 +32,13 @@ pub struct ColonyMemories {
     /// Desktop id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub quickest_seekers: BTreeMap<String, f32>,
+    /// The quickest each traveller has hopped the sack race, in seconds, by its Desktop id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub quickest_racers: BTreeMap<String, f32>,
+    /// The highest each traveller has sent the high striker's puck, from 0 to 1 (the bell), by
+    /// its Desktop id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub highest_strikes: BTreeMap<String, f32>,
     /// Every find the colony has brought home from the Woods, by id: its journal.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub finds: BTreeMap<String, FindRecord>,
@@ -72,6 +79,14 @@ pub struct ColonyMemories {
     /// Hunts in a row that caught no new kind of bug.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub bug_drought: u32,
+    /// Forays to the hedgerow, all told and by each traveller's Desktop id.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub forays: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub forays_by: BTreeMap<String, u32>,
+    /// Forays in a row that brought home nothing new to the journal.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub forage_drought: u32,
 }
 
 fn is_zero(count: &u32) -> bool {
@@ -215,6 +230,51 @@ impl Memories {
         quickest
     }
 
+    /// Remembers a sack race seen through: each racer's time, by its Desktop id, and the rosette
+    /// the first time. Says who beat a time of its own from an earlier race.
+    pub fn raced(&mut self, times: &[(u64, f32)]) -> Vec<u64> {
+        let colony = self.colony_mut();
+        let mut quicker = Vec::new();
+        for (id, seconds) in times {
+            let best = colony
+                .quickest_racers
+                .entry(id.to_string())
+                .or_insert(f32::MAX);
+            if *seconds < *best {
+                if *best < f32::MAX {
+                    quicker.push(*id);
+                }
+                *best = *seconds;
+            }
+        }
+        keep_souvenir(colony, crate::story::souvenirs::RACE_ROSETTE);
+        self.keep();
+        quicker
+    }
+
+    /// Remembers a game at the high striker seen through: how high each player sent the puck, by
+    /// its Desktop id, and the bell the first time. Says who beat a swing of its own from an
+    /// earlier game.
+    pub fn struck(&mut self, heights: &[(u64, f32)]) -> Vec<u64> {
+        let colony = self.colony_mut();
+        let mut higher = Vec::new();
+        for (id, height) in heights {
+            match colony.highest_strikes.get_mut(&id.to_string()) {
+                Some(best) if *height > *best => {
+                    *best = *height;
+                    higher.push(*id);
+                }
+                Some(_) => {}
+                None => {
+                    colony.highest_strikes.insert(id.to_string(), *height);
+                }
+            }
+        }
+        keep_souvenir(colony, crate::story::souvenirs::STRIKER_BELL);
+        self.keep();
+        higher
+    }
+
     /// Remembers an outing to the Woods: who went, and what came home in the basket, which goes
     /// into the journal and the satchel. Says which finds were new.
     pub fn back_from_the_woods(&mut self, party: &[u64], basket: &[&str]) -> Vec<&'static str> {
@@ -303,6 +363,25 @@ impl Memories {
         haul.new_finds = keep_finds(colony, party, netted);
         self.keep();
         haul
+    }
+
+    /// Remembers a foray to the hedgerow: who went, and what was picked ripe and brought home in
+    /// the basket, which goes into the journal and the satchel like anything from the Woods. Says
+    /// which finds were new.
+    pub fn back_from_foraging(&mut self, party: &[u64], basket: &[&str]) -> Vec<&'static str> {
+        let colony = self.colony_mut();
+        colony.forays += 1;
+        for id in party {
+            *colony.forays_by.entry(id.to_string()).or_default() += 1;
+        }
+        let new = keep_finds(colony, party, basket);
+        colony.forage_drought = if new.is_empty() {
+            colony.forage_drought + 1
+        } else {
+            0
+        };
+        self.keep();
+        new
     }
 
     /// Remembers the Cursor Sovereign seen off by `party`. The first time, its arrow comes home for
@@ -457,6 +536,13 @@ fn put_back(colony: &mut ColonyMemories, standing: Standing) {
     }
 }
 
+/// Keeps a souvenir in the display case, once.
+fn keep_souvenir(colony: &mut ColonyMemories, souvenir: &str) {
+    if !colony.souvenirs.iter().any(|kept| kept == souvenir) {
+        colony.souvenirs.push(souvenir.to_owned());
+    }
+}
+
 /// Puts finds into the journal and the satchel. Says which were new.
 fn keep_finds(colony: &mut ColonyMemories, party: &[u64], finds: &[&str]) -> Vec<&'static str> {
     let leader = party.first().map(u64::to_string).unwrap_or_default();
@@ -559,6 +645,36 @@ mod tests {
     }
 
     #[test]
+    fn the_sack_race_remembers_each_racers_quickest_and_gives_one_rosette() {
+        let mut memories = Memories::open(None, "c");
+        assert!(
+            memories.raced(&[(7, 14.0), (9, 18.5)]).is_empty(),
+            "a first race is nobody's quickest yet: there was nothing to beat"
+        );
+        assert_eq!(memories.raced(&[(9, 16.0), (7, 15.0)]), vec![9]);
+        assert_eq!(memories.colony().quickest_racers["7"], 14.0);
+        assert_eq!(memories.colony().quickest_racers["9"], 16.0);
+        memories.raced(&[(11, 30.0)]);
+        assert_eq!(memories.colony().quickest_racers["11"], 30.0);
+        assert_eq!(memories.colony().souvenirs, vec!["race_rosette".to_owned()]);
+    }
+
+    #[test]
+    fn the_high_striker_remembers_each_best_swing_and_gives_one_bell() {
+        let mut memories = Memories::open(None, "c");
+        assert!(memories.struck(&[(7, 0.6), (9, 1.0)]).is_empty());
+        assert_eq!(memories.struck(&[(7, 0.8), (9, 0.4)]), vec![7]);
+        assert_eq!(memories.colony().highest_strikes["7"], 0.8);
+        assert_eq!(memories.colony().highest_strikes["9"], 1.0);
+        memories.found_everyone(7, 30.0);
+        memories.struck(&[(7, 0.2)]);
+        assert_eq!(
+            memories.colony().souvenirs,
+            vec!["striker_bell".to_owned(), "fair_ticket".to_owned()]
+        );
+    }
+
+    #[test]
     fn finds_come_home_into_the_journal_and_the_satchel() {
         let mut memories = Memories::open(None, "c");
         let new =
@@ -627,6 +743,35 @@ mod tests {
         assert!(haul.new_kinds.is_empty() && haul.longest_yet.is_empty());
         assert_eq!(memories.colony().bug_drought, 1);
         assert_eq!(memories.colony().bug_hunts, 2);
+    }
+
+    #[test]
+    fn forays_keep_their_own_count_and_bring_their_basket_home() {
+        let mut memories = Memories::open(None, "c");
+        let new = memories.back_from_foraging(
+            &[9, 7],
+            &["blackberries", "blackberries", "hazelnut", "nonsense"],
+        );
+        assert_eq!(new, vec!["blackberries", "hazelnut"]);
+        let colony = memories.colony();
+        assert_eq!(colony.forays, 1);
+        assert_eq!(colony.forays_by["7"], 1);
+        assert_eq!(
+            colony.finds["hazelnut"].first_by, "9",
+            "whoever led found it"
+        );
+        assert_eq!(colony.finds["blackberries"].count, 2);
+        assert_eq!(colony.satchel["blackberries"], 2, "picked, for the Hilltop");
+        assert_eq!(colony.forage_drought, 0);
+        assert_eq!(colony.outings, 0, "a foray is not a rummage");
+        assert_eq!(colony.drought, 0);
+        memories.back_from_foraging(&[7], &["hazelnut"]);
+        assert_eq!(memories.colony().forage_drought, 1, "nothing new that time");
+        assert_eq!(memories.colony().forays_by["7"], 2);
+        assert_eq!(memories.colony().finds["hazelnut"].first_by, "9");
+        memories.back_from_foraging(&[7], &[]);
+        assert_eq!(memories.colony().forage_drought, 2);
+        assert_eq!(memories.colony().forays, 3);
     }
 
     #[test]

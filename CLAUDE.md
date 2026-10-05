@@ -77,10 +77,11 @@ side of it.
 - The gate, which CI runs on macOS and Windows:
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 - `--render-station`, `--render-green`, `--render-clubhouse`, `--render-fairground`, `--render-hide-and-seek`,
-  `--render-woods`, `--render-fishing`, `--render-bug-hunt`, `--render-meadow`, `--render-hilltop`,
-  `--render-building` (each with `--at <seconds>`), `--render-finds`, `--render-growing`,
-  `--render-plans`, `--render-fish`, `--render-bugs`, `--render-sovereign`, `--render-reactions` and
-  `--render-costumes` draw
+  `--render-sack-race`, `--render-high-striker`, `--render-woods`, `--render-fishing`,
+  `--render-bug-hunt`, `--render-meadow`, `--render-hedgerow`, `--render-hilltop`,
+  `--render-building` (each with
+  `--at <seconds>`), `--render-finds`, `--render-growing`, `--render-plans`, `--render-produce`, `--render-fish`,
+  `--render-bugs`, `--render-sovereign`, `--render-reactions` and `--render-costumes` draw
   without a window (any with `--hour <0-24>` to see it at that hour); look at them, cropped and
   enlarged, after changing anything visual or any behaviour in `character.rs`.
 - Behaviour is never written for a particular creature: it is read from the snapshot (axes,

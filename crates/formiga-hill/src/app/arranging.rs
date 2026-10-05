@@ -92,6 +92,9 @@ impl HillApp {
         if let Some(meadow) = &mut self.woods.meadow {
             crate::meadow::show_hilltop(meadow, &up);
         }
+        if let Some(lane) = &mut self.woods.hedgerow {
+            crate::hedgerow::show_hilltop(lane, &up);
+        }
     }
 
     /// The spot under a point: a piece standing there, front-most first, or an open spot.
@@ -342,7 +345,7 @@ impl HillApp {
             .show(ctx, |ui| {
                 ui.label(format!(
                     "{} of {} found \u{b7} {} outing{} to the Woods",
-                    colony.finds.len(),
+                    CATALOGUE.iter().filter(|find| colony.finds.contains_key(find.id)).count(),
                     CATALOGUE.len(),
                     colony.outings,
                     if colony.outings == 1 { "" } else { "s" }
@@ -487,6 +490,7 @@ impl HillApp {
                             }
                         }
                     }
+                    super::foraging::journal(ui, colony, &who);
                     if !colony.outings_by.is_empty() {
                         ui.add_space(6.0);
                         ui.strong("Who has been");

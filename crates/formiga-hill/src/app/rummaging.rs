@@ -22,6 +22,7 @@ pub enum Activity {
     Rummage,
     Fish,
     Bugs,
+    Forage,
 }
 
 #[derive(Default)]
@@ -39,6 +40,9 @@ pub struct Woods {
     pub hunt: Option<(Playground, crate::meadow::catching::Hunt)>,
     /// Whether the person is holding to creep up on a bug.
     pub creeping: bool,
+    /// The hedgerow with nobody foraging, and a foray under way.
+    pub hedgerow: Option<Playground>,
+    pub foray: Option<(Playground, crate::hedgerow::foraging::Foray)>,
 }
 
 impl HillApp {
@@ -54,6 +58,7 @@ impl HillApp {
             let hilltop = self.hilltop_standing();
             self.woods.meadow = Some(crate::meadow::open(&self.arrival.cast, &[], now, &hilltop));
         }
+        self.open_hedgerow(now);
         if self.woods.party.is_empty()
             && let Some(first) = self.arrival.cast.members.first()
         {
@@ -109,6 +114,10 @@ impl HillApp {
         }
         if self.woods.hunt.is_some() {
             self.tick_bug_hunt(now, self.woods.creeping);
+            return;
+        }
+        if self.woods.foray.is_some() {
+            self.tick_foraging(now);
             return;
         }
         if let Some(empty) = &mut self.woods.empty
@@ -201,6 +210,15 @@ impl HillApp {
         if let Some(scene) = self.compose_meadow(now) {
             return scene;
         }
+        if let Some(scene) = self.compose_foray(now) {
+            return scene;
+        }
+        if self.woods.activity == Activity::Forage
+            && self.woods.outing.is_none()
+            && let Some(lane) = &mut self.woods.hedgerow
+        {
+            return lane.compose(now);
+        }
         if self.woods.activity == Activity::Bugs
             && self.woods.outing.is_none()
             && let Some(meadow) = &mut self.woods.meadow
@@ -232,6 +250,10 @@ impl HillApp {
         }
         if self.woods.hunt.is_some() {
             self.bug_hunt_click(pointer, now);
+            return;
+        }
+        if self.woods.foray.is_some() {
+            self.foraging_click(pointer, now);
             return;
         }
         let Some((ground, rummage)) = &mut self.woods.outing else {
@@ -273,6 +295,9 @@ impl HillApp {
         if self.woods.hunt.is_some() {
             return self.bug_hunt_hover(pointer);
         }
+        if self.woods.foray.is_some() {
+            return self.foraging_hover(pointer);
+        }
         let (_, rummage) = self.woods.outing.as_ref()?;
         if !matches!(rummage.phase(), Phase::Exploring | Phase::Catching(_)) {
             return None;
@@ -304,12 +329,20 @@ impl HillApp {
             }
             return;
         }
+        if self.woods.foray.is_some() {
+            self.foraging_bar(ui, now);
+            if ui.button("Journal").clicked() {
+                self.journal = !self.journal;
+            }
+            return;
+        }
         match &self.woods.outing {
             None => {
                 for (activity, label) in [
                     (Activity::Rummage, "Rummage"),
                     (Activity::Fish, "Fish"),
                     (Activity::Bugs, "Catch bugs"),
+                    (Activity::Forage, "Forage"),
                 ] {
                     ui.selectable_value(&mut self.woods.activity, activity, label);
                 }
@@ -334,6 +367,9 @@ impl HillApp {
                         ),
                         Activity::Fish => angler(&character).to_owned(),
                         Activity::Bugs => crate::meadow::catching::netter(&character).to_owned(),
+                        Activity::Forage => {
+                            super::foraging::forager_hint(colony, member.id, &character)
+                        }
                     };
                     if ui
                         .selectable_label(chosen, &member.name)
@@ -387,6 +423,7 @@ impl HillApp {
                 Activity::Rummage => self.set_off(now),
                 Activity::Fish => self.set_off_fishing(now),
                 Activity::Bugs => self.set_off_bug_hunting(now),
+                Activity::Forage => self.set_off_foraging(now),
             }
         }
         if home && let Some((ground, rummage)) = &mut self.woods.outing {
