@@ -14,8 +14,10 @@ mod games;
 mod plans;
 mod rummaging;
 mod scavenging;
+mod sound;
 mod storytelling;
 
+use crate::audio::Sound;
 use crate::cast::{Cast, Id};
 use crate::character::Offer;
 use crate::clubhouse::{self, Clubhouse};
@@ -155,6 +157,9 @@ pub struct HillApp {
     grown: Vec<(u8, crate::hilltop::Standing)>,
     /// A short note in the bottom bar, and when it was posted.
     notice: Option<(String, f32)>,
+    /// The music and the sounds, and what has been heard of what goes on.
+    sound: Sound,
+    listening: sound::Listening,
 }
 
 /// How long a notice stays in the bottom bar.
@@ -244,6 +249,8 @@ impl HillApp {
             memories,
             grown,
             notice: None,
+            sound: Sound::open(Memories::folder().as_deref()),
+            listening: sound::Listening::default(),
         };
         app.pin_notices();
         app
@@ -415,8 +422,14 @@ impl HillApp {
         }
     }
 
-    /// Everywhere else the colony can go.
+    /// Everywhere else the colony can go, and the sound beside it.
     fn go_menu(&mut self, ui: &mut egui::Ui, now: f32) {
+        self.sound_button(ui);
+        self.places_menu(ui, now);
+    }
+
+    /// The "Go to" menu, and the camera.
+    fn places_menu(&mut self, ui: &mut egui::Ui, now: f32) {
         let mut target = None;
         ui.menu_button("Go to\u{2026}", |ui| {
             for (area, label) in AREAS {
@@ -483,8 +496,10 @@ impl HillApp {
                         self.station.skip_arrival();
                         self.station.set_off_home(now);
                     }
+                    // The sound can be turned down while the train is still pulling in.
+                    self.sound_button(ui);
                     let settled = self.station.is_settled();
-                    ui.add_enabled_ui(settled, |ui| self.go_menu(ui, now));
+                    ui.add_enabled_ui(settled, |ui| self.places_menu(ui, now));
                 });
             }
             Area::Green => {
@@ -569,6 +584,7 @@ impl eframe::App for HillApp {
             self.depart();
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+        let mut mute = false;
         ctx.input(|input| {
             let onwards =
                 input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Enter);
@@ -576,6 +592,7 @@ impl eframe::App for HillApp {
             if input.key_pressed(egui::Key::C) {
                 self.camera.out = !self.camera.out;
             }
+            mute |= input.key_pressed(egui::Key::M);
             if input.key_pressed(egui::Key::Escape) {
                 self.camera.out = false;
             }
@@ -645,6 +662,9 @@ impl eframe::App for HillApp {
                 }
             }
         });
+        if mute {
+            self.toggle_mute(now);
+        }
         if self
             .notice
             .as_ref()
@@ -684,6 +704,7 @@ impl eframe::App for HillApp {
         }
         self.last_frame = now;
         self.run_story(now);
+        self.listen(now);
         let texture = self.refresh_scene(&ctx, now);
 
         egui::Panel::bottom("platform").show(ui, |ui| self.bottom_bar(ui, now));
@@ -1001,6 +1022,7 @@ impl eframe::App for HillApp {
         self.shelf_window(&ctx);
         self.notices_window(&ctx);
         self.departures_window(&ctx, now);
+        self.sound_window(&ctx);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));
@@ -1014,6 +1036,7 @@ impl eframe::App for HillApp {
 
     fn on_exit(&mut self) {
         self.depart();
+        self.sound.keep();
     }
 }
 

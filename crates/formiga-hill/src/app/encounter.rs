@@ -80,6 +80,7 @@ impl HillApp {
 
     /// The line being said, or the menu of attacks, or the way back out.
     pub(super) fn clearing_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+        self.sound_button(ui);
         let cast = &self.arrival.cast;
         let Some((_, sovereign)) = &mut self.clearing else {
             return;
