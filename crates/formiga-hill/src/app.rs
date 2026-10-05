@@ -1040,7 +1040,7 @@ impl eframe::App for HillApp {
 
     fn on_exit(&mut self) {
         self.depart();
-        self.sound.keep();
+        self.sound.keep_at_last();
     }
 }
 

@@ -99,6 +99,11 @@ impl Sound {
         self.settings.keep();
     }
 
+    /// Writes the levels down as the Hill closes, trying again if they couldn't be before.
+    pub fn keep_at_last(&mut self) {
+        self.settings.keep_at_last();
+    }
+
     /// Mutes everything, or brings it back, and remembers which. Says whether it is now muted.
     pub fn toggle_mute(&mut self) -> bool {
         let mut levels = self.levels();

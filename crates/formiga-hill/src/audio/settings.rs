@@ -92,6 +92,9 @@ pub struct Settings {
     contents: Contents,
     /// The levels as last written, so they are only written again once they change.
     kept: Levels,
+    /// Levels that could not be written, so they are not tried again every frame: only once they
+    /// change, or as the Hill closes.
+    failed: Option<Levels>,
 }
 
 impl Settings {
@@ -102,6 +105,7 @@ impl Settings {
         contents.sound = contents.sound.clamped();
         Self {
             kept: contents.sound,
+            failed: None,
             path,
             contents,
         }
@@ -117,18 +121,34 @@ impl Settings {
     }
 
     /// Writes the levels down, if they have changed since they last were. A failure is reported
-    /// and otherwise ignored: the Hill sounds as set, and only forgets it next time.
+    /// once and the levels are left unwritten: the Hill sounds as set, and tries again with the
+    /// next change, or as it closes (`keep_at_last`).
     pub fn keep(&mut self) {
-        if self.contents.sound == self.kept {
+        let levels = self.contents.sound;
+        if levels == self.kept || self.failed == Some(levels) {
             return;
         }
-        self.kept = self.contents.sound;
         let Some(path) = &self.path else {
+            self.kept = levels;
             return;
         };
-        if let Err(error) = write(path, &self.contents) {
-            eprintln!("formiga-hill: could not keep the sound settings: {error}");
+        match write(path, &self.contents) {
+            Ok(()) => {
+                self.kept = levels;
+                self.failed = None;
+            }
+            Err(error) => {
+                eprintln!("formiga-hill: could not keep the sound settings: {error}");
+                self.failed = Some(levels);
+            }
         }
+    }
+
+    /// Writes the levels down one last time as the Hill closes, even if they could not be written
+    /// before.
+    pub fn keep_at_last(&mut self) {
+        self.failed = None;
+        self.keep();
     }
 }
 
@@ -271,6 +291,45 @@ mod tests {
         assert_eq!(Settings::open(Some(&dir)).levels(), changed);
         let written = fs::read_to_string(dir.join(FILE)).unwrap();
         assert!(written.contains("\"theme\": \"dusk\""), "{written}");
+    }
+
+    #[test]
+    fn a_second_change_replaces_the_first_on_disk() {
+        // The file is replaced as it is renamed into place, on Windows as everywhere.
+        let dir = scratch("again");
+        let mut settings = Settings::open(Some(&dir));
+        for music in [0.2, 0.9] {
+            settings.set(Levels {
+                music,
+                ..Levels::default()
+            });
+            settings.keep();
+            assert_eq!(Settings::open(Some(&dir)).levels().music, music);
+        }
+    }
+
+    #[test]
+    fn levels_that_could_not_be_written_are_tried_again() {
+        let dir = scratch("blocked");
+        // Something in the way of the file written beside the settings.
+        let mut in_the_way = dir.join(FILE).into_os_string();
+        in_the_way.push(".tmp");
+        let in_the_way = PathBuf::from(in_the_way);
+        fs::create_dir_all(in_the_way.join("inside")).unwrap();
+        let mut settings = Settings::open(Some(&dir));
+        let changed = Levels {
+            music: 0.15,
+            ..Levels::default()
+        };
+        settings.set(changed);
+        settings.keep();
+        assert!(!dir.join(FILE).exists());
+        fs::remove_dir_all(&in_the_way).unwrap();
+        // Not every frame: only with a change, or as the Hill closes.
+        settings.keep();
+        assert!(!dir.join(FILE).exists());
+        settings.keep_at_last();
+        assert_eq!(Settings::open(Some(&dir)).levels(), changed);
     }
 
     #[test]
