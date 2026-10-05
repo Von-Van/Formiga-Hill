@@ -359,6 +359,10 @@ impl HighStriker {
             Phase::Over { since } => {
                 if now - since >= CELEBRATE_SECS {
                     self.ranking = self.ranking();
+                    // Everyone stood watching the last swing is free to play again.
+                    for id in ground.ids() {
+                        ground.direct(id, Vec::new(), now);
+                    }
                     ground.release();
                     self.turns.clear();
                     self.watchers.clear();
@@ -699,6 +703,15 @@ impl HighStriker {
 
     /// Calls the game off: everyone back to playing, pleased with themselves.
     pub fn stop(&mut self, ground: &mut Playground, now: f32) {
+        // Whoever was queueing, watching or helping stops; then the players are pleased.
+        let waiting = self
+            .watchers
+            .iter()
+            .copied()
+            .chain(self.turns.iter().filter_map(|turn| turn.helper));
+        for id in waiting.collect::<Vec<_>>() {
+            ground.direct(id, Vec::new(), now);
+        }
         for turn in &self.turns {
             if let Some(c) = ground.character(turn.player) {
                 ground.direct(turn.player, vec![Step::Beat(c.celebrate(1.0))], now);
@@ -1274,5 +1287,59 @@ mod tests {
         assert_eq!(striker.phase(), Phase::Ready);
         assert_eq!(striker.player(), None);
         assert_eq!(striker.mallet(&mut ground, 12.0), Mallet::Leaning);
+    }
+
+    /// How many of `ids` have moved, `secs` after `from`, from where they were then.
+    fn moved_within(
+        ground: &mut Playground,
+        cast: &Cast,
+        ids: &[Id],
+        from: f32,
+        secs: f32,
+    ) -> usize {
+        let was: Vec<_> = ids.iter().map(|id| ground.position(*id).unwrap()).collect();
+        let mut now = from;
+        while now < from + secs {
+            now += TICK;
+            ground.tick(cast, now);
+        }
+        ids.iter()
+            .zip(&was)
+            .filter(|(id, was)| {
+                crate::playground::distance(ground.position(**id).unwrap(), **was) > 2.0
+            })
+            .count()
+    }
+
+    #[test]
+    fn after_a_game_everyone_goes_back_to_playing() {
+        let cast = sample();
+        let (mut ground, mut striker) = ready(&cast);
+        striker.start(&mut ground, &[], 6.0);
+        let (events, over) = run(&mut ground, &mut striker, &cast, 6.0, 300.0, |_, _, _| {});
+        let over = over.unwrap_or_else(|| panic!("the game never ended: {events:?}"));
+        let everyone = ground.ids();
+        assert!(
+            moved_within(&mut ground, &cast, &everyone, over, 30.0) > 0,
+            "the colony is still stood at the striker half a minute on"
+        );
+    }
+
+    #[test]
+    fn calling_a_game_off_lets_the_watchers_go_too() {
+        let cast = sample();
+        let (mut ground, mut striker) = ready(&cast);
+        // Two have a go, and the rest watch.
+        let players: Vec<Id> = cast.ids().take(2).collect();
+        striker.start(&mut ground, &players, 6.0);
+        let (_, over) = run(&mut ground, &mut striker, &cast, 6.0, 20.0, |_, _, _| {});
+        assert!(over.is_none(), "the game was over too soon to call off");
+        let watchers = striker.watchers.clone();
+        assert!(!watchers.is_empty());
+        striker.stop(&mut ground, 20.0);
+        assert!(
+            moved_within(&mut ground, &cast, &watchers, 20.0, 30.0) > 0,
+            "no watcher has moved in the half minute since the game was called off"
+        );
     }
 }

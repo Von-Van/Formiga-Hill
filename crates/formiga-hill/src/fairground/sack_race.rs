@@ -64,7 +64,6 @@ const CUT_SECS: f32 = 1.0;
 /// However it goes, the race is over by this long after "go": anyone still on the course is
 /// waved over the line. (Nobody hops so slowly; it is only a promise.)
 const LONGEST: f32 = 150.0;
-const TICK: f32 = 1.0 / 30.0;
 
 /// Where the start line crosses row `y`.
 fn start_at(y: f32) -> f32 {
@@ -319,6 +318,10 @@ pub struct SackRace {
     reduce_motion: bool,
     /// The order the race finished in, so far or last time, with each one's time.
     results: Vec<(Id, f32)>,
+    /// When it was last ticked, and how long that tick was: whatever is not a hop moves by the
+    /// second, not by the frame, so it goes the same however often it is drawn.
+    clock: f32,
+    dt: f32,
 }
 
 impl Default for SackRace {
@@ -346,6 +349,8 @@ impl SackRace {
             last_cut: 0.0,
             reduce_motion: false,
             results: Vec::new(),
+            clock: 0.0,
+            dt: 0.0,
         }
     }
 
@@ -394,6 +399,7 @@ impl SackRace {
             return;
         }
         self.round += 1;
+        self.clock = now;
         self.dice = Dice::new(
             self.round.wrapping_mul(0x5ac4_2ace) ^ chosen.iter().fold(7, |seed, id| seed ^ id),
         );
@@ -544,6 +550,8 @@ impl SackRace {
 
     /// Plays the race on.
     pub fn tick(&mut self, ground: &mut Playground, now: f32) {
+        self.dt = (now - self.clock).clamp(0.0, 0.1);
+        self.clock = now;
         match self.phase {
             Phase::Ready => return,
             Phase::LiningUp { since } => self.line_up(ground, now, since),
@@ -551,7 +559,11 @@ impl SackRace {
             Phase::Racing { since } => self.race(now, since),
             Phase::Over { since } => {
                 if now - since >= CELEBRATE_SECS {
-                    self.finish(ground);
+                    // The racers' poses past the line last only as long as the cheering.
+                    for racer in &self.racers {
+                        ground.direct(racer.id, Vec::new(), now);
+                    }
+                    self.finish(ground, now);
                     return;
                 }
             }
@@ -679,7 +691,7 @@ impl SackRace {
                 }
                 Doing::Jumped { back: true } => {
                     if now - racer.doing_since > SHEEPISH_SECS {
-                        racer.along = (racer.along - racer.gait.speed() * 0.6 * TICK).max(-TOE);
+                        racer.along = (racer.along - racer.gait.speed() * 0.6 * self.dt).max(-TOE);
                         if racer.along <= -TOE {
                             racer.doing = Doing::AtTheLine;
                             racer.doing_since = now;
@@ -798,8 +810,9 @@ impl SackRace {
                         } else {
                             at + 9.0
                         };
+                        let dt = self.dt;
                         let helper = &mut self.racers[index];
-                        let step = helper.gait.speed() * 0.8 * TICK;
+                        let step = helper.gait.speed() * 0.8 * dt;
                         let gap = target - helper.along;
                         helper.along += gap.clamp(-step, step);
                         if gap.abs() <= step {
@@ -1193,12 +1206,15 @@ impl SackRace {
                 ground.direct(racer.id, vec![Step::Beat(beat)], now);
             }
         }
-        self.finish(ground);
+        self.finish(ground, now);
         self.events.clear();
     }
 
-    /// Out of the sacks, and everyone back to playing.
-    fn finish(&mut self, ground: &mut Playground) {
+    /// Out of the sacks, and everyone back to playing: the crowd stops watching too.
+    fn finish(&mut self, ground: &mut Playground, now: f32) {
+        for id in &self.crowd {
+            ground.direct(*id, Vec::new(), now);
+        }
         for racer in &self.racers {
             ground.sack(racer.id, None);
             ground.tip(racer.id, false);
@@ -1228,6 +1244,8 @@ mod tests {
     use super::*;
     use crate::fairground;
     use formiga_travel::{Band, Traveler};
+
+    const TICK: f32 = 1.0 / 30.0;
 
     /// The sample colony, each traveller tuned by `tune`.
     fn colony(tune: impl Fn(usize, &mut Traveler)) -> Cast {
@@ -1748,5 +1766,67 @@ mod tests {
         }
         let after: Vec<_> = ground.ids().iter().map(|id| ground.position(*id)).collect();
         assert_ne!(before, after);
+    }
+
+    #[test]
+    fn after_a_race_the_racers_go_back_to_playing() {
+        let cast = sample();
+        let (mut ground, mut race) = ready(&cast);
+        let racers: Vec<Id> = cast.ids().take(3).collect();
+        race.start(&mut ground, &cast, &racers, 6.0);
+        let over = run(&mut ground, &mut race, &cast, 6.0, 400.0, |_, _, _| {})
+            .over_at
+            .expect("the race never ended");
+        let was: Vec<_> = racers
+            .iter()
+            .map(|id| ground.position(*id).unwrap())
+            .collect();
+        let mut now = over;
+        while now < over + 30.0 {
+            now += TICK;
+            ground.tick(&cast, now);
+        }
+        let moved = racers
+            .iter()
+            .zip(&was)
+            .filter(|(id, was)| {
+                crate::playground::distance(ground.position(**id).unwrap(), **was) > 2.0
+            })
+            .count();
+        assert!(
+            moved > 0,
+            "the racers are still posing at the line half a minute on"
+        );
+    }
+
+    #[test]
+    fn a_helper_goes_over_as_fast_however_often_the_race_is_drawn() {
+        let cast = sample();
+        // How long a racer takes to reach a fallen friend, ticked every `tick` seconds.
+        let reaching = |tick: f32| {
+            let (mut ground, mut race) = ready(&cast);
+            let racers: Vec<Id> = cast.ids().take(2).collect();
+            race.start(&mut ground, &cast, &racers, 6.0);
+            race.phase = Phase::Racing { since: 6.0 };
+            let fallen = race.racers[1].id;
+            race.racers[1].along = 60.0;
+            race.racers[1].doing = Doing::Tumbled { until: 1000.0 };
+            race.racers[0].along = 0.0;
+            race.racers[0].doing = Doing::Helping {
+                friend: fallen,
+                until: None,
+            };
+            let mut now = 6.0;
+            while matches!(race.racers[0].doing, Doing::Helping { until: None, .. }) && now < 60.0 {
+                now += tick;
+                race.tick(&mut ground, now);
+            }
+            now - 6.0
+        };
+        let (smooth, slow) = (reaching(1.0 / 120.0), reaching(1.0 / 20.0));
+        assert!(
+            (smooth - slow).abs() < 0.15,
+            "{smooth:.2}s at 120 frames a second, {slow:.2}s at 20"
+        );
     }
 }
