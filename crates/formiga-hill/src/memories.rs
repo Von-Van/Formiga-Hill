@@ -111,6 +111,36 @@ pub struct ColonyMemories {
     /// The latest expeditions' pages in the journal, the latest last.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expedition_pages: Vec<ExpeditionPage>,
+    /// Scavenges along the old track, all told and by each traveller's Desktop id.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub scavenges: u32,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub scavenges_by: BTreeMap<String, u32>,
+    /// Scavenges in a row that brought nothing new home.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub scavenge_drought: u32,
+    /// Torn treasure maps held, not yet followed to their chest; and how many have ever turned up.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub maps: Vec<TreasureMap>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub maps_found: u32,
+    /// Treasure hunts set off on, and the chests dug up at the end of them.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub treasure_hunts: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub chests: u32,
+    /// Chests in a row that held nothing new.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub chest_drought: u32,
+}
+
+/// A torn treasure map the colony holds, not yet followed to its chest.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TreasureMap {
+    /// Which map it is: the same one always sketches the same route (see `track::routes`).
+    pub seed: u64,
+    /// Who found it, by Desktop id.
+    pub found_by: String,
 }
 
 fn is_zero(count: &u32) -> bool {
@@ -565,6 +595,77 @@ impl Memories {
         new
     }
 
+    /// Remembers a scavenge along the old track: who went, what came home in the basket, which
+    /// goes into the journal and the satchel like anything from the Woods, and any torn maps
+    /// found, by who found each, kept to follow another day. Says which finds were new.
+    pub fn back_from_scavenging(
+        &mut self,
+        party: &[u64],
+        basket: &[&str],
+        maps: &[u64],
+    ) -> Vec<&'static str> {
+        let id = self.colony.clone();
+        let colony = self.colony_mut();
+        colony.scavenges += 1;
+        for member in party {
+            *colony.scavenges_by.entry(member.to_string()).or_default() += 1;
+        }
+        let new = keep_finds(colony, party, basket);
+        colony.scavenge_drought = if new.is_empty() {
+            colony.scavenge_drought + 1
+        } else {
+            0
+        };
+        for by in maps {
+            keep_map(colony, &id, *by);
+        }
+        self.keep();
+        new
+    }
+
+    /// Keeps a torn map that turned up somewhere else in the Woods, found by `by`, to follow
+    /// another day. Says whether there was room for it among the maps held.
+    pub fn found_a_map(&mut self, by: u64) -> bool {
+        let id = self.colony.clone();
+        let kept = keep_map(self.colony_mut(), &id, by);
+        self.keep();
+        kept
+    }
+
+    /// Remembers a treasure hunt: whatever the basket and the chest brought home goes into the
+    /// journal and the satchel, and any maps found in the heaps along the way are kept. If the
+    /// chest was dug up the map has been followed, and is put away; if not, it is kept for
+    /// another day, the way just the same. Says which finds were new.
+    pub fn back_from_a_treasure_hunt(
+        &mut self,
+        party: &[u64],
+        map: u64,
+        basket: &[&str],
+        chest: &[&str],
+        maps: &[u64],
+    ) -> Vec<&'static str> {
+        let id = self.colony.clone();
+        let colony = self.colony_mut();
+        colony.treasure_hunts += 1;
+        let mut new = keep_finds(colony, party, basket);
+        if !chest.is_empty() {
+            colony.maps.retain(|kept| kept.seed != map);
+            colony.chests += 1;
+            let from_the_chest = keep_finds(colony, party, chest);
+            colony.chest_drought = if from_the_chest.is_empty() {
+                colony.chest_drought + 1
+            } else {
+                0
+            };
+            new.extend(from_the_chest);
+        }
+        for by in maps {
+            keep_map(colony, &id, *by);
+        }
+        self.keep();
+        new
+    }
+
     /// Remembers the Cursor Sovereign seen off by `party`. The first time, its arrow comes home for
     /// the Hilltop; after that it is only a story worth telling again. Says whether it was the
     /// first time.
@@ -715,6 +816,24 @@ fn put_back(colony: &mut ColonyMemories, standing: Standing) {
     } else {
         colony.lifted.push(standing);
     }
+}
+
+/// Keeps a torn map found by `by`, if there is room among the maps held: each map its own, from
+/// the colony and how many have turned up before it. Says whether it was kept.
+fn keep_map(colony: &mut ColonyMemories, id: &str, by: u64) -> bool {
+    if colony.maps.len() >= crate::track::scavenging::MAPS_HELD {
+        return false;
+    }
+    colony.maps_found += 1;
+    let seed = id.bytes().fold(
+        0xcbf2_9ce4_8422_2325 ^ u64::from(colony.maps_found).rotate_left(32),
+        |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3),
+    );
+    colony.maps.push(TreasureMap {
+        seed,
+        found_by: by.to_string(),
+    });
+    true
 }
 
 /// Keeps a souvenir in the display case, once.
@@ -1008,6 +1127,82 @@ mod tests {
         memories.back_from_foraging(&[7], &[]);
         assert_eq!(memories.colony().forage_drought, 2);
         assert_eq!(memories.colony().forays, 3);
+    }
+
+    #[test]
+    fn scavenges_keep_their_own_count_and_their_maps_until_followed() {
+        let mut memories = Memories::open(None, "c");
+        let new = memories.back_from_scavenging(
+            &[9, 7],
+            &["tin_soldier", "tin_soldier", "brass_bell", "nonsense"],
+            &[7],
+        );
+        assert_eq!(new, vec!["tin_soldier", "brass_bell"]);
+        let colony = memories.colony();
+        assert_eq!(colony.scavenges, 1);
+        assert_eq!(colony.scavenges_by["7"], 1);
+        assert_eq!(
+            colony.finds["brass_bell"].first_by, "9",
+            "whoever led found it"
+        );
+        assert_eq!(colony.satchel["tin_soldier"], 2);
+        assert_eq!(colony.maps.len(), 1);
+        assert_eq!(colony.maps[0].found_by, "7", "the map is the finder's");
+        assert_eq!(colony.outings, 0, "a scavenge is not a rummage");
+        assert_eq!(colony.forays, 0);
+        memories.back_from_scavenging(&[7], &["tin_soldier"], &[]);
+        assert_eq!(
+            memories.colony().scavenge_drought,
+            1,
+            "nothing new that time"
+        );
+        // Another map, from a rummage, is a different map.
+        assert!(memories.found_a_map(9));
+        let maps = memories.colony().maps.clone();
+        assert_eq!(maps.len(), 2);
+        assert_ne!(maps[0].seed, maps[1].seed);
+        // Following one to its chest puts it away, and the chest's things come home.
+        let first = maps[0].seed;
+        let new = memories.back_from_a_treasure_hunt(
+            &[9],
+            first,
+            &["straw_hat"],
+            &["golden_axe", "copper_kettle"],
+            &[],
+        );
+        assert_eq!(new, vec!["straw_hat", "golden_axe", "copper_kettle"]);
+        let colony = memories.colony();
+        assert_eq!(colony.maps, vec![maps[1].clone()]);
+        assert_eq!((colony.treasure_hunts, colony.chests), (1, 1));
+        assert_eq!(colony.chest_drought, 0);
+        assert_eq!(colony.finds["golden_axe"].first_by, "9");
+    }
+
+    #[test]
+    fn a_treasure_hunt_that_runs_out_of_light_keeps_its_map_and_there_are_only_so_many() {
+        let mut memories = Memories::open(None, "c");
+        assert!(memories.found_a_map(7));
+        let map = memories.colony().maps[0].seed;
+        let new = memories.back_from_a_treasure_hunt(&[7], map, &["tin_soldier"], &[], &[9]);
+        assert_eq!(
+            new,
+            vec!["tin_soldier"],
+            "what the heaps gave still comes home"
+        );
+        let colony = memories.colony();
+        assert_eq!(colony.maps.len(), 2, "kept, and the one found on the way");
+        assert_eq!(colony.maps[0].seed, map, "the same map, the same way");
+        assert_eq!((colony.treasure_hunts, colony.chests), (1, 0));
+        for _ in 0..10 {
+            memories.found_a_map(7);
+        }
+        assert_eq!(
+            memories.colony().maps.len(),
+            crate::track::scavenging::MAPS_HELD
+        );
+        // A book written before there were any maps reads with none.
+        let old: ColonyMemories = serde_json::from_str(r#"{"visits": 3}"#).unwrap();
+        assert!(old.maps.is_empty() && old.scavenges == 0);
     }
 
     #[test]

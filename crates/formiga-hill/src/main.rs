@@ -31,6 +31,7 @@ mod playground;
 mod sheet;
 mod station;
 mod story;
+mod track;
 mod trip;
 mod woods;
 
@@ -84,6 +85,11 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
                            Draw an expedition --at seconds in, played by a steady hand: the map
                            of the Woods, and the stops along the way
   --render-falls <PNG>     Draw a visit to the Far Falls, --at seconds in, played by a steady hand
+  --render-track <PNG>     Draw a scavenge along the old track, --at seconds in, played by a
+                           careful hand
+  --render-treasure <PNG>  Draw a treasure hunt off the old track, --at seconds in, following the
+                           map as a careful reader would
+  --render-landmarks <PNG> Draw every landmark a map can name, near and far off, for review
   --render-produce <PNG>   Draw everything that grows on the hedgerow at each stage, for review
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
@@ -150,6 +156,12 @@ enum Area {
     Expedition,
     /// The Far Falls, a visit under way.
     Falls,
+    /// The old track, a scavenge under way.
+    Track,
+    /// Off the old track, a treasure hunt under way.
+    Treasure,
+    /// Not an area: the review sheet of the landmarks a map can name.
+    Landmarks,
     /// The clearing that isn't on any map, the Sovereign met.
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
@@ -324,6 +336,9 @@ fn main() -> Result<()> {
             Area::Produce => produce_sheet(),
             Area::Expedition => expedition_moment(&arrival.cast, args.at.unwrap_or(8.0), daylight),
             Area::Falls => falls_moment(&arrival.cast, args.at.unwrap_or(14.0), daylight),
+            Area::Track => track_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
+            Area::Treasure => treasure_moment(&arrival.cast, args.at.unwrap_or(20.0), daylight),
+            Area::Landmarks => track::landmarks_sheet(),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Costumes => sheet::costumes(&arrival.cast),
@@ -469,6 +484,13 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Expedition, value("--render-expedition")?));
             }
             Some("--render-falls") => render = Some((Area::Falls, value("--render-falls")?)),
+            Some("--render-track") => render = Some((Area::Track, value("--render-track")?)),
+            Some("--render-treasure") => {
+                render = Some((Area::Treasure, value("--render-treasure")?));
+            }
+            Some("--render-landmarks") => {
+                render = Some((Area::Landmarks, value("--render-landmarks")?));
+            }
             Some("--render-sovereign") => {
                 render = Some((Area::Sovereign, value("--render-sovereign")?));
             }
@@ -1051,6 +1073,126 @@ fn foray_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     lane.set_fliers(foray.produce(now));
     let mut scene = lane.compose(now);
     foray.draw(&mut scene, hovered, now);
+    scene
+}
+
+/// A scavenge along the old track `at` seconds in, played by a careful hand: it watches for
+/// glints, works its way to them from the top down or eases things out, peeks and squeezes in
+/// where the party can, and puts back the least thing in a full basket for something better. A
+/// parent and its little one go if the colony has them, so squeezing in shows; otherwise the
+/// first two.
+fn track_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    use track::scavenging::{Move, Outset, Scavenge};
+    let family = cast
+        .members
+        .iter()
+        .find_map(|member| member.parent().map(|parent| vec![parent, member.id]));
+    let party: Vec<cast::Id> = family.unwrap_or_else(|| cast.ids().take(2).collect());
+    let close_pair = cast
+        .bond(party[0], party[party.len() - 1])
+        .is_some_and(|bond| bond.warmth >= formiga_travel::Band::High);
+    let mut ground = track::open(cast, &party, 0.0, &sample_arrangement());
+    ground.set_daylight(daylight);
+    let outset = Outset {
+        party,
+        drought: 0,
+        close_pair,
+        influence: woods::influence(&sample_arrangement()),
+        maps_held: 0,
+        seed: 13,
+    };
+    let mut scavenge = Scavenge::new(&mut ground, outset, |_| false, 0.0);
+    scavenge.set_hour_dark(daylight.darkness());
+    let mut now = 0.0;
+    let mut hovered = None;
+    while now < at {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        scavenge.tick(&mut ground, now);
+        match scavenge.canny() {
+            Move::Go(heap) => scavenge.choose(&mut ground, heap, now),
+            Move::Act { hand, item } => {
+                hovered = scavenge.at().map(|heap| (heap, item));
+                scavenge.set_hand(hand);
+                scavenge.act(&mut ground, item, now);
+            }
+            Move::Take(hidden) => {
+                if let Some(heap) = scavenge.at() {
+                    scavenge.take(&mut ground, heap, hidden, now);
+                }
+            }
+            Move::PutBack(slot) => scavenge.put_back(slot),
+            Move::Home if now + 1.0 < at => scavenge.head_home(&mut ground, now),
+            Move::Home | Move::Wait => {}
+        }
+        for event in scavenge.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    ground.set_fliers(scavenge.props(now));
+    let mut scene = ground.compose(now);
+    scavenge.draw(&mut scene, hovered, now);
+    scene
+}
+
+/// A treasure hunt `at` seconds in, the first two travellers following a map as a careful reader
+/// would: the way the line names as far as it can be read, and an explorer's hunch among the ways
+/// it might be; and in any nook a wrong way leads to, scavenging its heap a while before going
+/// back.
+fn treasure_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    use track::scavenging::Move as Heap;
+    use track::treasure::{Hunt, Move, Outset};
+    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let mut ground = track::hunt_ground(cast, &party, 0.0);
+    ground.set_daylight(daylight);
+    let outset = Outset {
+        party,
+        close_pair: false,
+        influence: woods::influence(&sample_arrangement()),
+        map: 3,
+        drought: 0,
+        seed: 17,
+    };
+    let mut hunt = Hunt::new(&mut ground, outset, |_| false, 0.0);
+    hunt.set_hour_dark(daylight.darkness());
+    for line in hunt.route().lines(false) {
+        println!("map:     {line}");
+    }
+    let mut now = 0.0;
+    let mut in_nook = None;
+    while now < at {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        hunt.tick(&mut ground, now);
+        match hunt.canny() {
+            Move::Back if now - *in_nook.get_or_insert(now) < 8.0 => {
+                if let Some(nook) = hunt.nook_mut() {
+                    match nook.canny() {
+                        Heap::Act { hand, item } => {
+                            nook.set_hand(hand);
+                            nook.act(&mut ground, item, now);
+                        }
+                        Heap::Take(hidden) => nook.take(&mut ground, 0, hidden, now),
+                        Heap::PutBack(slot) => nook.put_back(slot),
+                        Heap::Go(_) | Heap::Home | Heap::Wait => {}
+                    }
+                }
+            }
+            Move::Back => {
+                in_nook = None;
+                hunt.back(&mut ground, now);
+            }
+            Move::Way(way) => hunt.choose(&mut ground, way, now),
+            Move::Dig(spot) => hunt.dig(&mut ground, spot, now),
+            Move::Home | Move::Wait => {}
+        }
+        for event in hunt.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    ground.set_fliers(hunt.props(now));
+    let mut scene = ground.compose(now);
+    hunt.draw(&mut scene, None, now);
     scene
 }
 
