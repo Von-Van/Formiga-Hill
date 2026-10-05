@@ -138,6 +138,12 @@ written here.
 **Everywhere.**
 - The Hill's light follows your computer's clock, so a late visit finds it under the stars, with
   lamps, lit windows and fireflies. Nothing in play depends on the hour.
+- Each place has its own soft music, slower and quieter once the lamps are lit, crossfading as you
+  go from one to the next; and what happens has a sound: the train, a pat or a snack, the games,
+  the colony building on the Hilltop. All of it is placeholder audio made in code for now. The
+  speaker in every bar opens the Sound window, with levels for everything, the music and the
+  sounds, and a mute (M). Sound is never needed to play, and the Hill plays on quietly where there
+  is nothing to play it on.
 - The camera (C) frames part of any scene and keeps the photo in the colony's album. "Save a
   copy…" writes one wherever you choose.
 - Desktop's reduced motion, theme and text size carry over. Reduced motion gets held poses and cuts
@@ -153,7 +159,7 @@ written here.
 | The Fairground | Esc calls a game off |
 | The Woods | Space to try, to strike, or to swing; hold the pointer, ↑ or W to creep up on a bug |
 | The Hilltop | Esc puts down whatever you are holding |
-| Anywhere | C for the camera, and Esc to put it away |
+| Anywhere | C for the camera, and Esc to put it away; M mutes the sound, or brings it back |
 
 ### Coming next
 
@@ -187,6 +193,7 @@ Hill keeps its own records in its data folder:
 | `photos/` | Each colony's album |
 | `packages/` | Community story packages |
 | `packages.json` | Which of them are set aside |
+| `settings.json` | How loud the music and the sounds are, and whether they are muted: one setting for the Hill, not one per colony |
 | `hosting.lock` | Held while a window is open |
 
 Hill never reads or writes Desktop's own files.
@@ -239,8 +246,9 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | `--render-growing`, `--render-plans` | Every growing thing at every stage, and every plan |
 | `--render-reactions` | Every traveller answering a pat, a snack and a toy |
 | `--render-costumes` | Every traveller in every costume piece |
+| `--render-sounds <folder>` | Not a picture: every sound, and a minute of each piece of music by day and by night, as WAV files to listen to |
 
-Any of them takes `--hour <0-24>` to see it at that hour.
+Any of the pictures takes `--hour <0-24>` to see it at that hour.
 
 ### Layout
 
@@ -274,6 +282,8 @@ crates/formiga-hill/src/
   memories.rs        what Hill remembers of each colony
   photos.rs          the album
   daylight.rs        the hour's light, and what glows after dark
+  audio.rs, audio/   the music and the sounds, all made in code: the synthesiser, every cue, the
+                     pieces and their band, the mixer, and the one place a speaker is opened
   paint.rs, kit.rs, materials.rs, font.rs
                      painting tools, building pieces, the palette, lettering
   icon.rs            the app icon: the Hill, in pixels
