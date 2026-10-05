@@ -11,6 +11,7 @@ mod cues;
 mod daylight;
 mod dice;
 mod fairground;
+mod falls;
 mod finds;
 mod fishing;
 mod font;
@@ -78,6 +79,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-bugs <PNG>      Draw every bug in each of its poses, close up, and its icon, for review
   --render-bug-hunt <PNG>  Draw a bug hunt in the meadow, --at seconds in, played by a patient hand
   --render-hedgerow <PNG>  Draw a foray along the hedgerow, --at seconds in, played by a canny hand
+  --render-falls <PNG>     Draw a visit to the Far Falls, --at seconds in, played by a steady hand
   --render-produce <PNG>   Draw everything that grows on the hedgerow at each stage, for review
   --render-sovereign <PNG> Draw the secret encounter --at seconds in, played through on its own
   --render-reactions <PNG> Draw everyone answering a pat, a snack and a toy, for review
@@ -140,6 +142,8 @@ enum Area {
     Hedgerow,
     /// Not an area: the review sheet of everything the hedgerow grows, at every stage.
     Produce,
+    /// The Far Falls, a visit under way.
+    Falls,
     /// The clearing that isn't on any map, the Sovereign met.
     Sovereign,
     /// Not an area: the review sheet of everyone's reactions.
@@ -312,6 +316,7 @@ fn main() -> Result<()> {
             Area::BugHunt => bug_hunt_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
             Area::Hedgerow => foray_moment(&arrival.cast, args.at.unwrap_or(30.0), daylight),
             Area::Produce => produce_sheet(),
+            Area::Falls => falls_moment(&arrival.cast, args.at.unwrap_or(14.0), daylight),
             Area::Sovereign => sovereign_moment(&arrival.cast, args.at.unwrap_or(10.0)),
             Area::Reactions => sheet::reactions(&arrival.cast),
             Area::Costumes => sheet::costumes(&arrival.cast),
@@ -453,6 +458,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             Some("--render-produce") => {
                 render = Some((Area::Produce, value("--render-produce")?));
             }
+            Some("--render-falls") => render = Some((Area::Falls, value("--render-falls")?)),
             Some("--render-sovereign") => {
                 render = Some((Area::Sovereign, value("--render-sovereign")?));
             }
@@ -1035,6 +1041,39 @@ fn foray_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
     lane.set_fliers(foray.produce(now));
     let mut scene = lane.compose(now);
     foray.draw(&mut scene, hovered, now);
+    scene
+}
+
+/// A visit to the Far Falls `at` seconds in, played by a steady hand: it catches whatever comes
+/// down as the eddy brings it past the wading stone.
+fn falls_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    use falls::wading::{Outset, Wading};
+    let party: Vec<cast::Id> = cast.ids().take(2).collect();
+    let mut pool = falls::open(cast, &party, 0.0);
+    pool.set_daylight(daylight);
+    let outset = Outset {
+        party,
+        drought: 0,
+        close_pair: false,
+        influence: woods::influence(&sample_arrangement()),
+        seed: 7,
+    };
+    let mut visit = Wading::new(&mut pool, outset, |_| false, 0.0);
+    visit.set_hour_dark(daylight.darkness());
+    let mut now = 0.0;
+    while now < at {
+        now += 1.0 / 30.0;
+        pool.tick(cast, now);
+        visit.tick(&mut pool, now);
+        if visit.at_the_stone(now) && now + 0.5 < at {
+            visit.strike(&mut pool, now);
+        }
+        for event in visit.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    let mut scene = pool.compose(now);
+    visit.draw(&mut scene, now);
     scene
 }
 
