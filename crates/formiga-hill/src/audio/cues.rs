@@ -475,7 +475,7 @@ fn chuff(rate: f32, seed: u32, pitch: f32) -> Voice {
         // A puff of steam, darkening as it opens out, and a softer breath trailing after.
         let puff = steam.band(pitch * (450.0 + 1400.0 * (-t / 0.03).exp()), 0.8);
         let after = breath.band(1700.0 * pitch, 0.7);
-        puff * strike(t, 0.004, 0.06) * 1.2 + after * strike(t, 0.01, 0.1) * 0.16
+        puff * strike(t, 0.004, 0.06) * 0.78 + after * strike(t, 0.01, 0.1) * 0.1
     })
 }
 
