@@ -2974,9 +2974,9 @@ mod tests {
 
     #[test]
     fn whatever_stands_on_the_hilltop_shows_through_the_gap() {
-        for find in crate::finds::CATALOGUE {
+        for standing in crate::hilltop::Standing::every() {
             let everywhere: Arrangement = (0..SPOTS.len() as u8)
-                .map(|spot| (spot, find.id.to_owned()))
+                .map(|spot| (spot, standing.clone()))
                 .collect();
             let mut view = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
             skyline(&mut view, &everywhere, &VISTA);
@@ -2985,7 +2985,7 @@ mod tests {
                 for x in 0..WIDTH {
                     let piece = view.get(x, y);
                     if piece.a > 0 {
-                        assert_eq!(scene.get(x, y), piece, "{} is hidden at {x}, {y}", find.id);
+                        assert_eq!(scene.get(x, y), piece, "{standing:?} is hidden at {x}, {y}");
                     }
                 }
             }

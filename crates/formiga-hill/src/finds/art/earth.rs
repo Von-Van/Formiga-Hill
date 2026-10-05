@@ -9,8 +9,8 @@ use crate::materials::{BLOSSOMS, GLOW, STONE};
 use crate::paint::{Ramp, chance, hline, line, mix, noise, polygon, put, rect, rgb, rgba, vline};
 use formiga_art::{Canvas, Rgba};
 
-const PEBBLE: Ramp = Ramp::new(0x5a524e, 0x7a716b, 0x999088, 0xb6aea4, 0xd4cdc2);
-const PEBBLE_WARM: Ramp = Ramp::new(0x5e4f45, 0x80695b, 0xa18977, 0xbea692, 0xd8c5b0);
+pub(super) const PEBBLE: Ramp = Ramp::new(0x5a524e, 0x7a716b, 0x999088, 0xb6aea4, 0xd4cdc2);
+pub(super) const PEBBLE_WARM: Ramp = Ramp::new(0x5e4f45, 0x80695b, 0xa18977, 0xbea692, 0xd8c5b0);
 const MOSS: Ramp = Ramp::new(0x34512a, 0x4a6e34, 0x638c40, 0x80aa52, 0xa4c872);
 const BULB: Ramp = Ramp::new(0x7a5a3e, 0xae8c66, 0xd2b88e, 0xe8d6b0, 0xf8eed8);
 const BLUEBELL: Ramp = Ramp::new(0x2c2f74, 0x3f4aa0, 0x5668c8, 0x7d8ee0, 0xb0bef2);
@@ -19,16 +19,16 @@ const STRAP: Ramp = Ramp::new(0x24482c, 0x346838, 0x488a46, 0x66a858, 0x8cc672);
 const SHOE: Ramp = Ramp::new(0x3e322c, 0x5a4a42, 0x76645a, 0x988474, 0xbaa694);
 const RUST: Ramp = Ramp::new(0x4a2a1e, 0x6e3c26, 0x925232, 0xb06c42, 0xcc8c5c);
 const WEATHERED: Ramp = Ramp::new(0x56504a, 0x7a726a, 0x9a9288, 0xb8b0a4, 0xd4ccc0);
-const BRASS: Ramp = Ramp::new(0x6b4a24, 0x9a7434, 0xc9a14e, 0xe4c06c, 0xf6e3a2);
+pub(super) const BRASS: Ramp = Ramp::new(0x6b4a24, 0x9a7434, 0xc9a14e, 0xe4c06c, 0xf6e3a2);
 const GATE: Ramp = Ramp::new(0x3c5a56, 0x5a807a, 0x7ca69c, 0xa0c4b8, 0xc8e0d6);
-const POST: Ramp = Ramp::new(0x3e2a20, 0x5a3e2e, 0x76543c, 0x92704e, 0xae8c66);
+pub(super) const POST: Ramp = Ramp::new(0x3e2a20, 0x5a3e2e, 0x76543c, 0x92704e, 0xae8c66);
 const GLAZE: Ramp = Ramp::new(0x9a8868, 0xcbbc98, 0xeadfc0, 0xf6eed8, 0xfffaf0);
 const DELFT: Ramp = Ramp::new(0x22357a, 0x2f4a9a, 0x4064b8, 0x6888d0, 0x9cb4e4);
 const MEND: Ramp = Ramp::new(0x8a5e14, 0xb8861e, 0xdcac30, 0xf2cc58, 0xfff0a8);
 const SOIL: Ramp = Ramp::new(0x2e2018, 0x46301f, 0x5c402a, 0x74543a, 0x8c6a4c);
 const BASIL: Ramp = Ramp::new(0x2a5228, 0x3a7232, 0x509640, 0x70b654, 0x9cd47a);
 const ROSEMARY: Ramp = Ramp::new(0x2a4238, 0x3a5a4a, 0x4e7460, 0x6a8e78, 0x8eac96);
-const TURF: Ramp = Ramp::new(0x2e5630, 0x44763c, 0x5e944c, 0x7cb262, 0xa2cc80);
+pub(super) const TURF: Ramp = Ramp::new(0x2e5630, 0x44763c, 0x5e944c, 0x7cb262, 0xa2cc80);
 const OAK_DOOR: Ramp = Ramp::new(0x4a2a1a, 0x6c3e24, 0x8a5430, 0xa86e42, 0xc48c5c);
 const HINGE: Ramp = Ramp::new(0x2e2624, 0x463a36, 0x5e504a, 0x7a6a62, 0x9a8a80);
 const CLAY: Rgba = rgb(0xb0684a);
@@ -166,6 +166,18 @@ pub fn piece(id: &str) -> Option<Piece> {
     })
 }
 
+/// One of these finds planted, at `stage` of its growing, or `None` if it isn't drawn.
+pub fn stage(id: &str, stage: u8) -> Option<Piece> {
+    Some(match (id, stage) {
+        ("bluebell_bulb", 0) => bluebell_shoot(),
+        ("bluebell_bulb", 1) => bluebell_leaves_only(),
+        ("bluebell_bulb", _) => bluebells_in_bud(),
+        ("pot_shard", 0) => pot_sown(),
+        ("pot_shard", _) => pot_seedlings(),
+        _ => return None,
+    })
+}
+
 // ---------------------------------------------------------------------------------------------
 // The pieces
 // ---------------------------------------------------------------------------------------------
@@ -201,22 +213,11 @@ fn cairn() -> Piece {
 
 /// A clump of bluebells: glossy strappy leaves fanned out over the grass, and stems nodding
 /// over at the top with their bells all hanging down one side.
-fn bluebells() -> Piece {
+pub(super) fn bluebells() -> Piece {
     let mut s = Canvas::new(26, 19);
     let ground = 17;
     shadow(&mut s, 13, ground, 11, 2);
-    for (tip, via) in [
-        ((1.0, 15.0), (6.0, 11.0)),
-        ((25.0, 15.0), (20.0, 11.0)),
-        ((4.0, 10.0), (8.0, 9.0)),
-        ((22.0, 10.0), (18.0, 9.0)),
-        ((7.0, 17.0), (9.0, 14.0)),
-        ((19.0, 17.0), (17.0, 14.0)),
-        ((8.0, 7.0), (11.0, 11.0)),
-        ((18.0, 6.0), (15.0, 10.0)),
-    ] {
-        blade(&mut s, (13.0, ground as f32), via, tip, STRAP);
-    }
+    bluebell_leaves(&mut s, (13.0, ground as f32), 1.0);
     // Each stem: where it rises, the row it arches over at, which way it nods, how far, and
     // where along the arch its bells hang.
     let stems: [(i32, i32, i32, i32, &[i32]); 5] = [
@@ -243,6 +244,97 @@ fn bluebells() -> Piece {
         // One more, lower, hanging off the upright.
         if top + 8 < ground {
             bell(&mut s, left(1), top + 4);
+        }
+    }
+    Piece {
+        sprite: s,
+        anchor: (13, ground),
+    }
+}
+
+/// Where each of the bluebells' leaves ends, and the point its curve is pulled towards, as they
+/// fan out from the middle of the clump at (13, 17) when it is grown.
+const BLUEBELL_LEAVES: [((f32, f32), (f32, f32)); 8] = [
+    ((1.0, 15.0), (6.0, 11.0)),
+    ((25.0, 15.0), (20.0, 11.0)),
+    ((4.0, 10.0), (8.0, 9.0)),
+    ((22.0, 10.0), (18.0, 9.0)),
+    ((7.0, 17.0), (9.0, 14.0)),
+    ((19.0, 17.0), (17.0, 14.0)),
+    ((8.0, 7.0), (11.0, 11.0)),
+    ((18.0, 6.0), (15.0, 10.0)),
+];
+
+/// The bluebells' glossy strappy leaves fanned out over the grass from `base`, each `scale` of
+/// the length it reaches when the clump is grown.
+fn bluebell_leaves(s: &mut Canvas, base: (f32, f32), scale: f32) {
+    let from_base = |(x, y): (f32, f32)| (base.0 + (x - 13.0) * scale, base.1 + (y - 17.0) * scale);
+    for (tip, via) in BLUEBELL_LEAVES {
+        blade(s, base, from_base(via), from_base(tip), STRAP);
+    }
+}
+
+/// Just planted: a mound of turned earth, the bulb's papery neck showing at the top, and its
+/// first two green tips pushing up through it.
+fn bluebell_shoot() -> Piece {
+    let mut s = Canvas::new(16, 15);
+    let (cx, ground) = (8, 13);
+    mound(&mut s, cx, ground, (6, 4), 31);
+    put(&mut s, cx - 1, ground - 4, BULB.light);
+    put(&mut s, cx, ground - 4, BULB.base);
+    put(&mut s, cx + 1, ground - 4, BULB.shadow);
+    put(&mut s, cx, ground - 5, BULB.shine);
+    spike(&mut s, (cx - 2, ground - 5), 4, -1, STRAP);
+    spike(&mut s, (cx, ground - 5), 5, 1, STRAP);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: the leaves are up, standing tall and only starting to arch over, with turned
+/// earth still bare round them and no sign of a flower.
+fn bluebell_leaves_only() -> Piece {
+    let mut s = Canvas::new(20, 15);
+    let (cx, ground) = (10, 13);
+    mound(&mut s, cx, ground, (7, 2), 32);
+    for (dx, tall, lean) in [(-5, 5, -3), (3, 5, 3), (-3, 8, -2), (1, 9, 2), (-1, 10, -1)] {
+        spike(&mut s, (cx + dx, ground - 1), tall, lean, STRAP);
+    }
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Grown into its leaves, with stems up and arching over, the buds along them still green and
+/// tight, just turning blue: a clump of bluebells the day before it flowers.
+fn bluebells_in_bud() -> Piece {
+    let mut s = Canvas::new(26, 19);
+    let ground = 17;
+    shadow(&mut s, 13, ground, 11, 2);
+    bluebell_leaves(&mut s, (13.0, ground as f32), 1.0);
+    // Each stem as the grown clump has it, a little shorter: where it rises, the row it arches
+    // over at, which way it nods, and how far.
+    for (x, top, way, reach) in [
+        (6, 13, -1, 3),
+        (19, 14, 1, 3),
+        (10, 8, -1, 5),
+        (16, 10, 1, 5),
+        (13, 4, 1, 6),
+    ] {
+        vline(&mut s, x, top + 2, ground - top - 2, STEM.base);
+        put(&mut s, x + way, top + 1, STEM.base);
+        for step in 2..reach {
+            put(&mut s, x + way * step, top, STEM.light);
+        }
+        // Buds hanging all along the arch, the ones nearest the tip greenest.
+        for step in (1..reach).step_by(2) {
+            let ripe = 1.0 - step as f32 / reach as f32;
+            let bud = mix(STEM.light, BLUEBELL.light, 0.45 + 0.4 * ripe);
+            let under = mix(STEM.shadow, BLUEBELL.base, 0.5 + 0.4 * ripe);
+            put(&mut s, x + way * step, top + 1, bud);
+            put(&mut s, x + way * step, top + 2, under);
         }
     }
     Piece {
@@ -478,31 +570,18 @@ fn gate() -> Piece {
 /// of herbs: basil, rosemary in flower, and thyme.
 fn herb_pot() -> Piece {
     let mut s = Canvas::new(22, 27);
-    let ground = 25;
-    shadow(&mut s, 11, ground, 9, 2);
-    // The soil inside the rim, and the back of the rim behind it.
-    let (rim_top, rim_left, rim_width) = (11, 2, 18);
-    hline(&mut s, rim_left + 1, rim_top - 1, rim_width - 2, GLAZE.edge);
-    hline(&mut s, rim_left + 1, rim_top, rim_width - 2, SOIL.base);
+    pot_back(&mut s);
     // Herbs: rosemary in flower at the back, thyme between, basil at the front.
-    for (tip, via) in [
-        ((15.0, 0.0), (14.0, 6.0)),
-        ((18.0, 3.0), (16.0, 7.0)),
-        ((12.0, 2.0), (13.0, 6.0)),
-        ((20.0, 6.0), (17.0, 8.0)),
-    ] {
-        let points = curve((14.0, 11.0), via, tip);
-        for (index, &(x, y)) in points.iter().enumerate() {
-            put(&mut s, x, y, ROSEMARY.shadow);
-            if index % 2 == 0 {
-                put(&mut s, x - 1, y, ROSEMARY.light);
-                put(&mut s, x + 1, y, ROSEMARY.base);
-            }
-        }
-        let (x, y) = points[points.len() - 1];
-        put(&mut s, x, y, rgb(0xa8b8e8));
-        put(&mut s, x, y + 2, rgb(0x8898d0));
-    }
+    rosemary(
+        &mut s,
+        &[
+            ((15.0, 0.0), (14.0, 6.0)),
+            ((18.0, 3.0), (16.0, 7.0)),
+            ((12.0, 2.0), (13.0, 6.0)),
+            ((20.0, 6.0), (17.0, 8.0)),
+        ],
+        true,
+    );
     lump(&mut s, 11.5, 8.4, 3.6, 2.8, ROSEMARY, 51);
     for (x, y) in [(10, 6), (12, 7), (10, 8), (13, 9), (11, 5), (12, 6)] {
         put(&mut s, x, y, rgb(0xc8a0d8));
@@ -510,6 +589,96 @@ fn herb_pot() -> Piece {
     lump(&mut s, 6.4, 8.6, 4.2, 3.2, BASIL, 52);
     lump(&mut s, 8.4, 5.6, 2.8, 2.4, BASIL, 53);
     lump(&mut s, 4.0, 6.6, 2.0, 1.8, BASIL, 54);
+    mended_pot(&mut s);
+    Piece {
+        sprite: s,
+        anchor: (11, POT_GROUND),
+    }
+}
+
+/// Where the mended pot's rim is: its top row, left edge and width; and the row it stands on.
+const RIM: (i32, i32, i32) = (11, 2, 18);
+const POT_GROUND: i32 = 25;
+
+/// The pot's shadow, the back of its rim and the soil inside it: what its herbs grow up from.
+fn pot_back(s: &mut Canvas) {
+    shadow(s, 11, POT_GROUND, 9, 2);
+    let (rim_top, rim_left, rim_width) = RIM;
+    hline(s, rim_left + 1, rim_top - 1, rim_width - 2, GLAZE.edge);
+    hline(s, rim_left + 1, rim_top, rim_width - 2, SOIL.base);
+}
+
+/// Where a sprig of rosemary ends, and the point its curve is pulled towards on the way.
+type Sprig = ((f32, f32), (f32, f32));
+
+/// Sprigs of rosemary up from the soil: needles either side of a dark stem, and a blue flower at
+/// the tip of each if it is in flower.
+fn rosemary(s: &mut Canvas, sprigs: &[Sprig], flowering: bool) {
+    for &(tip, via) in sprigs {
+        let points = curve((14.0, 11.0), via, tip);
+        for (index, &(x, y)) in points.iter().enumerate() {
+            put(s, x, y, ROSEMARY.shadow);
+            if index % 2 == 0 {
+                put(s, x - 1, y, ROSEMARY.light);
+                put(s, x + 1, y, ROSEMARY.base);
+            }
+        }
+        if flowering {
+            let (x, y) = points[points.len() - 1];
+            put(s, x, y, rgb(0xa8b8e8));
+            put(s, x, y + 2, rgb(0x8898d0));
+        }
+    }
+}
+
+/// Just sown: the mended pot with its soil raked level and the first seedlings showing, a pair of
+/// leaves each.
+fn pot_sown() -> Piece {
+    let mut s = Canvas::new(22, 27);
+    pot_back(&mut s);
+    let rim_top = RIM.0;
+    for (x, tall) in [(5, 1), (8, 2), (12, 1), (15, 2), (17, 1)] {
+        let ramp = if x > 11 { ROSEMARY } else { BASIL };
+        for step in 0..tall {
+            put(&mut s, x, rim_top - 1 - step, ramp.shadow);
+        }
+        put(&mut s, x - 1, rim_top - 1 - tall, ramp.light);
+        put(&mut s, x + 1, rim_top - 1 - tall, ramp.base);
+    }
+    mended_pot(&mut s);
+    Piece {
+        sprite: s,
+        anchor: (11, POT_GROUND),
+    }
+}
+
+/// The herbs a visit on: basil in a low clump at the front, rosemary in short sprigs behind it,
+/// neither in flower yet.
+fn pot_seedlings() -> Piece {
+    let mut s = Canvas::new(22, 27);
+    pot_back(&mut s);
+    rosemary(
+        &mut s,
+        &[
+            ((15.0, 5.0), (14.0, 8.0)),
+            ((17.0, 7.0), (16.0, 9.0)),
+            ((12.0, 6.0), (13.0, 8.0)),
+        ],
+        false,
+    );
+    lump(&mut s, 6.6, 9.2, 3.0, 2.0, BASIL, 55);
+    lump(&mut s, 9.0, 8.2, 2.0, 1.7, BASIL, 56);
+    mended_pot(&mut s);
+    Piece {
+        sprite: s,
+        anchor: (11, POT_GROUND),
+    }
+}
+
+/// The mended pot itself, over the foot of whatever grows in it.
+fn mended_pot(s: &mut Canvas) {
+    let (rim_top, rim_left, rim_width) = RIM;
+    let ground = POT_GROUND;
     // The pot: a rolled rim, then a body narrowing to its foot, lit from the left.
     let body = |y: i32| {
         let t = (y - (rim_top + 3)) as f32 / 10.0;
@@ -525,10 +694,10 @@ fn herb_pot() -> Piece {
             } else {
                 cylinder(GLAZE, across)
             };
-            put(&mut s, x, y, color);
+            put(s, x, y, color);
         }
     }
-    hline(&mut s, 5, rim_top + 3, 12, GLAZE.shadow);
+    hline(s, 5, rim_top + 3, 12, GLAZE.shadow);
     for y in rim_top + 1..rim_top + 4 {
         for x in rim_left..rim_left + rim_width {
             let across = (x - rim_left) as f32 / (rim_width - 1) as f32;
@@ -537,33 +706,29 @@ fn herb_pot() -> Piece {
             } else {
                 cylinder(GLAZE, across)
             };
-            put(&mut s, x, y, color);
+            put(s, x, y, color);
         }
     }
-    hline(&mut s, rim_left + 1, rim_top + 2, rim_width - 2, DELFT.base);
+    hline(s, rim_left + 1, rim_top + 2, rim_width - 2, DELFT.base);
     // Blue flowers painted round the body, with a sprig between.
     for (x, y) in [(6, 18), (15, 20)] {
         for (dx, dy) in [(0, -1), (-1, 0), (1, 0), (0, 1)] {
-            put(&mut s, x + dx, y + dy, DELFT.base);
+            put(s, x + dx, y + dy, DELFT.base);
         }
-        put(&mut s, x, y, DELFT.shine);
+        put(s, x, y, DELFT.shine);
     }
-    line(&mut s, (8, 20), (12, 17), DELFT.light);
-    put(&mut s, 10, 18, DELFT.base);
-    put(&mut s, 11, 19, DELFT.base);
-    hline(&mut s, 7, 23, 8, DELFT.light);
+    line(s, (8, 20), (12, 17), DELFT.light);
+    put(s, 10, 18, DELFT.base);
+    put(s, 11, 19, DELFT.base);
+    hline(s, 7, 23, 8, DELFT.light);
     // The mended crack, from the rim down, in gold.
     let crack = [(13, 12), (12, 15), (14, 17), (13, 19), (14, 22), (13, 24)];
     for pair in crack.windows(2) {
-        line(&mut s, pair[0], pair[1], MEND.base);
+        line(s, pair[0], pair[1], MEND.base);
     }
-    put(&mut s, 12, 15, MEND.shine);
-    put(&mut s, 14, 17, MEND.light);
-    put(&mut s, 14, 22, MEND.light);
-    Piece {
-        sprite: s,
-        anchor: (11, ground),
-    }
+    put(s, 12, 15, MEND.shine);
+    put(s, 14, 17, MEND.light);
+    put(s, 14, 22, MEND.light);
 }
 
 /// A sundial: a stone pedestal, lichened, with a brass dial on top and its gnomon throwing a
@@ -643,7 +808,7 @@ fn sundial() -> Piece {
 }
 
 /// A block of dressed stone lit from the upper left, speckled.
-fn stone_block(s: &mut Canvas, x: i32, y: i32, width: i32, height: i32, salt: u32) {
+pub(super) fn stone_block(s: &mut Canvas, x: i32, y: i32, width: i32, height: i32, salt: u32) {
     for py in y..y + height {
         for px in x..x + width {
             let (col, row) = (px - x, py - y);
@@ -673,7 +838,7 @@ fn stone_block(s: &mut Canvas, x: i32, y: i32, width: i32, height: i32, salt: u3
 
 /// A little door in a grassy mound, for somebody very small: an arch of stones, a round window
 /// lit within, stepping stones up to the threshold and flowers all over.
-fn hill_door() -> Piece {
+pub(super) fn hill_door() -> Piece {
     let mut s = Canvas::new(48, 43);
     let ground = 38;
     shadow(&mut s, 24, ground, 23, 3);
@@ -845,7 +1010,7 @@ fn hill_door() -> Piece {
 }
 
 /// The pixels about a circle of `radius` round the origin.
-fn ring_offsets(radius: f32) -> Vec<(i32, i32)> {
+pub(super) fn ring_offsets(radius: f32) -> Vec<(i32, i32)> {
     let reach = radius.ceil() as i32 + 1;
     let mut points = Vec::new();
     for dy in -reach..=reach {

@@ -51,8 +51,8 @@ impl HillApp {
             self.woods.pool = Some(crate::fishing::open(&self.arrival.cast, &[], now));
         }
         if self.woods.meadow.is_none() {
-            let hilltop = &self.memories.colony().hilltop;
-            self.woods.meadow = Some(crate::meadow::open(&self.arrival.cast, &[], now, hilltop));
+            let hilltop = self.hilltop_standing();
+            self.woods.meadow = Some(crate::meadow::open(&self.arrival.cast, &[], now, &hilltop));
         }
         if self.woods.party.is_empty()
             && let Some(first) = self.arrival.cast.members.first()

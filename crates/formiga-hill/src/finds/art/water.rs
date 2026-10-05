@@ -60,19 +60,19 @@ pub fn piece(id: &str) -> Option<Piece> {
     })
 }
 
-const SLATE: Ramp = Ramp::new(0x4a535c, 0x69747d, 0x8b959b, 0xafb8bb, 0xdde3e2);
-const SANDSTONE: Ramp = Ramp::new(0x6a5d50, 0x8d7f70, 0xab9e8c, 0xc8bca8, 0xe6dccb);
+pub(super) const SLATE: Ramp = Ramp::new(0x4a535c, 0x69747d, 0x8b959b, 0xafb8bb, 0xdde3e2);
+pub(super) const SANDSTONE: Ramp = Ramp::new(0x6a5d50, 0x8d7f70, 0xab9e8c, 0xc8bca8, 0xe6dccb);
 const DRIFTWOOD: Ramp = Ramp::new(0x564a40, 0x786a5c, 0x9a8a78, 0xbcad98, 0xdcd0bc);
 const WATER: Ramp = Ramp::new(0x2c5a74, 0x3f7a96, 0x5c9cb6, 0x8cc4d6, 0xe2f6fa);
-const SEA_GLASS: Ramp = Ramp::new(0x3d7a60, 0x67a888, 0x8fc8a8, 0xb8e2c8, 0xf0fbf4);
-const BLUE_GLASS: Ramp = Ramp::new(0x34607e, 0x5a8cb0, 0x84b2d2, 0xb0d4ea, 0xf0f8ff);
-const PALE_GLASS: Ramp = Ramp::new(0x4a7a7a, 0x8abcb8, 0xb4dcd6, 0xd6eeea, 0xffffff);
-const TEAL_GLASS: Ramp = Ramp::new(0x225e62, 0x3a8a8a, 0x5cb0aa, 0x8ad0c8, 0xe4fbf6);
+pub(super) const SEA_GLASS: Ramp = Ramp::new(0x3d7a60, 0x67a888, 0x8fc8a8, 0xb8e2c8, 0xf0fbf4);
+pub(super) const BLUE_GLASS: Ramp = Ramp::new(0x34607e, 0x5a8cb0, 0x84b2d2, 0xb0d4ea, 0xf0f8ff);
+pub(super) const PALE_GLASS: Ramp = Ramp::new(0x4a7a7a, 0x8abcb8, 0xb4dcd6, 0xd6eeea, 0xffffff);
+pub(super) const TEAL_GLASS: Ramp = Ramp::new(0x225e62, 0x3a8a8a, 0x5cb0aa, 0x8ad0c8, 0xe4fbf6);
 const MUSSEL: Ramp = Ramp::new(0x161c2e, 0x232c48, 0x34406a, 0x4c5c8c, 0x7c8cb8);
 const NACRE: Ramp = Ramp::new(0x8a88b0, 0xaeb0d0, 0xcdd0e6, 0xe6e8f4, 0xffffff);
-const COBALT: Ramp = Ramp::new(0x1a2a6a, 0x24409a, 0x3a5ec4, 0x6a8ee0, 0xd0e0ff);
-const BOTTLE_GREEN: Ramp = Ramp::new(0x1e4a2a, 0x2a6a3a, 0x3e8a4e, 0x6ab878, 0xd8f4d8);
-const AMBER: Ramp = Ramp::new(0x6a3a10, 0x9a5a18, 0xc8822a, 0xe8aa52, 0xfff0c8);
+pub(super) const COBALT: Ramp = Ramp::new(0x1a2a6a, 0x24409a, 0x3a5ec4, 0x6a8ee0, 0xd0e0ff);
+pub(super) const BOTTLE_GREEN: Ramp = Ramp::new(0x1e4a2a, 0x2a6a3a, 0x3e8a4e, 0x6ab878, 0xd8f4d8);
+pub(super) const AMBER: Ramp = Ramp::new(0x6a3a10, 0x9a5a18, 0xc8822a, 0xe8aa52, 0xfff0c8);
 const CORK: Ramp = Ramp::new(0x5a3a20, 0x7a5232, 0xa07048, 0xc09068, 0xdcb48c);
 const PAPER: Ramp = Ramp::new(0x9a845a, 0xc8b48a, 0xe8dab4, 0xf6eed4, 0xffffff);
 const DRAKE: Ramp = Ramp::new(0x14402c, 0x1d5a3e, 0x2c7a52, 0x48a070, 0x90d8a8);
@@ -438,7 +438,7 @@ const BOTTLE: [&str; 9] = [
 ];
 
 /// A bare branching stick with coloured glass bottles on the ends of its branches.
-fn bottle_tree() -> Piece {
+pub(super) fn bottle_tree() -> Piece {
     let mut s = Canvas::new(34, 50);
     let (cx, ground) = (17, 47);
     ellipse(&mut s, cx, ground, 10, 2, SHADOW);
@@ -782,7 +782,14 @@ fn star_inks() -> Vec<(u8, Rgba)> {
 
 /// A flat stone lying in the grass: its face lit from the upper left, `thick` rows of its side
 /// in shade beneath, outlined in its own darkest tone.
-fn flat_stone(s: &mut Canvas, at: (i32, i32), size: (i32, i32), thick: i32, ramp: Ramp, salt: u32) {
+pub(super) fn flat_stone(
+    s: &mut Canvas,
+    at: (i32, i32),
+    size: (i32, i32),
+    thick: i32,
+    ramp: Ramp,
+    salt: u32,
+) {
     let face = |x: i32, y: i32| in_ellipse(x, y, at, size);
     let solid = |x: i32, y: i32| (0..=thick).any(|down| in_ellipse(x, y - down, at, size));
     for y in at.1 - size.1 - 1..=at.1 + size.1 + thick + 1 {
@@ -818,7 +825,14 @@ fn flat_stone(s: &mut Canvas, at: (i32, i32), size: (i32, i32), thick: i32, ramp
 }
 
 /// A box of dressed stone seen from the front, its top face showing `top` rows deep.
-fn slab(s: &mut Canvas, at: (i32, i32), size: (i32, i32), top: i32, ramp: Ramp, salt: u32) {
+pub(super) fn slab(
+    s: &mut Canvas,
+    at: (i32, i32),
+    size: (i32, i32),
+    top: i32,
+    ramp: Ramp,
+    salt: u32,
+) {
     let (x0, y0, w, h) = (at.0, at.1, size.0, size.1);
     for y in y0..y0 + h {
         for x in x0..x0 + w {
@@ -878,7 +892,7 @@ fn cattail(s: &mut Canvas, base: (i32, i32), height: i32) {
 }
 
 /// A four-pointed glint, its arms fading out `size` pixels.
-fn sparkle(s: &mut Canvas, at: (i32, i32), size: i32) {
+pub(super) fn sparkle(s: &mut Canvas, at: (i32, i32), size: i32) {
     put(s, at.0, at.1, rgba(0xffffff, 240));
     for step in 1..=size {
         let alpha = (200 / step) as u8;
@@ -901,7 +915,7 @@ fn daisy_inks() -> Vec<(u8, Rgba)> {
 }
 
 /// Glass: its outline solid, the rest a little see-through.
-fn glass_inks(ramp: Ramp) -> Vec<(u8, Rgba)> {
+pub(super) fn glass_inks(ramp: Ramp) -> Vec<(u8, Rgba)> {
     let clear = |color: Rgba| Rgba::new(color.r, color.g, color.b, 225);
     vec![
         (b'#', ramp.edge),

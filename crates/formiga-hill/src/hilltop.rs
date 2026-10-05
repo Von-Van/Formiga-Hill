@@ -1,19 +1,23 @@
 //! The Hilltop: the colony's own place at the top of the Hill, empty at first. Whatever the Woods
 //! turns up can stand on any of its spots, wherever the person likes, and the colony plays among
-//! it all: sitting on the stones, looking through the telescope, napping by the berry bush.
+//! it all: sitting on the stones, looking through the telescope, napping by the berry bush. What
+//! grows is planted, and comes up a little more with every visit.
 
+pub mod building;
 mod scenery;
+mod standing;
+
+pub use standing::Standing;
 
 use crate::cast::Cast;
 use crate::daylight::Nightlights;
-use crate::finds::{self, art};
-use crate::paint::{blit, mix, rgb};
+use crate::paint::{blit, mix};
 use crate::playground::{Attraction, Layout, Patch, Playground, Prop};
 use formiga_art::{Canvas, Rgba};
 use std::collections::BTreeMap;
 
-/// What stands where: a find's id for each spot that has one.
-pub type Arrangement = BTreeMap<u8, String>;
+/// What stands where.
+pub type Arrangement = BTreeMap<u8, Standing>;
 
 /// Where pieces can stand, as the middle of where each meets the ground: three rows across the
 /// summit, back to front. Any spot takes any piece; they are spaced so the widest piece fits.
@@ -75,33 +79,43 @@ pub fn layout() -> Layout {
     }
 }
 
+/// Everything standing on the summit that Hill knows how to draw, with the spot it stands on.
+fn drawable(arrangement: &Arrangement) -> impl Iterator<Item = (u8, (f32, f32), &Standing)> {
+    arrangement.iter().filter_map(|(spot, standing)| {
+        let at = *SPOTS.get(usize::from(*spot))?;
+        standing.known().then_some((*spot, at, standing))
+    })
+}
+
+/// The pieces standing on the summit, as props drawn among the colony, each with its spot.
+pub fn placed(arrangement: &Arrangement) -> Vec<(u8, Prop)> {
+    drawable(arrangement)
+        .map(|(spot, (x, y), standing)| {
+            let piece = standing.piece();
+            let at = (x as i32 - piece.anchor.0, y as i32 - piece.anchor.1);
+            (spot, Prop::new(piece.sprite, at, y))
+        })
+        .collect()
+}
+
 /// The pieces standing on the summit, as props drawn among the colony.
 pub fn props(arrangement: &Arrangement) -> Vec<Prop> {
-    arrangement
-        .iter()
-        .filter_map(|(spot, id)| {
-            let (x, y) = *SPOTS.get(usize::from(*spot))?;
-            finds::find(id)?;
-            let piece = art::piece(id);
-            let at = (x as i32 - piece.anchor.0, y as i32 - piece.anchor.1);
-            Some(Prop::new(piece.sprite, at, y))
-        })
+    placed(arrangement)
+        .into_iter()
+        .map(|(_, prop)| prop)
         .collect()
 }
 
 /// What the colony can go and enjoy: each piece, from in front of it.
 pub fn attractions(arrangement: &Arrangement) -> Vec<Attraction> {
-    arrangement
-        .iter()
-        .filter_map(|(spot, id)| {
-            let (x, y) = *SPOTS.get(usize::from(*spot))?;
-            let find = finds::find(id)?;
+    drawable(arrangement)
+        .filter_map(|(_, (x, y), standing)| {
             // Beside it on whichever side has more room, a little in front.
             let side = if x < 192.0 { 22.0 } else { -22.0 };
             Some(Attraction {
                 stand: (x + side, y + 6.0),
                 facing_x: x,
-                use_: find.use_,
+                use_: standing.use_()?,
             })
         })
         .collect()
@@ -111,22 +125,15 @@ pub fn attractions(arrangement: &Arrangement) -> Vec<Attraction> {
 /// gives off a light of its own.
 pub fn nightlights(arrangement: &Arrangement, backdrop: &Canvas) -> Nightlights {
     let mut lamps = scenery::lamplight();
-    for (spot, id) in arrangement {
-        let color = match id.as_str() {
-            "lost_lantern" => rgb(0xffcf6a),
-            "fallen_star" => rgb(0xfff2b0),
-            "sovereign_arrow" => rgb(0xf4f6ff),
-            _ => continue,
-        };
-        let Some((x, y)) = SPOTS.get(usize::from(*spot)) else {
-            continue;
-        };
-        let piece = art::piece(id);
-        let middle = (
-            *x as i32 - piece.anchor.0 + piece.sprite.width() as i32 / 2,
-            *y as i32 - piece.anchor.1 + piece.sprite.height() as i32 / 2,
-        );
-        crate::daylight::glow(&mut lamps, middle, 30, color);
+    for (_, (x, y), standing) in drawable(arrangement) {
+        let piece = standing.piece();
+        for (color, (lx, ly)) in standing.lights(&piece) {
+            let at = (
+                x as i32 - piece.anchor.0 + lx,
+                y as i32 - piece.anchor.1 + ly,
+            );
+            crate::daylight::glow(&mut lamps, at, 30, color);
+        }
     }
     Nightlights {
         lamps,
@@ -179,18 +186,10 @@ const TREE_X: f32 = (TREE.0 + TREE.2) / 2.0;
 /// Draws what stands on the Hilltop, small and far off, on another view's skyline, back row
 /// first: so the Hill seen from below grows with what the colony has found.
 pub fn skyline(scene: &mut Canvas, arrangement: &Arrangement, vista: &Vista) {
-    let mut placed: Vec<(usize, &String)> = arrangement
-        .iter()
-        .map(|(spot, id)| (usize::from(*spot), id))
-        .filter(|(spot, _)| *spot < SPOTS.len())
-        .collect();
-    placed.sort_by(|a, b| SPOTS[a.0].1.total_cmp(&SPOTS[b.0].1));
-    for (spot, id) in placed {
-        if finds::find(id).is_none() {
-            continue;
-        }
-        let (x, y) = SPOTS[spot];
-        let piece = art::piece(id);
+    let mut placed: Vec<_> = drawable(arrangement).collect();
+    placed.sort_by(|a, b| a.1.1.total_cmp(&b.1.1));
+    for (_, (x, y), standing) in placed {
+        let piece = standing.piece();
         let small = shrink(&piece.sprite, vista.shrink, &vista.tint);
         let across = vista.tree.0 + (x - TREE_X) / vista.spread;
         // Nearer rows sit a little lower down the face of the Hill.
@@ -272,7 +271,7 @@ pub fn spot_at(x: f32, y: f32) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::finds::CATALOGUE;
+    use crate::finds::{Use, art};
 
     #[test]
     fn spots_leave_room_for_the_widest_piece_and_for_walking_between() {
@@ -295,20 +294,86 @@ mod tests {
     }
 
     #[test]
-    fn any_spot_takes_any_piece() {
-        for (index, find) in CATALOGUE.iter().enumerate() {
+    fn any_spot_takes_any_piece_at_any_stage() {
+        for standing in Standing::every() {
             for spot in 0..SPOTS.len() as u8 {
-                let arrangement = Arrangement::from([(spot, find.id.to_owned())]);
+                let arrangement = Arrangement::from([(spot, standing.clone())]);
                 let props = props(&arrangement);
-                assert_eq!(props.len(), 1, "{} at {spot}", find.id);
+                assert_eq!(props.len(), 1, "{standing:?} at {spot}");
                 let (left, top, right, bottom) = props[0].bounds();
                 assert!(
                     left >= -4 && right < 388 && top >= -8 && bottom < 216,
-                    "{} spills off spot {spot} ({index})",
-                    find.id
+                    "{standing:?} spills off spot {spot}"
                 );
             }
         }
+    }
+
+    #[test]
+    fn something_growing_is_looked_after_until_it_is_grown() {
+        let arrangement = Arrangement::from([
+            (2, Standing::from_satchel("bluebell_bulb")),
+            (4, Standing::from("bluebell_bulb")),
+        ]);
+        let uses: Vec<Use> = attractions(&arrangement)
+            .iter()
+            .map(|attraction| attraction.use_)
+            .collect();
+        assert_eq!(uses, [Use::Tend, Use::Rest], "tended while it grows");
+        assert_eq!(placed(&arrangement).len(), 2);
+    }
+
+    #[test]
+    fn the_colony_goes_over_and_enjoys_everything_built() {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        snapshot.presentation.reduce_motion = true;
+        let cast = Cast::new(snapshot).unwrap();
+        for (index, plan) in crate::finds::plans::PLANS.iter().enumerate() {
+            let spot = (index * 7 % SPOTS.len()) as u8;
+            let arrangement = Arrangement::from([(spot, Standing::built(plan.id))]);
+            let enjoyed = attractions(&arrangement);
+            assert_eq!(enjoyed.len(), 1, "nothing to enjoy in {}", plan.id);
+            assert_eq!(enjoyed[0].use_, plan.use_);
+            let mut ground = open(&cast, 0.0, &arrangement);
+            let stand = enjoyed[0].stand;
+            let mut went = false;
+            let mut now = 0.0;
+            while !went && now < 240.0 {
+                now += 1.0 / 30.0;
+                ground.tick(&cast, now);
+                went = ground.ids().into_iter().any(|id| {
+                    ground.position(id).is_some_and(|(x, y)| {
+                        (x - stand.0).abs() < 1.0 && (y - stand.1).abs() < 8.0
+                    })
+                });
+            }
+            assert!(went, "nobody went to {} on spot {spot}", plan.id);
+        }
+    }
+
+    #[test]
+    fn what_is_built_with_a_light_shines_after_dark() {
+        let dark = |arrangement: &Arrangement| {
+            let lights = nightlights(arrangement, &scenery::backdrop()).lamps;
+            lights.pixels().iter().filter(|pixel| pixel.a > 0).count()
+        };
+        let bare = dark(&Arrangement::new());
+        let lit = dark(&Arrangement::from([(3, Standing::built("lantern_tree"))]));
+        let unlit = dark(&Arrangement::from([(3, Standing::built("grand_cairn"))]));
+        assert!(lit > bare, "the lantern tree is dark");
+        assert_eq!(unlit, bare, "a cairn gives off no light");
+    }
+
+    #[test]
+    fn what_hill_does_not_know_is_kept_but_not_drawn() {
+        let arrangement = Arrangement::from([
+            (1, Standing::from("something_from_a_newer_hill")),
+            (3, Standing::from("pinecone")),
+            (40, Standing::from("pinecone")),
+        ]);
+        let spots: Vec<u8> = placed(&arrangement).iter().map(|(spot, _)| *spot).collect();
+        assert_eq!(spots, [3]);
+        assert_eq!(attractions(&arrangement).len(), 1);
     }
 
     #[test]
@@ -324,8 +389,7 @@ mod tests {
         skyline(&mut empty, &Arrangement::new(), &vista);
         assert!(empty.alpha_bounds().is_none());
         let mut grown = Canvas::new(384, 216);
-        let arrangement =
-            Arrangement::from([(0, "weathervane".to_owned()), (17, "geode".to_owned())]);
+        let arrangement = Arrangement::from([(0, "weathervane".into()), (17, "geode".into())]);
         skyline(&mut grown, &arrangement, &vista);
         let (left, top, right, bottom) = grown.alpha_bounds().expect("nothing showed");
         assert!(

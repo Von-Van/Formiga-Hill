@@ -6,6 +6,7 @@
 
 use super::{Area, HillApp, Visit, clock};
 use crate::character::Character;
+use crate::hilltop::Standing;
 use crate::station::Fixture;
 use eframe::egui;
 use formiga_core::TemperamentKind;
@@ -132,6 +133,10 @@ pub(super) struct Board {
     /// Finds waiting in the satchel, and pieces standing on the Hilltop.
     pub satchel: u32,
     pub standing: usize,
+    /// What has grown on the Hilltop since the last visit, as each is called now.
+    pub grown: Vec<String>,
+    /// What there is enough in the satchel to build on the Hilltop.
+    pub buildable: Vec<String>,
     /// The quickest hide-and-seek among those here: who, and in how long.
     pub record: Option<(String, f32)>,
     /// Souvenirs that go home on the train to this Desktop.
@@ -162,6 +167,22 @@ fn notice(heading: &str, text: String) -> Notice {
         heading: heading.to_owned(),
         text,
     }
+}
+
+/// What has grown on the Hilltop since the last visit, as a line for the Hilltop's bar.
+pub(super) fn grown_since(grown: &[(u8, Standing)]) -> Option<String> {
+    let names = grown_names(grown);
+    let names: Vec<&str> = names.iter().map(String::as_str).collect();
+    (!names.is_empty()).then(|| format!("Grown since last time: {}.", listed(&names)))
+}
+
+/// What has grown, as each is called now, ready to go in the middle of a sentence.
+fn grown_names(grown: &[(u8, Standing)]) -> Vec<String> {
+    grown
+        .iter()
+        .map(|(_, standing)| standing.name().to_lowercase())
+        .filter(|name| !name.is_empty())
+        .collect()
 }
 
 /// "Pip", "Pip and Moss", "Pip, Moss and Fern".
@@ -245,12 +266,29 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
             format!("{pinned} pinned up by the fire, not yet told."),
         ));
     }
+    if !board.grown.is_empty() {
+        let names: Vec<&str> = board.grown.iter().map(String::as_str).collect();
+        notes.push(notice(
+            "On the Hilltop",
+            format!("Grown since last time: {}.", listed(&names)),
+        ));
+    }
     if board.satchel > 0 {
         notes.push(notice(
             "From the Woods",
             format!(
                 "{} in the satchel, waiting for a spot on the Hilltop.",
                 plural(board.satchel as usize, "find", "finds")
+            ),
+        ));
+    }
+    if !board.buildable.is_empty() {
+        let names: Vec<&str> = board.buildable.iter().map(String::as_str).collect();
+        notes.push(notice(
+            "Plans",
+            format!(
+                "There is enough in the satchel to build {} on the Hilltop.",
+                listed(&names)
             ),
         ));
     }
@@ -391,8 +429,14 @@ impl HillApp {
             visits: colony.visits,
             stories,
             untold,
-            satchel: colony.satchel.values().sum(),
+            satchel: colony.satchel.values().sum::<u32>() + colony.lifted.len() as u32,
             standing: colony.hilltop.len(),
+            grown: grown_names(&self.grown),
+            buildable: self
+                .ready_to_build()
+                .iter()
+                .map(|plan| plan.name.to_lowercase())
+                .collect(),
             record,
             going_home,
             problems: self.library.problems.len(),
@@ -587,6 +631,53 @@ mod tests {
         assert!(notes[2].text.starts_with("The Last Bun is pinned up"));
         assert!(notes[3].text.starts_with("1 find in the satchel"));
         assert!(notes[4].text.contains("0:42"));
+    }
+
+    #[test]
+    fn what_grew_since_last_time_is_told_on_the_board_and_on_the_hilltop() {
+        let grown = [
+            (
+                3,
+                Standing::Planted {
+                    planted: "bluebell_bulb".into(),
+                    stage: 1,
+                },
+            ),
+            (9, Standing::from("acorn_stash")),
+        ];
+        let line = grown_since(&grown).unwrap();
+        assert_eq!(
+            line,
+            "Grown since last time: bluebell leaves and a young oak."
+        );
+        assert_eq!(grown_since(&[]), None, "nothing grew, so nothing is said");
+        let notes = notices(&Board {
+            visits: 2,
+            grown: grown_names(&grown),
+            ..Board::default()
+        });
+        assert_eq!(notes[1].heading, "On the Hilltop");
+        assert_eq!(notes[1].text, line);
+    }
+
+    #[test]
+    fn plans_there_is_enough_for_are_an_invitation_on_the_board() {
+        let notes = notices(&Board {
+            visits: 2,
+            buildable: vec!["the grand cairn".into(), "a picnic table".into()],
+            ..Board::default()
+        });
+        assert_eq!(notes[1].heading, "Plans");
+        assert_eq!(
+            notes[1].text,
+            "There is enough in the satchel to build the grand cairn and a picnic table on the \
+             Hilltop."
+        );
+        let quiet = notices(&Board {
+            visits: 2,
+            ..Board::default()
+        });
+        assert!(quiet.iter().all(|note| note.heading != "Plans"));
     }
 
     #[test]

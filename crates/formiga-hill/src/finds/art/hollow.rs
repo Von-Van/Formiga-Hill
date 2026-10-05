@@ -1,34 +1,36 @@
 //! The finds in a hollow: the finds reached for (Kind::Reach): their icons and their Hilltop
 //! pieces.
 
-use super::brush::{icon_from, lit, lump, moss, paint_rows, shadow, tuft};
+use super::brush::{icon_from, lit, lump, moss, mound, paint_rows, shadow, tuft};
 use super::{ICON, Piece};
 use crate::materials::{GLASS, GLOW, STONE};
 use crate::paint::{Ramp, chance, hline, line, mix, noise, put, rect, rgb, rgba, vline};
 use formiga_art::{Canvas, Rgba};
 
-const CONE: Ramp = Ramp::new(0x4a2c1a, 0x6e4426, 0x93602f, 0xb57d42, 0xd49e5e);
+pub(super) const CONE: Ramp = Ramp::new(0x4a2c1a, 0x6e4426, 0x93602f, 0xb57d42, 0xd49e5e);
 const OAK_LEAF: Ramp = Ramp::new(0x2e5426, 0x3e7230, 0x56923e, 0x76b250, 0x9ccc6c);
-const BARK: Ramp = Ramp::new(0x3a2a20, 0x5a4232, 0x76583e, 0x927252, 0xae8e6a);
+pub(super) const BARK: Ramp = Ramp::new(0x3a2a20, 0x5a4232, 0x76583e, 0x927252, 0xae8e6a);
 const ACORN: Ramp = Ramp::new(0x5a3a1e, 0x80562a, 0xa6743a, 0xc4924e, 0xdeb46e);
 const CUP: Ramp = Ramp::new(0x3e3020, 0x5a4630, 0x786040, 0x947a54, 0xb09a70);
 const JAY: Ramp = Ramp::new(0x1e3a6e, 0x2c5ea8, 0x3a86d0, 0x6ab0e8, 0xa8dcf8);
 const NAVY: Rgba = rgb(0x22264a);
 const QUILL: Ramp = Ramp::new(0x6a5a48, 0x9a8a72, 0xc8b89a, 0xe2d6bc, 0xf6eedc);
-const POLE: Ramp = Ramp::new(0x3e2a20, 0x5a3e2e, 0x76543c, 0x92704e, 0xae8c66);
+pub(super) const POLE: Ramp = Ramp::new(0x3e2a20, 0x5a3e2e, 0x76543c, 0x92704e, 0xae8c66);
 const BOX: Ramp = Ramp::new(0x6a4a30, 0x8e6a44, 0xb08a5a, 0xc8a472, 0xdcbe8c);
-const NEST: Ramp = Ramp::new(0x4a3420, 0x6e5034, 0x92704a, 0xb08e62, 0xcaa87c);
-const MOSSY: Ramp = Ramp::new(0x34512a, 0x4a6e34, 0x638c40, 0x80aa52, 0xa4c872);
-const IRON: Ramp = Ramp::new(0x38302e, 0x504644, 0x6a5e5a, 0x887a74, 0xa89a92);
+pub(super) const NEST: Ramp = Ramp::new(0x4a3420, 0x6e5034, 0x92704a, 0xb08e62, 0xcaa87c);
+pub(super) const MOSSY: Ramp = Ramp::new(0x34512a, 0x4a6e34, 0x638c40, 0x80aa52, 0xa4c872);
+pub(super) const IRON: Ramp = Ramp::new(0x38302e, 0x504644, 0x6a5e5a, 0x887a74, 0xa89a92);
 const BRASS: Ramp = Ramp::new(0x6b4a24, 0x9a7434, 0xc9a14e, 0xe4c06c, 0xf6e3a2);
 const LEATHER: Ramp = Ramp::new(0x3e2419, 0x5e3624, 0x7b4a31, 0x96603f, 0xb27b52);
-const VELVET: Ramp = Ramp::new(0x173c40, 0x22585c, 0x2f7a7a, 0x45999a, 0x6ab8b4);
-const LACQUER: Ramp = Ramp::new(0x5e1a24, 0x8a2a30, 0xb83a3c, 0xd0584c, 0xe87a64);
-const GILT: Ramp = Ramp::new(0x7a5420, 0xa87c2c, 0xd4a842, 0xecc864, 0xfaeaa8);
+pub(super) const VELVET: Ramp = Ramp::new(0x173c40, 0x22585c, 0x2f7a7a, 0x45999a, 0x6ab8b4);
+pub(super) const LACQUER: Ramp = Ramp::new(0x5e1a24, 0x8a2a30, 0xb83a3c, 0xd0584c, 0xe87a64);
+pub(super) const GILT: Ramp = Ramp::new(0x7a5420, 0xa87c2c, 0xd4a842, 0xecc864, 0xfaeaa8);
 const RINGS: Ramp = Ramp::new(0x7a5a3a, 0xa07a50, 0xc09a68, 0xd6b484, 0xe8cca0);
 const TOADSTOOL: Ramp = Ramp::new(0x6e2a22, 0x9a3a2e, 0xc4503c, 0xdc6e52, 0xf09a7a);
 const CANDLE: Rgba = rgb(0xf3e9cf);
-const PLUM: Ramp = Ramp::new(0x3e2448, 0x56325e, 0x6e4278, 0x8a5a94, 0xb088b8);
+/// The red a young oak's shoot comes up.
+const SHOOT: Rgba = rgb(0x9a5a3a);
+pub(super) const PLUM: Ramp = Ramp::new(0x3e2448, 0x56325e, 0x6e4278, 0x8a5a94, 0xb088b8);
 
 /// The icon for one of these finds, nine pixels square, or `None` if it isn't drawn yet.
 pub fn icon(id: &str) -> Option<Canvas> {
@@ -203,6 +205,16 @@ pub fn piece(id: &str) -> Option<Piece> {
     })
 }
 
+/// One of these finds planted, at `stage` of its growing, or `None` if it isn't drawn.
+pub fn stage(id: &str, stage: u8) -> Option<Piece> {
+    Some(match (id, stage) {
+        ("acorn_stash", 0) => sprouting_acorn(),
+        ("acorn_stash", 1) => oak_seedling(),
+        ("acorn_stash", _) => oak_sapling(),
+        _ => return None,
+    })
+}
+
 // ---------------------------------------------------------------------------------------------
 // The pieces
 // ---------------------------------------------------------------------------------------------
@@ -231,7 +243,7 @@ fn pinecone_pile() -> Piece {
 
 /// Which way a pinecone lies: its tip to the right or left, or stood up on its stalk end.
 #[derive(Clone, Copy)]
-enum Lie {
+pub(super) enum Lie {
     Right,
     Left,
     Up,
@@ -239,7 +251,7 @@ enum Lie {
 
 /// One pinecone with its top-left at `(x, y)`: rows of scales, each row set half a scale over
 /// from the next, lit along its top (or its left, stood up).
-fn cone(s: &mut Canvas, x: i32, y: i32, lie: Lie) {
+pub(super) fn cone(s: &mut Canvas, x: i32, y: i32, lie: Lie) {
     const LYING: [&str; 5] = [
         "..#####..",
         ".#l*l*l#.",
@@ -329,6 +341,101 @@ fn young_oak() -> Piece {
     Piece {
         sprite: s,
         anchor: (13, ground),
+    }
+}
+
+/// One oak leaf, its lobes showing, standing up from its stalk.
+const OAK: [&str; 5] = [".o.", "olo", ".o.", "oos", ".s."];
+
+/// An acorn lying on its side, its cup to the left.
+const LYING_ACORN: [&str; 4] = ["..###.", "kk*lo#", "kCoos#", "..###."];
+
+fn cup_inks() -> [(char, Rgba); 4] {
+    [
+        ('k', CUP.edge),
+        ('c', CUP.light),
+        ('C', CUP.base),
+        ('d', CUP.shadow),
+    ]
+}
+
+/// Just planted: an acorn lying split on a mound of turned earth, and beside it the shoot it
+/// sent up, reddish as young oaks are, with its first two leaves.
+fn sprouting_acorn() -> Piece {
+    let mut s = Canvas::new(16, 17);
+    let (cx, ground) = (8, 15);
+    mound(&mut s, cx, ground, (6, 4), 111);
+    paint_rows(&mut s, 1, 9, &LYING_ACORN, ACORN, &cup_inks());
+    for y in 6..ground - 3 {
+        let color = if y < 9 { SHOOT } else { OAK_LEAF.shadow };
+        put(&mut s, cx + 1, y, color);
+    }
+    paint_rows(&mut s, cx - 2, 2, &OAK, OAK_LEAF, &[]);
+    paint_rows(&mut s, cx + 2, 1, &OAK, OAK_LEAF, &[]);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: a thin stem a hand high with a few leaves off it, and the empty husk at its foot.
+fn oak_seedling() -> Piece {
+    let mut s = Canvas::new(18, 26);
+    let (cx, ground) = (9, 24);
+    shadow(&mut s, cx, ground, 6, 2);
+    mound(&mut s, cx, ground, (6, 2), 112);
+    stick(&mut s, (9.0, 16.0), (5.0, 13.0), (1.2, 1.0), BARK);
+    stick(&mut s, (9.5, 13.0), (13.0, 10.0), (1.2, 1.0), BARK);
+    stick(
+        &mut s,
+        (9.5, ground as f32 + 0.5),
+        (9.5, 7.0),
+        (2.0, 1.2),
+        BARK,
+    );
+    for (x, y) in [(3, 9), (13, 6), (7, 3), (10, 2), (5, 13)] {
+        paint_rows(&mut s, x, y, &OAK, OAK_LEAF, &[]);
+    }
+    paint_rows(&mut s, 11, ground - 3, &LYING_ACORN, CUP, &cup_inks());
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: a sapling with a slim trunk, three branches and a small crown, the young
+/// oak it will be the next time the train comes.
+fn oak_sapling() -> Piece {
+    let mut s = Canvas::new(22, 36);
+    let (cx, ground) = (11, 34);
+    shadow(&mut s, cx, ground, 8, 2);
+    mound(&mut s, cx, ground, (6, 1), 113);
+    stick(&mut s, (10.5, 21.0), (5.0, 13.0), (1.6, 1.0), BARK);
+    stick(&mut s, (11.0, 19.0), (17.0, 11.0), (1.6, 1.0), BARK);
+    stick(&mut s, (11.0, 16.0), (11.0, 5.0), (1.6, 1.0), BARK);
+    stick(
+        &mut s,
+        (11.0, ground as f32 + 0.5),
+        (11.0, 14.0),
+        (2.8, 1.8),
+        BARK,
+    );
+    for (x, y, r, salt) in [
+        (16.5, 10.5, 3.2, 114),
+        (5.0, 11.5, 3.2, 115),
+        (11.0, 5.5, 3.8, 116),
+        (10.5, 12.5, 2.8, 117),
+    ] {
+        leaves(&mut s, x, y, r, salt);
+    }
+    for (x, y) in [(0, 9), (19, 8), (9, 0), (14, 15)] {
+        paint_rows(&mut s, x, y, &OAK, OAK_LEAF, &[]);
+    }
+    tuft(&mut s, cx, ground, 4, 118);
+    paint_rows(&mut s, 2, ground - 3, &LYING_ACORN, ACORN, &cup_inks());
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
     }
 }
 
@@ -594,14 +701,27 @@ fn lantern_post() -> Piece {
     }
     put(&mut s, 18, 9, POLE.base);
     put(&mut s, 19, 9, POLE.edge);
+    hung_lantern(&mut s, (lx, 10));
+    // Grass, a stone and a toadstool about the foot.
+    lump(&mut s, 5.0, ground as f32 - 0.6, 2.6, 1.7, STONE, 131);
+    tuft(&mut s, 9, ground, 4, 132);
+    toadstool(&mut s, 13, ground);
+    Piece {
+        sprite: s,
+        anchor: (9, ground),
+    }
+}
+
+/// The lost lantern hung by its hook from `(x, y)`: a cap, glass all round the burning candle, a
+/// base, seven pixels wide and fourteen down from the hook.
+pub(super) fn hung_lantern(s: &mut Canvas, (x, y): (i32, i32)) {
     // The hook and ring it hangs by.
-    vline(&mut s, lx, 10, 2, IRON.light);
-    put(&mut s, lx + 1, 11, IRON.edge);
-    // The lantern: a cap, glass all round the candle, a base.
+    vline(s, x, y, 2, IRON.light);
+    put(s, x + 1, y + 1, IRON.edge);
     paint_rows(
-        &mut s,
-        lx - 3,
-        12,
+        s,
+        x - 3,
+        y + 2,
         &[
             "...#...", "..#l#..", ".#lls#.", "#######", "#yGfGy#", "#yGfGy#", "#yGcGy#", "#yGcGy#",
             "#yGcGy#", "#######", ".#sss#.", "..#s#..",
@@ -614,16 +734,8 @@ fn lantern_post() -> Piece {
             ('c', CANDLE),
         ],
     );
-    put(&mut s, lx - 2, 16, GLOW[2]);
-    put(&mut s, lx - 2, 17, GLOW[2]);
-    // Grass, a stone and a toadstool about the foot.
-    lump(&mut s, 5.0, ground as f32 - 0.6, 2.6, 1.7, STONE, 131);
-    tuft(&mut s, 9, ground, 4, 132);
-    toadstool(&mut s, 13, ground);
-    Piece {
-        sprite: s,
-        anchor: (9, ground),
-    }
+    put(s, x - 2, y + 6, GLOW[2]);
+    put(s, x - 2, y + 7, GLOW[2]);
 }
 
 /// A small brass telescope on a wooden tripod, tilted up at the sky.
@@ -919,7 +1031,7 @@ fn music_box() -> Piece {
 }
 
 /// A little red toadstool with white spots, standing at `(x, ground)`.
-fn toadstool(s: &mut Canvas, x: i32, ground: i32) {
+pub(super) fn toadstool(s: &mut Canvas, x: i32, ground: i32) {
     paint_rows(
         s,
         x - 2,
@@ -936,7 +1048,13 @@ fn toadstool(s: &mut Canvas, x: i32, ground: i32) {
 
 /// A tapering stick from `from` to `to`, `widths` across at each end, lit from the left and
 /// outlined in its own edge tone: a trunk, a leg, a pole.
-fn stick(s: &mut Canvas, from: (f32, f32), to: (f32, f32), widths: (f32, f32), ramp: Ramp) {
+pub(super) fn stick(
+    s: &mut Canvas,
+    from: (f32, f32),
+    to: (f32, f32),
+    widths: (f32, f32),
+    ramp: Ramp,
+) {
     let (dx, dy) = (to.0 - from.0, to.1 - from.1);
     let length = (dx * dx + dy * dy).sqrt().max(0.01);
     let (ux, uy) = (dx / length, dy / length);
@@ -998,7 +1116,7 @@ fn stick(s: &mut Canvas, from: (f32, f32), to: (f32, f32), widths: (f32, f32), r
 }
 
 /// Warm light on the air in a disc about `(cx, cy)`, laid over whatever is there.
-fn glow(s: &mut Canvas, cx: i32, cy: i32, radius: f32, color: Rgba) {
+pub(super) fn glow(s: &mut Canvas, cx: i32, cy: i32, radius: f32, color: Rgba) {
     let reach = radius.ceil() as i32;
     for y in cy - reach..=cy + reach {
         for x in cx - reach..=cx + reach {

@@ -1622,22 +1622,20 @@ mod tests {
 
     #[test]
     fn whatever_stands_on_the_hilltop_shows_through_the_gap() {
-        for find in crate::finds::CATALOGUE {
+        for standing in crate::hilltop::Standing::every() {
             let everywhere: Arrangement = (0..crate::hilltop::SPOTS.len() as u8)
-                .map(|spot| (spot, find.id.to_owned()))
+                .map(|spot| (spot, standing.clone()))
                 .collect();
             let mut view = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
             skyline(&mut view, &everywhere, &VISTA);
             let (left, top, right, bottom) = view.alpha_bounds().expect("nothing showed");
             assert!(
                 left as i32 >= GAP.0 && (right as i32) < GAP.1,
-                "{} spills into the trees: {left}..{right}",
-                find.id
+                "{standing:?} spills into the trees: {left}..{right}"
             );
             assert!(
                 top > 0 && (bottom as i32) < far_brow(HILL_MIDDLE as i32),
-                "{} is off the summit: {top}..{bottom}",
-                find.id
+                "{standing:?} is off the summit: {top}..{bottom}"
             );
         }
     }

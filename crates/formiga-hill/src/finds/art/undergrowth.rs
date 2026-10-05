@@ -92,15 +92,510 @@ pub fn piece(id: &str) -> Option<Piece> {
     })
 }
 
-const LEAF: Ramp = Ramp::new(0x2c5233, 0x3d6e45, 0x518a55, 0x6fa866, 0x93c67e);
+/// One of these finds planted, at `stage` of its growing, or `None` if it isn't drawn.
+pub fn stage(id: &str, stage: u8) -> Option<Piece> {
+    Some(match (id, stage) {
+        ("sycamore_key", 0) => sprouting_key(),
+        ("sycamore_key", 1) => sycamore_seedling(),
+        ("sycamore_key", _) => sycamore_in_leaf(),
+        ("wild_berries", 0) => berry_sprout(),
+        ("wild_berries", 1) => little_berry_bush(),
+        ("wild_berries", _) => berry_bush_in_flower(),
+        ("dandelion_clock", 0) => dandelion_seedling(),
+        ("dandelion_clock", 1) => dandelion_rosettes(),
+        ("dandelion_clock", _) => dandelions_in_bud(),
+        ("strange_seed", 0) => strange_sprout(),
+        ("strange_seed", 1) => strange_shoot(),
+        ("strange_seed", _) => strange_little_tree(),
+        ("silk_cocoon", 0) => cocoon_on_a_sprig(),
+        ("silk_cocoon", 1) => bush_with_a_cocoon(),
+        ("silk_cocoon", _) => buddleia_in_bud(),
+        _ => return None,
+    })
+}
+
+// ---------------------------------------------------------------------------------------------
+// Growing
+// ---------------------------------------------------------------------------------------------
+
+/// Just planted: the key lying on a mound of turned earth, its wing in the air, and the shoot it
+/// sent up with its first two seed leaves, long and plain, spread out flat.
+fn sprouting_key() -> Piece {
+    let mut s = Canvas::new(16, 16);
+    let (cx, ground) = (8, 14);
+    mound(&mut s, cx, ground, (6, 4), 301);
+    let key = [
+        &letters(KEY_WING, b"#sol*")[..],
+        &letters(KEY_SEED, b"S.k.."),
+    ]
+    .concat();
+    stamp(
+        &mut s,
+        (1, 8),
+        &["..##", ".#*l#", "#los#", "Sk##."],
+        &key,
+        false,
+    );
+    for y in 5..ground - 3 {
+        put(
+            &mut s,
+            cx + 1,
+            y,
+            if y < 7 { SYCAMORE.light } else { STEM.shadow },
+        );
+    }
+    seed_leaves(&mut s, (cx as f32 + 1.5, 5.5), 5.0, 0.03);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A sycamore's first pair of leaves, long and plain, either side of `at`: spread out flat when
+/// they are all it has, drooping (by `droop`, a fraction of a turn) once true leaves are up.
+fn seed_leaves(s: &mut Canvas, at: (f32, f32), length: f32, droop: f32) {
+    for turn in [0.5 + droop, 1.0 - droop] {
+        blade(
+            s,
+            Blade::new(at, turn, length, 1.3),
+            |t: f32| (PI * t).sin().powf(0.5),
+            |_, facing, x, y| tone(SYCAMORE, 0.5 * facing + 0.2, x, y, 302),
+        );
+    }
+}
+
+/// A visit on: a thin stem a hand high, the seed leaves low on it and its first true leaves at
+/// the top, already the sycamore's own five-pointed shape.
+fn sycamore_seedling() -> Piece {
+    let mut s = Canvas::new(20, 24);
+    let (cx, ground) = (10, 22);
+    shadow(&mut s, cx, ground, 6, 2);
+    mound(&mut s, cx, ground, (6, 2), 303);
+    bough(&mut s, &[(9, ground - 1), (9, 9), (10, 6)], BARK);
+    seed_leaves(&mut s, (10.0, 17.5), 3.5, -0.06);
+    bough(&mut s, &[(9, 10), (6, 8)], BARK);
+    bough(&mut s, &[(10, 8), (14, 6)], BARK);
+    palmate(&mut s, (5, 7), 3.5, -0.33, SYCAMORE, 304);
+    palmate(&mut s, (15, 5), 3.5, -0.17, SYCAMORE, 305);
+    palmate(&mut s, (10, 4), 3.0, -0.25, SYCAMORE, 306);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: a slim sapling in full leaf, the sapling it will be, without its keys yet.
+fn sycamore_in_leaf() -> Piece {
+    let mut s = Canvas::new(24, 36);
+    let (cx, ground) = (12, 34);
+    shadow(&mut s, cx, ground, 7, 2);
+    mound(&mut s, cx, ground, (5, 1), 307);
+    for path in [
+        &[(11, 22), (8, 19), (5, 17)][..],
+        &[(12, 20), (16, 17), (19, 16)],
+        &[(11, 15), (8, 11), (6, 9)],
+        &[(12, 13), (15, 9), (17, 6)],
+    ] {
+        bough(&mut s, path, BARK);
+    }
+    model(&mut s, BARK, UPRIGHT, 30, 308, |x, y| {
+        let lean = if y < 20 { 1 } else { 0 };
+        (8..=ground).contains(&y) && (cx - 1 + lean..cx + 1 + lean).contains(&x)
+    });
+    for (index, &(at, size, turn, far)) in [
+        ((6, 13), 3.5, -0.3, true),
+        ((18, 11), 3.5, -0.17, true),
+        ((5, 17), 4.0, -0.37, false),
+        ((19, 15), 4.0, -0.13, false),
+        ((7, 8), 4.0, -0.31, false),
+        ((16, 6), 4.0, -0.2, false),
+        ((12, 4), 3.5, -0.24, false),
+    ]
+    .iter()
+    .enumerate()
+    {
+        let ramp = if far { DEEP_LEAF } else { SYCAMORE };
+        palmate(&mut s, at, size, turn, ramp, 309 + index as u32);
+    }
+    stamp(&mut s, (7, ground - 1), &TUFT, &tuft_inks(), false);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Just planted: a sprig pushed into a mound of turned earth, with three small leaves.
+fn berry_sprout() -> Piece {
+    let mut s = Canvas::new(16, 15);
+    let (cx, ground) = (8, 13);
+    mound(&mut s, cx, ground, (6, 4), 311);
+    for y in 4..ground - 3 {
+        put(
+            &mut s,
+            cx,
+            y,
+            if y % 3 == 0 { STEM.base } else { STEM.shadow },
+        );
+    }
+    tilted_lump(&mut s, (5.5, 6.0), (2.6, 1.4), -0.5, LEAF, 312);
+    tilted_lump(&mut s, (11.0, 5.0), (2.6, 1.4), 0.5, LEAF, 313);
+    tilted_lump(&mut s, (8.5, 2.5), (1.6, 2.2), 0.2, LEAF, 314);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: a little round bush, all leaves, with earth still bare about its foot.
+fn little_berry_bush() -> Piece {
+    let mut s = Canvas::new(22, 18);
+    let (cx, ground) = (11, 15);
+    shadow(&mut s, cx, ground, 9, 2);
+    mound(&mut s, cx, ground, (7, 1), 315);
+    foliage(
+        &mut s,
+        &[
+            ((6, 11), (5, 3)),
+            ((16, 11), (5, 3)),
+            ((9, 6), (4, 4)),
+            ((14, 6), (4, 4)),
+            ((11, 10), (7, 4)),
+        ],
+        LEAF,
+        316,
+    );
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: grown to its full size and covered in little white flowers where the berries
+/// will be.
+fn berry_bush_in_flower() -> Piece {
+    let mut s = Canvas::new(32, 26);
+    let (cx, ground) = (16, 22);
+    ellipse(&mut s, cx, ground, 14, 3, SHADOW);
+    foliage(&mut s, &BERRY_CLUMPS, LEAF, 211);
+    let inks = [
+        (b'w', rgb(0xfbf6ee)),
+        (b'p', rgb(0xf0d6dc)),
+        (b'y', rgb(0xf2c84a)),
+    ];
+    for (index, &(x, y)) in BERRY_SPRIGS.iter().enumerate() {
+        stamp(
+            &mut s,
+            (x - 1, y - 1),
+            &[".w.", "wyp", ".p."],
+            &inks,
+            index % 2 == 1,
+        );
+    }
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Just planted: a mound of turned earth with a seedling's first few toothed leaves on top.
+fn dandelion_seedling() -> Piece {
+    let mut s = Canvas::new(20, 12);
+    let (cx, ground) = (10, 10);
+    mound(&mut s, cx, ground, (6, 3), 321);
+    for &(turn, length) in &[(0.54, 6.0), (0.96, 6.5), (0.66, 4.0), (0.84, 4.0)] {
+        blade(
+            &mut s,
+            Blade::new((10.5, 7.5), turn, length, 1.9),
+            teeth,
+            |_, facing, x, y| tone(STEM, 0.4 * facing + 0.5, x, y, 322),
+        );
+    }
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: the toothed leaves lying out flat from each plant, not yet full length, and nothing
+/// else.
+fn dandelion_rosettes() -> Piece {
+    let mut s = Canvas::new(30, 20);
+    let (cx, ground) = (15, 16);
+    ellipse(&mut s, cx, ground, 11, 2, SHADOW);
+    mound(&mut s, cx, ground, (8, 1), 323);
+    dandelion_leaves(&mut s, 0.8);
+    // The newest leaves still standing up in the middle of each plant.
+    for &(base, turn) in &[
+        ((8.0, 15.5), 0.72),
+        ((20.0, 15.5), 0.79),
+        ((14.0, 16.5), 0.75),
+    ] {
+        blade(
+            &mut s,
+            Blade::new(base, turn, 6.0, 1.8),
+            teeth,
+            |_, facing, x, y| tone(STEM, 0.4 * facing + 0.35, x, y, 324),
+        );
+    }
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: the leaves full length and stalks up, the buds on them still closed but for a
+/// tip of yellow, and the first flower open.
+fn dandelions_in_bud() -> Piece {
+    let mut s = Canvas::new(30, 20);
+    let (cx, ground) = (15, 16);
+    ellipse(&mut s, cx, ground, 13, 2, SHADOW);
+    dandelion_leaves(&mut s, 1.0);
+    let stalks = [(5, 12), (10, 10), (13, 8), (18, 13), (22, 9), (25, 11)];
+    for &(x, top) in &stalks {
+        for y in top..ground - 1 {
+            put(
+                &mut s,
+                x,
+                y,
+                if y % 3 == 0 { STEM.base } else { STEM.shadow },
+            );
+        }
+    }
+    let bud = [
+        &letters(STEM, b"#sol.")[..],
+        &[(b'y', PETAL.light), (b'Y', PETAL.base)],
+    ]
+    .concat();
+    for (index, &(x, top)) in stalks.iter().enumerate() {
+        if index == 2 {
+            stamp(
+                &mut s,
+                (x - 2, top - 2),
+                &FLOWER,
+                &letters(PETAL, b"#sol*"),
+                false,
+            );
+        } else {
+            stamp(
+                &mut s,
+                (x - 1, top - 3),
+                &[".yY", "#lo#", "#os#", ".#."],
+                &bud,
+                false,
+            );
+        }
+    }
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Just planted: the striped seed half sunk in a mound of turned earth, faintly glowing, and a
+/// teal curl of a shoot already unrolling out of it.
+fn strange_sprout() -> Piece {
+    let mut s = Canvas::new(18, 17);
+    let (cx, ground) = (9, 15);
+    strange_glow(&mut s, (cx, 9), &[(7, 16)]);
+    mound(&mut s, cx, ground, (6, 4), 331);
+    let seed = [
+        &letters(ODD_TEAL, b"T.tu*")[..],
+        &letters(ODD_VIOLET, b"V.vx."),
+    ]
+    .concat();
+    stamp(&mut s, (3, 9), &[".TtT", "VxvV", "TutT"], &seed, false);
+    bough(
+        &mut s,
+        &[(9, 11), (9, 7), (10, 4), (12, 3), (14, 4), (13, 6), (12, 5)],
+        ODD_TEAL,
+    );
+    motes(&mut s, &[(3, 4), (15, 9)]);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: a twisting stem in its two colours with its first striped leaves, and the curl at
+/// the top still unrolling.
+fn strange_shoot() -> Piece {
+    let mut s = Canvas::new(22, 28);
+    let (cx, ground) = (11, 26);
+    shadow(&mut s, cx, ground, 6, 2);
+    strange_glow(&mut s, (cx, 13), &[(9, 14), (6, 18)]);
+    mound(&mut s, cx, ground, (6, 2), 332);
+    twisting_trunk(&mut s, cx, ground - 1, 10, 30);
+    striped_leaves(
+        &mut s,
+        &[((10.0, 19.0), 0.55, 7.0), ((12.0, 17.0), 0.95, 7.0)],
+        2.2,
+    );
+    bough(
+        &mut s,
+        &[
+            (11, 11),
+            (11, 7),
+            (12, 5),
+            (14, 4),
+            (16, 5),
+            (16, 7),
+            (14, 7),
+            (14, 6),
+        ],
+        ODD_TEAL,
+    );
+    motes(&mut s, &[(3, 10), (18, 14), (6, 20)]);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: a little tree, half the height it will be, with two pairs of striped leaves
+/// and the curl at its top.
+fn strange_little_tree() -> Piece {
+    let mut s = Canvas::new(24, 37);
+    let (cx, ground) = (12, 35);
+    ellipse(&mut s, cx, ground, 6, 2, SHADOW);
+    strange_glow(&mut s, (cx, 15), &[(10, 14), (7, 20)]);
+    mound(&mut s, cx, ground, (5, 1), 333);
+    twisting_trunk(&mut s, cx, ground, 11, 22);
+    striped_leaves(
+        &mut s,
+        &[
+            ((11.0, 27.0), 0.47, 8.0),
+            ((14.0, 26.0), 0.03, 8.0),
+            ((11.0, 20.0), 0.6, 9.0),
+            ((14.0, 19.0), 0.9, 9.0),
+        ],
+        2.6,
+    );
+    bough(
+        &mut s,
+        &[
+            (13, 12),
+            (13, 8),
+            (14, 5),
+            (16, 4),
+            (18, 5),
+            (18, 7),
+            (16, 7),
+            (16, 6),
+        ],
+        ODD_TEAL,
+    );
+    motes(&mut s, &[(3, 12), (21, 14), (5, 25), (20, 4)]);
+    stamp(&mut s, (7, ground - 2), &TUFT, &tuft_inks(), false);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// The silk cocoon, hanging by its thread from `(x, y)`.
+fn hanging_cocoon(s: &mut Canvas, (x, y): (i32, i32), opened: bool) {
+    put(s, x, y, SILK_THREAD);
+    let rows: &[&str] = if opened {
+        &["..#..", ".#.#.", "#l..#", "#*so#", "#los#", ".###."]
+    } else {
+        &["..#..", ".#l#.", "#*lo#", "#lso#", "#los#", ".###."]
+    };
+    stamp(s, (x - 2, y + 1), rows, &letters(SILK, b"#sol*"), false);
+}
+
+/// Just planted: a bare twig pushed into a mound of turned earth with the cocoon still hanging
+/// from it, and the butterfly bush's first two leaves at its foot.
+fn cocoon_on_a_sprig() -> Piece {
+    let mut s = Canvas::new(16, 22);
+    let (cx, ground) = (8, 20);
+    mound(&mut s, cx, ground, (6, 4), 341);
+    bough(&mut s, &[(6, 17), (6, 6), (7, 4), (10, 3)], BARK);
+    hanging_cocoon(&mut s, (10, 5), false);
+    for turn in [0.6, 0.9] {
+        blade(
+            &mut s,
+            Blade::new((8.5, 16.5), turn, 4.0, 1.3),
+            |t: f32| (PI * t).sin().powf(0.7),
+            |_, facing, x, y| tone(SAGE, 0.5 * facing + 0.2, x, y, 342),
+        );
+    }
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// A visit on: a little grey-green bush has grown up round the twig, the cocoon still hanging.
+fn bush_with_a_cocoon() -> Piece {
+    let mut s = Canvas::new(24, 26);
+    let (cx, ground) = (12, 23);
+    shadow(&mut s, cx, ground, 9, 2);
+    mound(&mut s, cx, ground, (7, 1), 343);
+    bough(&mut s, &[(13, 20), (13, 7), (14, 5), (17, 4)], BARK);
+    for &(from, turn, length) in &[
+        ((6.0, 18.0), 0.6, 5.0),
+        ((18.0, 18.0), 0.9, 5.0),
+        ((9.0, 16.0), 0.68, 5.0),
+    ] {
+        blade(
+            &mut s,
+            Blade::new(from, turn, length, 1.5),
+            |t: f32| (PI * t).sin().powf(0.7),
+            |_, facing, x, y| tone(SAGE, 0.5 * facing, x, y, 344),
+        );
+    }
+    foliage(
+        &mut s,
+        &[
+            ((8, 20), (4, 2)),
+            ((16, 20), (4, 2)),
+            ((12, 18), (5, 3)),
+            ((12, 21), (7, 2)),
+        ],
+        SAGE,
+        345,
+    );
+    hanging_cocoon(&mut s, (17, 6), false);
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+/// Another visit on: the bush full grown, its cones of flowers up but still in tight grey-green
+/// bud, and the cocoon split open and empty, its butterfly drying its wings beside it.
+fn buddleia_in_bud() -> Piece {
+    let mut s = Canvas::new(32, 36);
+    let (cx, ground) = (16, 33);
+    buddleia_leaves(&mut s, cx, ground);
+    for (index, &(from, turn, length)) in PANICLES.iter().enumerate() {
+        panicle(&mut s, from, turn, length * 0.6, BUDS, 351 + index as u32);
+    }
+    buddleia_front_leaves(&mut s);
+    bough(&mut s, &[(24, 24), (26, 15), (27, 12)], BARK);
+    hanging_cocoon(&mut s, (27, 13), true);
+    stamp(
+        &mut s,
+        (19, 13),
+        &BUTTERFLY,
+        &butterfly_inks(0xe07a2a, 0x6a2a14),
+        false,
+    );
+    Piece {
+        sprite: s,
+        anchor: (cx, ground),
+    }
+}
+
+pub(super) const LEAF: Ramp = Ramp::new(0x2c5233, 0x3d6e45, 0x518a55, 0x6fa866, 0x93c67e);
 const DEEP_LEAF: Ramp = Ramp::new(0x22422a, 0x30583a, 0x41704a, 0x588c58, 0x7aa86c);
 const SYCAMORE: Ramp = Ramp::new(0x2a5a2a, 0x3c7638, 0x529444, 0x74b456, 0x9ed078);
 const SAGE: Ramp = Ramp::new(0x34503e, 0x4a6a52, 0x648a6a, 0x84a884, 0xa8c8a4);
 const BARK: Ramp = Ramp::new(0x4a4038, 0x6a5c50, 0x8a7a6a, 0xa89888, 0xc4b6a4);
 const KEY_WING: Ramp = Ramp::new(0x7a4a2a, 0xa8683a, 0xc89058, 0xe0b47a, 0xf4dcb0);
 const KEY_SEED: Ramp = Ramp::new(0x5a3a1e, 0x7a5028, 0x96683a, 0xb08250, 0xc8a070);
-const BERRY_RED: Ramp = Ramp::new(0x6a1a22, 0x9a2430, 0xd03a3a, 0xf06a5a, 0xffd0c0);
-const BERRY_DARK: Ramp = Ramp::new(0x1e1430, 0x2e2048, 0x46306a, 0x6a5090, 0xc0b0e0);
+pub(super) const BERRY_RED: Ramp = Ramp::new(0x6a1a22, 0x9a2430, 0xd03a3a, 0xf06a5a, 0xffd0c0);
+pub(super) const BERRY_DARK: Ramp = Ramp::new(0x1e1430, 0x2e2048, 0x46306a, 0x6a5090, 0xc0b0e0);
 const CLOCK: Ramp = Ramp::new(0xa8a49a, 0xd4d0c4, 0xece8de, 0xf8f6f0, 0xffffff);
 const STEM: Ramp = Ramp::new(0x3e6a32, 0x4e8040, 0x62984e, 0x80b466, 0xa4d088);
 const PETAL: Ramp = Ramp::new(0xb07a18, 0xd89a20, 0xf5c430, 0xffe070, 0xfff4c0);
@@ -113,12 +608,14 @@ const BOW_BLUE: Ramp = Ramp::new(0x1e3a78, 0x2c54a0, 0x3e70c4, 0x6a96dc, 0xb0ccf
 const POST: Ramp = Ramp::new(0x5a3e2a, 0x7a5638, 0x9a7048, 0xb88c60, 0xd4ac80);
 const SILK: Ramp = Ramp::new(0xa89a7a, 0xd8ccaa, 0xece2c6, 0xf8f2e2, 0xffffff);
 const BUDDLEIA: Ramp = Ramp::new(0x4e2c78, 0x7448a8, 0x9a6ac8, 0xc09ae0, 0xe6d4fa);
+/// The butterfly bush's flowers still in bud: grey-green, just turning violet.
+const BUDS: Ramp = Ramp::new(0x404a50, 0x5e6a70, 0x82909a, 0xa6a8bc, 0xccc6de);
 const VERDIGRIS: Ramp = Ramp::new(0x24503f, 0x3a7a64, 0x58a088, 0x84c4a8, 0xbce8d4);
 const COPPER: Ramp = Ramp::new(0x5a2a14, 0x8a4220, 0xb86430, 0xd8884a, 0xf4c088);
 const WROUGHT: Ramp = Ramp::new(0x2e3a3c, 0x46545a, 0x5e6e74, 0x7c8c90, 0xa4b2b4);
 const FOOTING: Ramp = Ramp::new(0x605a5d, 0x857d7c, 0xa69d94, 0xc2baae, 0xdcd5c8);
 const STALK: Rgba = rgb(0x5a6a34);
-const STRING: Rgba = rgb(0x8a7a64);
+pub(super) const STRING: Rgba = rgb(0x8a7a64);
 const SILK_THREAD: Rgba = rgba(0xd8d0bc, 200);
 
 // ---------------------------------------------------------------------------------------------
@@ -329,41 +826,40 @@ fn palmate(s: &mut Canvas, centre: (i32, i32), size: f32, turn: f32, ramp: Ramp,
     }
 }
 
+/// The berry bush's leaves, clump by clump, when it is grown.
+const BERRY_CLUMPS: [Clump; 5] = [
+    ((8, 16), (7, 5)),
+    ((24, 16), (7, 5)),
+    ((12, 9), (7, 6)),
+    ((21, 9), (6, 6)),
+    ((16, 15), (10, 6)),
+];
+
+/// Where its berries hang in little bunches, mostly on the sunny side, or its flowers open
+/// before them.
+const BERRY_SPRIGS: [(i32, i32); 10] = [
+    (7, 9),
+    (13, 6),
+    (5, 15),
+    (11, 13),
+    (19, 7),
+    (23, 13),
+    (16, 17),
+    (27, 16),
+    (9, 19),
+    (21, 19),
+];
+
 /// A round bush with red berries and dark ones.
 fn berry_bush() -> Piece {
     let mut s = Canvas::new(32, 26);
     let (cx, ground) = (16, 22);
     ellipse(&mut s, cx, ground, 14, 3, SHADOW);
-    foliage(
-        &mut s,
-        &[
-            ((8, 16), (7, 5)),
-            ((24, 16), (7, 5)),
-            ((12, 9), (7, 6)),
-            ((21, 9), (6, 6)),
-            ((16, 15), (10, 6)),
-        ],
-        LEAF,
-        211,
-    );
+    foliage(&mut s, &BERRY_CLUMPS, LEAF, 211);
     // Berries, mostly on the sunny side, in little bunches.
     let red = letters(BERRY_RED, b"#sol*");
     let dark = letters(BERRY_DARK, b"#sol*");
-    for (index, &(x, y)) in [
-        (7, 9),
-        (13, 6),
-        (5, 15),
-        (11, 13),
-        (19, 7),
-        (23, 13),
-        (16, 17),
-        (27, 16),
-        (9, 19),
-        (21, 19),
-    ]
-    .iter()
-    .enumerate()
-    {
+    for (index, &(x, y)) in BERRY_SPRIGS.iter().enumerate() {
         let inks = if index % 3 == 2 { &dark } else { &red };
         stamp(&mut s, (x, y), &BERRY, inks, false);
         if index % 2 == 0 {
@@ -380,35 +876,14 @@ fn berry_bush() -> Piece {
 }
 
 /// One berry, round and shiny.
-const BERRY: [&str; 3] = [".#.", "#*o", ".os"];
+pub(super) const BERRY: [&str; 3] = [".#.", "#*o", ".os"];
 
 /// A low patch of dandelions: flowers open, and clocks gone to seed.
-fn dandelion_patch() -> Piece {
+pub(super) fn dandelion_patch() -> Piece {
     let mut s = Canvas::new(30, 20);
     let (cx, ground) = (15, 16);
     ellipse(&mut s, cx, ground, 13, 2, SHADOW);
-    // The toothed leaves, lying out flat from each plant.
-    let teeth = |t: f32| {
-        let saw = if (t * 9.0) as i32 % 2 == 0 { 1.0 } else { 0.55 };
-        (PI * t).sin().powf(0.6) * saw
-    };
-    for &(base, turn, length) in &[
-        ((8.0, 15.5), 0.47, 7.0),
-        ((8.0, 15.5), 0.03, 6.0),
-        ((8.0, 15.5), 0.58, 5.0),
-        ((20.0, 15.5), 0.52, 6.0),
-        ((20.0, 15.5), 0.97, 8.0),
-        ((20.0, 15.5), 0.9, 5.0),
-        ((14.0, 16.5), 0.45, 5.0),
-        ((14.0, 16.5), 0.05, 5.0),
-    ] {
-        blade(
-            &mut s,
-            Blade::new(base, turn, length, 2.2),
-            teeth,
-            |_, facing, x, y| tone(STEM, 0.4 * facing + 0.15, x, y, 221),
-        );
-    }
+    dandelion_leaves(&mut s, 1.0);
     // Stalks, then the flowers and clocks on them.
     let stalks = [
         (5, 11, false),
@@ -443,6 +918,38 @@ fn dandelion_patch() -> Piece {
     Piece {
         sprite: s,
         anchor: (cx, ground),
+    }
+}
+
+/// Where each of the dandelions' leaves lies out from: its plant, which way (a fraction of a
+/// turn), and how long it is when the patch is grown.
+const DANDELION_LEAVES: [((f32, f32), f32, f32); 8] = [
+    ((8.0, 15.5), 0.47, 7.0),
+    ((8.0, 15.5), 0.03, 6.0),
+    ((8.0, 15.5), 0.58, 5.0),
+    ((20.0, 15.5), 0.52, 6.0),
+    ((20.0, 15.5), 0.97, 8.0),
+    ((20.0, 15.5), 0.9, 5.0),
+    ((14.0, 16.5), 0.45, 5.0),
+    ((14.0, 16.5), 0.05, 5.0),
+];
+
+/// The width of a dandelion leaf along it, sawn into teeth.
+fn teeth(t: f32) -> f32 {
+    let saw = if (t * 9.0) as i32 % 2 == 0 { 1.0 } else { 0.55 };
+    (PI * t).sin().powf(0.6) * saw
+}
+
+/// The dandelions' toothed leaves, lying out flat from each plant, each `scale` of its length
+/// when the patch is grown.
+fn dandelion_leaves(s: &mut Canvas, scale: f32) {
+    for &(base, turn, length) in &DANDELION_LEAVES {
+        blade(
+            s,
+            Blade::new(base, turn, length * scale, 2.2),
+            teeth,
+            |_, facing, x, y| tone(STEM, 0.4 * facing + 0.15, x, y, 221),
+        );
     }
 }
 
@@ -494,59 +1001,20 @@ fn strange_sapling() -> Piece {
     let (cx, ground) = (14, 41);
     ellipse(&mut s, cx, ground, 7, 2, SHADOW);
     // A faint glow about the crown.
-    for (radius, alpha) in [(12, 14), (8, 20)] {
-        for y in 18 - radius..=18 + radius {
-            for x in cx - radius..=cx + radius {
-                if in_ellipse(x, y, (cx, 18), (radius, radius)) {
-                    put(&mut s, x, y, rgba(0x9af4e4, alpha));
-                }
-            }
-        }
-    }
-    // The trunk, twisting: its two colours wind up it in stripes.
-    let middle = |y: i32| cx - 1 + (1.5 * ((ground - y) as f32 * 0.4).sin()).round() as i32;
-    for y in 14..=ground {
-        let left = middle(y);
-        let width = if y < 21 { 2 } else { 3 };
-        for x in left - 1..=left + width {
-            let ramp = if (y + x - left).rem_euclid(4) < 2 {
-                ODD_BARK
-            } else {
-                ODD_TEAL
-            };
-            let color = match x - left {
-                -1 => ramp.edge,
-                0 => ramp.light,
-                across if across == width => ramp.edge,
-                across if across == width - 1 => ramp.shadow,
-                _ => ramp.base,
-            };
-            put(&mut s, x, y, color);
-        }
-    }
-    // Leaves in stripes, in pairs up the trunk.
-    for &(from, turn, length) in &[
-        ((13.0, 31.0), 0.47, 9.0),
-        ((16.0, 30.0), 0.03, 9.0),
-        ((13.0, 25.0), 0.58, 11.0),
-        ((16.0, 24.0), 0.92, 11.0),
-        ((13.0, 19.0), 0.66, 9.0),
-        ((16.0, 18.0), 0.84, 9.0),
-    ] {
-        blade(
-            &mut s,
-            Blade::new(from, turn, length, 2.8),
-            |t: f32| (PI * t).sin().powf(0.6),
-            |t, facing, x, y| {
-                let ramp = if (t * length / 2.0) as i32 % 2 == 1 {
-                    ODD_VIOLET
-                } else {
-                    ODD_TEAL
-                };
-                tone(ramp, 0.5 * facing + 0.15, x, y, 241)
-            },
-        );
-    }
+    strange_glow(&mut s, (cx, 18), &[(12, 14), (8, 20)]);
+    twisting_trunk(&mut s, cx, ground, 14, 21);
+    striped_leaves(
+        &mut s,
+        &[
+            ((13.0, 31.0), 0.47, 9.0),
+            ((16.0, 30.0), 0.03, 9.0),
+            ((13.0, 25.0), 0.58, 11.0),
+            ((16.0, 24.0), 0.92, 11.0),
+            ((13.0, 19.0), 0.66, 9.0),
+            ((16.0, 18.0), 0.84, 9.0),
+        ],
+        2.8,
+    );
     // The curl at the top, like a fern unrolling.
     bough(
         &mut s,
@@ -564,18 +1032,79 @@ fn strange_sapling() -> Piece {
         ],
         ODD_TEAL,
     );
-    // Motes of its glow, drifting.
-    for &(x, y) in &[(5, 12), (23, 15), (8, 29), (21, 6), (25, 27)] {
-        put(&mut s, x, y, rgba(0xd8fff4, 220));
-        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
-            put(&mut s, x + dx, y + dy, rgba(0x8af0e0, 90));
-        }
-    }
+    motes(&mut s, &[(5, 12), (23, 15), (8, 29), (21, 6), (25, 27)]);
     stamp(&mut s, (8, ground - 2), &TUFT, &tuft_inks(), false);
     stamp(&mut s, (16, ground - 1), &TUFT, &tuft_inks(), true);
     Piece {
         sprite: s,
         anchor: (cx, ground),
+    }
+}
+
+/// The strange sapling's trunk from the ground up to `top`, twisting, its two colours winding up
+/// it in stripes; a pixel wider below `wide_below`.
+fn twisting_trunk(s: &mut Canvas, cx: i32, ground: i32, top: i32, wide_below: i32) {
+    let middle = |y: i32| cx - 1 + (1.5 * ((ground - y) as f32 * 0.4).sin()).round() as i32;
+    for y in top..=ground {
+        let left = middle(y);
+        let width = if y < wide_below { 2 } else { 3 };
+        for x in left - 1..=left + width {
+            let ramp = if (y + x - left).rem_euclid(4) < 2 {
+                ODD_BARK
+            } else {
+                ODD_TEAL
+            };
+            let color = match x - left {
+                -1 => ramp.edge,
+                0 => ramp.light,
+                across if across == width => ramp.edge,
+                across if across == width - 1 => ramp.shadow,
+                _ => ramp.base,
+            };
+            put(s, x, y, color);
+        }
+    }
+}
+
+/// Its leaves in teal and violet stripes, each from where it grows, which way, and how long.
+fn striped_leaves(s: &mut Canvas, leaves: &[((f32, f32), f32, f32)], width: f32) {
+    for &(from, turn, length) in leaves {
+        blade(
+            s,
+            Blade::new(from, turn, length, width),
+            |t: f32| (PI * t).sin().powf(0.6),
+            |t, facing, x, y| {
+                let ramp = if (t * length / 2.0) as i32 % 2 == 1 {
+                    ODD_VIOLET
+                } else {
+                    ODD_TEAL
+                };
+                tone(ramp, 0.5 * facing + 0.15, x, y, 241)
+            },
+        );
+    }
+}
+
+/// A faint teal glow on the air about `(cx, cy)`, as the strange seed has from the start.
+fn strange_glow(s: &mut Canvas, (cx, cy): (i32, i32), sizes: &[(i32, u8)]) {
+    for &(radius, alpha) in sizes {
+        for y in cy - radius..=cy + radius {
+            for x in cx - radius..=cx + radius {
+                if in_ellipse(x, y, (cx, cy), (radius, radius)) {
+                    put(s, x, y, rgba(0x9af4e4, alpha));
+                }
+            }
+        }
+    }
+}
+
+/// Motes of the strange seed's glow, drifting.
+fn motes(s: &mut Canvas, at: &[(i32, i32)]) {
+    for &(x, y) in at {
+        put(s, x, y, rgba(0xd8fff4, 220));
+        for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] {
+            put(s, x + dx, y + dy, rgba(0x8af0e0, 90));
+        }
     }
 }
 
@@ -703,60 +1232,12 @@ const BOW: [&str; 3] = ["##.##", "#o*o#", "##.##"];
 fn butterfly_bush() -> Piece {
     let mut s = Canvas::new(32, 36);
     let (cx, ground) = (16, 33);
-    ellipse(&mut s, cx, ground, 12, 3, SHADOW);
-    // Long leaves poking out of the bush, behind it.
-    for &(from, turn, length) in &[
-        ((7.0, 24.0), 0.55, 7.0),
-        ((25.0, 24.0), 0.95, 7.0),
-        ((10.0, 20.0), 0.65, 6.0),
-        ((22.0, 20.0), 0.85, 6.0),
-    ] {
-        blade(
-            &mut s,
-            Blade::new(from, turn, length, 1.6),
-            |t: f32| (PI * t).sin().powf(0.7),
-            |_, facing, x, y| tone(SAGE, 0.5 * facing, x, y, 261),
-        );
-    }
-    foliage(
-        &mut s,
-        &[
-            ((10, 29), (6, 3)),
-            ((22, 29), (6, 3)),
-            ((16, 27), (7, 4)),
-            ((16, 30), (9, 3)),
-        ],
-        SAGE,
-        262,
-    );
+    buddleia_leaves(&mut s, cx, ground);
     // The flowers: cones of tiny florets on arching stems, nodding over at their tips.
-    for (index, &(from, turn, length)) in [
-        ((8.0, 26.0), 0.655, 15.0),
-        ((24.0, 26.0), 0.845, 15.0),
-        ((12.0, 25.0), 0.7, 18.0),
-        ((20.0, 25.0), 0.8, 18.0),
-        ((16.0, 25.0), 0.752, 21.0),
-    ]
-    .iter()
-    .enumerate()
-    {
-        panicle(&mut s, from, turn, length, 264 + index as u32);
+    for (index, &(from, turn, length)) in PANICLES.iter().enumerate() {
+        panicle(&mut s, from, turn, length, BUDDLEIA, 264 + index as u32);
     }
-    // Leaves along the stems, in front of where the flowers start.
-    for &(from, turn, length) in &[
-        ((9.0, 26.0), 0.47, 6.0),
-        ((23.0, 26.0), 0.03, 6.0),
-        ((13.0, 24.0), 0.56, 6.0),
-        ((19.0, 24.0), 0.94, 6.0),
-        ((16.0, 25.0), 0.68, 5.0),
-    ] {
-        blade(
-            &mut s,
-            Blade::new(from, turn, length, 1.5),
-            |t: f32| (PI * t).sin().powf(0.7),
-            |_, facing, x, y| tone(SAGE, 0.5 * facing + 0.2, x, y, 269),
-        );
-    }
+    buddleia_front_leaves(&mut s);
     // Butterflies: two settled on the flowers, one about to.
     stamp(
         &mut s,
@@ -785,10 +1266,68 @@ fn butterfly_bush() -> Piece {
     }
 }
 
+/// Where each of the butterfly bush's cones of flowers springs from, which way it arches (a
+/// fraction of a turn), and how long it is when the bush is in flower.
+const PANICLES: [((f32, f32), f32, f32); 5] = [
+    ((8.0, 26.0), 0.655, 15.0),
+    ((24.0, 26.0), 0.845, 15.0),
+    ((12.0, 25.0), 0.7, 18.0),
+    ((20.0, 25.0), 0.8, 18.0),
+    ((16.0, 25.0), 0.752, 21.0),
+];
+
+/// The butterfly bush's shadow, its long leaves poking out behind, and the grey-green bush itself.
+fn buddleia_leaves(s: &mut Canvas, cx: i32, ground: i32) {
+    ellipse(s, cx, ground, 12, 3, SHADOW);
+    for &(from, turn, length) in &[
+        ((7.0, 24.0), 0.55, 7.0),
+        ((25.0, 24.0), 0.95, 7.0),
+        ((10.0, 20.0), 0.65, 6.0),
+        ((22.0, 20.0), 0.85, 6.0),
+    ] {
+        blade(
+            s,
+            Blade::new(from, turn, length, 1.6),
+            |t: f32| (PI * t).sin().powf(0.7),
+            |_, facing, x, y| tone(SAGE, 0.5 * facing, x, y, 261),
+        );
+    }
+    foliage(
+        s,
+        &[
+            ((10, 29), (6, 3)),
+            ((22, 29), (6, 3)),
+            ((16, 27), (7, 4)),
+            ((16, 30), (9, 3)),
+        ],
+        SAGE,
+        262,
+    );
+}
+
+/// Leaves along the butterfly bush's stems, in front of where the flowers start.
+fn buddleia_front_leaves(s: &mut Canvas) {
+    for &(from, turn, length) in &[
+        ((9.0, 26.0), 0.47, 6.0),
+        ((23.0, 26.0), 0.03, 6.0),
+        ((13.0, 24.0), 0.56, 6.0),
+        ((19.0, 24.0), 0.94, 6.0),
+        ((16.0, 25.0), 0.68, 5.0),
+    ] {
+        blade(
+            s,
+            Blade::new(from, turn, length, 1.5),
+            |t: f32| (PI * t).sin().powf(0.7),
+            |_, facing, x, y| tone(SAGE, 0.5 * facing + 0.2, x, y, 269),
+        );
+    }
+}
+
 /// A cone of buddleia flowers out from `from` towards `turn`, nodding over towards its tip: a
-/// tapering run of florets, each lit from the upper left, with an orange eye here and there,
-/// and the whole outlined in the flowers' own darkest purple.
-fn panicle(s: &mut Canvas, from: (f32, f32), turn: f32, length: f32, salt: u32) {
+/// tapering run of florets in `ramp`, each lit from the upper left, an orange eye here and there
+/// once they are open, and the whole outlined in the ramp's own darkest shade.
+fn panicle(s: &mut Canvas, from: (f32, f32), turn: f32, length: f32, ramp: Ramp, salt: u32) {
+    let open = ramp.base == BUDDLEIA.base;
     let mut layer = Canvas::new(s.width(), s.height());
     let (sin, cos) = (turn * TAU).sin_cos();
     // A bare green stalk out of the bush, then the flowers along the rest of it, the ones
@@ -820,12 +1359,12 @@ fn panicle(s: &mut Canvas, from: (f32, f32), turn: f32, length: f32, salt: u32) 
                 if dx * dx + dy * dy > radius * radius {
                     continue;
                 }
-                let color = if chance(x, y, salt, 22) && along < 0.85 {
+                let color = if open && chance(x, y, salt, 22) && along < 0.85 {
                     rgb(0xf0a040)
                 } else if chance(x, y, salt + 2, 50) {
-                    BUDDLEIA.shine
+                    ramp.shine
                 } else {
-                    tone(BUDDLEIA, -(dx + dy) / radius + 0.45, x, y, salt + 1)
+                    tone(ramp, -(dx + dy) / radius + 0.45, x, y, salt + 1)
                 };
                 layer.set(x, y, color);
             }
@@ -836,7 +1375,7 @@ fn panicle(s: &mut Canvas, from: (f32, f32), turn: f32, length: f32, salt: u32) 
         for x in 0..s.width() as i32 {
             if on(x, y) {
                 let rim = !on(x - 1, y) || !on(x + 1, y) || !on(x, y - 1) || !on(x, y + 1);
-                put(s, x, y, if rim { BUDDLEIA.edge } else { layer.get(x, y) });
+                put(s, x, y, if rim { ramp.edge } else { layer.get(x, y) });
             }
         }
     }
@@ -1006,12 +1545,12 @@ fn tone(ramp: Ramp, lit: f32, x: i32, y: i32, salt: u32) -> Rgba {
 }
 
 /// A clump of leaves in a bush: its middle and its size.
-type Clump = ((i32, i32), (i32, i32));
+pub(super) type Clump = ((i32, i32), (i32, i32));
 
 /// A bush's worth of leaves: rounded clumps, each lit from the upper left, the clumps parted by
 /// shade and the whole outlined in the leaves' own darkest green, with leaves catching the light
 /// all over and poking out round the edge.
-fn foliage(s: &mut Canvas, clumps: &[Clump], ramp: Ramp, salt: u32) {
+pub(super) fn foliage(s: &mut Canvas, clumps: &[Clump], ramp: Ramp, salt: u32) {
     let mut layer = Canvas::new(s.width(), s.height());
     for (index, &(centre, size)) in clumps.iter().enumerate() {
         model(&mut layer, ramp, ROUND, 40, salt + index as u32, |x, y| {

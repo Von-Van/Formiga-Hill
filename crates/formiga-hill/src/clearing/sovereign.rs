@@ -26,8 +26,8 @@ const FRONT: (f32, f32) = (190.0, 184.0);
 const FLOORS: [f32; 3] = [0.67, 0.34, 0.12];
 
 /// Whether, on a rummage late in the day, the glint may show: only for a colony that has found a
-/// good many things and set something on the Hilltop for looking up at the sky with. Once seen
-/// off, it comes back only now and then.
+/// good many things and set something on the Hilltop for looking up at the sky with (or anything
+/// made with one). Once seen off, it comes back only now and then.
 pub fn may_beckon(colony: &crate::memories::ColonyMemories) -> bool {
     let found = colony
         .finds
@@ -37,7 +37,7 @@ pub fn may_beckon(colony: &crate::memories::ColonyMemories) -> bool {
     let gazing = colony
         .hilltop
         .values()
-        .any(|id| crate::finds::find(id).is_some_and(|find| find.use_ == crate::finds::Use::Gaze));
+        .any(crate::hilltop::Standing::sky_gazing);
     let due = colony.sovereign_bested == 0 || colony.outings.is_multiple_of(3);
     found >= 10 && gazing && due
 }
@@ -937,13 +937,50 @@ mod tests {
             !may_beckon(&colony),
             "nothing on the Hilltop to watch the sky with"
         );
-        colony.hilltop.insert(3, "brass_lens".to_owned());
+        colony.hilltop.insert(3, "brass_lens".into());
         assert!(may_beckon(&colony));
         colony.sovereign_bested = 1;
         colony.outings = 4;
         assert!(!may_beckon(&colony), "once seen off, only now and then");
         colony.outings = 6;
         assert!(may_beckon(&colony));
+    }
+
+    #[test]
+    fn something_built_from_a_sky_watching_find_still_watches_the_sky() {
+        use crate::hilltop::Standing;
+        use crate::memories::{ColonyMemories, FindRecord};
+        let mut colony = ColonyMemories::default();
+        for find in crate::finds::CATALOGUE.iter().take(10) {
+            colony
+                .finds
+                .insert(find.id.to_owned(), FindRecord::default());
+        }
+        colony.hilltop.insert(3, Standing::built("grand_cairn"));
+        colony
+            .hilltop
+            .insert(4, Standing::from_satchel("strange_seed"));
+        assert!(
+            !may_beckon(&colony),
+            "a cairn and a seedling are not for stargazing"
+        );
+        colony.hilltop.insert(3, Standing::built("great_telescope"));
+        assert!(
+            may_beckon(&colony),
+            "the great telescope is still a telescope"
+        );
+        // However it is built: anything made with a find for watching the sky counts.
+        for plan in &crate::finds::plans::PLANS {
+            let skyward = plan.needs.iter().any(|(id, _)| {
+                crate::finds::find(id).is_some_and(|find| find.use_ == crate::finds::Use::Gaze)
+            });
+            assert_eq!(
+                Standing::built(plan.id).sky_gazing(),
+                skyward || plan.use_ == crate::finds::Use::Gaze,
+                "{}",
+                plan.id
+            );
+        }
     }
 
     #[test]

@@ -8,6 +8,7 @@ mod departures;
 mod encounter;
 mod finery;
 mod fishing_trip;
+mod plans;
 mod rummaging;
 mod storytelling;
 
@@ -100,6 +101,8 @@ pub struct HillApp {
     clearing: Option<(Playground, crate::clearing::sovereign::Sovereign)>,
     /// What the person is about to stand somewhere on the Hilltop.
     placing: Option<Placing>,
+    /// The plans, and anything the colony is building on the Hilltop.
+    crafting: plans::Crafting,
     /// Where each piece on the Hilltop is drawn, for pointing at them.
     piece_bounds: Vec<(u8, (i32, i32, i32, i32))>,
     /// Whether the journal of finds is open.
@@ -143,6 +146,8 @@ pub struct HillApp {
     /// The story being played in the Clubhouse, if any, and the package it came from.
     story: Option<(String, Director)>,
     memories: Memories,
+    /// What has grown on the Hilltop since the last visit, as it is now, spot by spot.
+    grown: Vec<(u8, crate::hilltop::Standing)>,
     /// A short note in the bottom bar, and when it was posted.
     notice: Option<(String, f32)>,
 }
@@ -175,7 +180,7 @@ impl HillApp {
             Memories::folder().as_deref(),
             &arrival.cast.snapshot.colony_id,
         );
-        memories.arrived();
+        let grown = memories.arrived();
         let mut station = Station::new(
             &arrival.cast,
             Journey::Arriving { since: 0.0 },
@@ -202,6 +207,7 @@ impl HillApp {
             hilltop: None,
             clearing: None,
             placing: None,
+            crafting: plans::Crafting::default(),
             piece_bounds: Vec::new(),
             journal: false,
             pointer: None,
@@ -230,6 +236,7 @@ impl HillApp {
             last_hour_check: None,
             story: None,
             memories,
+            grown,
             notice: None,
         };
         app.pin_notices();
@@ -315,7 +322,7 @@ impl HillApp {
         }
         if area == Area::Green && self.green.is_none() {
             let mut green = crate::green::open(&self.arrival.cast, now);
-            crate::green::show_hilltop(&mut green, &self.memories.colony().hilltop);
+            crate::green::show_hilltop(&mut green, &self.hilltop_standing());
             self.green = Some(green);
         }
         if area == Area::Clubhouse {
@@ -323,7 +330,7 @@ impl HillApp {
         }
         if area == Area::Fairground && self.fairground.is_none() {
             let (mut ground, game) = fairground::open(&self.arrival.cast, now);
-            fairground::show_hilltop(&mut ground, &self.memories.colony().hilltop);
+            fairground::show_hilltop(&mut ground, &self.hilltop_standing());
             self.fairground = Some((ground, game));
         }
         if area == Area::Woods {
@@ -761,8 +768,8 @@ impl eframe::App for HillApp {
             let dt = (now - self.last_frame).clamp(0.0, 0.1);
             self.tick_woods(now, holding, dt);
         }
-        if let (Area::Hilltop, Some(ground)) = (self.area, &mut self.hilltop) {
-            ground.tick(&self.arrival.cast, now);
+        if self.area == Area::Hilltop {
+            self.tick_hilltop(now);
         }
         if self.area == Area::Clearing {
             self.tick_clearing(now);
@@ -1062,6 +1069,7 @@ impl eframe::App for HillApp {
         self.dress_up_window(&ctx);
         self.album_window(&ctx, now);
         self.journal_window(&ctx);
+        self.plans_window(&ctx);
         self.board_window(&ctx, now);
         self.shelf_window(&ctx);
         self.notices_window(&ctx);
