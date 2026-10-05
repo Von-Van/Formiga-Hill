@@ -69,6 +69,47 @@ pub const GROWING: &[Growth] = &[
             "A butterfly bush in bud",
         ],
     },
+    // The hedgerow's seeds and cuttings.
+    Growth {
+        id: "strawberry_runner",
+        stages: &[
+            "A strawberry plantlet",
+            "Spreading strawberry plants",
+            "Strawberries in flower",
+        ],
+    },
+    Growth {
+        id: "hazelnut",
+        stages: &[
+            "A sprouting hazelnut",
+            "A hazel seedling",
+            "A hazel hung with catkins",
+        ],
+    },
+    Growth {
+        id: "crab_apple_pip",
+        stages: &[
+            "A sprouting crab-apple pip",
+            "A crab-apple seedling",
+            "A crab apple in blossom",
+        ],
+    },
+    Growth {
+        id: "rose_hip_seeds",
+        stages: &[
+            "Wild rose seedlings",
+            "A little rose bush",
+            "A wild rose in bud",
+        ],
+    },
+    Growth {
+        id: "thyme_cutting",
+        stages: &[
+            "A rooted thyme cutting",
+            "A tuft of thyme",
+            "A thyme cushion in bud",
+        ],
+    },
 ];
 
 /// How a find grows, if it is one that does.
@@ -101,6 +142,31 @@ mod tests {
                 "{} grows twice",
                 growth.id
             );
+        }
+    }
+
+    #[test]
+    fn the_hedgerows_seeds_and_cuttings_grow_once_planted_and_are_tended_till_grown() {
+        use crate::finds::Use;
+        use crate::hilltop::Standing;
+        // Everything the hedgerow gives for planting, as `finds::FORAGED` says.
+        for id in [
+            "strawberry_runner",
+            "hazelnut",
+            "crab_apple_pip",
+            "rose_hip_seeds",
+            "thyme_cutting",
+        ] {
+            assert!(crate::finds::is_foraged(id), "{id} is not picked");
+            let growth = growth(id).unwrap_or_else(|| panic!("{id} never grows"));
+            let mut planted = Standing::from_satchel(id);
+            for (stage, name) in growth.stages.iter().enumerate() {
+                assert_eq!(planted.use_(), Some(Use::Tend), "{id} at {stage}");
+                assert_eq!(planted.name(), *name);
+                assert!(planted.grow());
+            }
+            assert_eq!(planted, Standing::from(id), "{id} grows into its piece");
+            assert_ne!(planted.use_(), Some(Use::Tend), "{id} is grown");
         }
     }
 }
