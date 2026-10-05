@@ -1,0 +1,91 @@
+name: release
+
+# A tag such as v0.1.0 builds the universal macOS app and the Windows installer, and publishes
+# them as that version's release, with its notes from CHANGELOG.md. Run by hand, it builds the
+# same files and keeps them as the run's artifacts without publishing anything, so the packaging
+# can be checked before tagging.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+      - name: Package
+        run: bash scripts/package-macos.sh
+        env:
+          FORMIGA_HILL_BUILD_NUMBER: ${{ github.run_number }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          if-no-files-found: error
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.sha256
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+      - name: Install WiX
+        run: |
+          dotnet tool install --global wix --version 4.0.5
+          Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.dotnet\tools"
+      - name: Package
+        run: ./scripts/package-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          if-no-files-found: error
+          path: |
+            dist/*.msi
+            dist/*.zip
+            dist/*.sha256
+
+  publish:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#v}"
+          # The tag must be the version the app reports, or Desktop would see another.
+          crate="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "$crate" != "$version" ]; then
+            echo "The tag says $version but Cargo.toml says $crate" >&2
+            exit 1
+          fi
+          # This version's notes are its section of the changelog.
+          awk -v want="## $version" '
+            /^## / { if (found) exit; if (index($0, want) == 1) { found = 1; next } }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "CHANGELOG.md has no section for $version" >&2
+            exit 1
+          fi
+          gh release create "$TAG" dist/* --title "Formiga Hill $version" --notes-file notes.md --verify-tag
