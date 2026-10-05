@@ -28,7 +28,7 @@ impl HillApp {
             self.clubhouse = Some(Clubhouse::open(
                 &self.arrival.cast,
                 now,
-                &self.memories.colony().hilltop,
+                &self.hilltop_standing(),
                 self.pinned(),
             ));
         }

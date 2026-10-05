@@ -52,14 +52,20 @@ impl HillApp {
         }
     }
 
-    /// Puts the summit's pieces where the memories say they stand; anything still being built
-    /// isn't up yet, and its spot stands empty while the colony works.
-    pub(super) fn refresh_hilltop(&mut self) {
-        let arrangement = self.memories.colony().hilltop.clone();
-        let mut up: Arrangement = arrangement.clone();
+    /// What stands on the summit, from wherever it is seen: anything still being built isn't up
+    /// yet, and its spot stands empty while the colony works, on the skylines below too.
+    pub(super) fn hilltop_standing(&self) -> Arrangement {
+        let mut up = self.memories.colony().hilltop.clone();
         if let Some(spot) = self.going_up() {
             up.remove(&spot);
         }
+        up
+    }
+
+    /// Puts the summit's pieces where the memories say they stand, here and on every skyline
+    /// that shows it.
+    pub(super) fn refresh_hilltop(&mut self) {
+        let up = self.hilltop_standing();
         let placed = hilltop::placed(&up);
         self.piece_bounds = placed
             .iter()
@@ -72,19 +78,19 @@ impl HillApp {
             let lights = hilltop::nightlights(&up, ground.backdrop());
             ground.set_nightlights(lights);
         }
-        // The Hill seen from below changes too.
-        self.station.show_hilltop(&arrangement);
+        // The Hill seen from below changes too, once there is something to see.
+        self.station.show_hilltop(&up);
         if let Some((ground, _)) = &mut self.fairground {
-            crate::fairground::show_hilltop(ground, &arrangement);
+            crate::fairground::show_hilltop(ground, &up);
         }
         if let Some(green) = &mut self.green {
-            crate::green::show_hilltop(green, &arrangement);
+            crate::green::show_hilltop(green, &up);
         }
         if let Some(room) = &mut self.clubhouse {
-            room.show_hilltop(&arrangement);
+            room.show_hilltop(&up);
         }
         if let Some(meadow) = &mut self.woods.meadow {
-            crate::meadow::show_hilltop(meadow, &arrangement);
+            crate::meadow::show_hilltop(meadow, &up);
         }
     }
 
