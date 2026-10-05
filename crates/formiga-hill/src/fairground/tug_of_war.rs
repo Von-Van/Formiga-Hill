@@ -25,7 +25,7 @@ use formiga_travel::Band;
 
 /// The chalk line across the middle, and the row the rope is pulled along.
 pub const LINE_X: f32 = 198.0;
-pub const ROPE_Y: f32 = 180.0;
+pub const ROPE_Y: f32 = 188.0;
 /// How far either side of the line each side may stand: clear of the straw at the left and the
 /// handcart at the right.
 const REACH: (f32, f32) = (66.0, 332.0);
