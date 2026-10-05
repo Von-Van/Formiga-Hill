@@ -57,9 +57,10 @@ parents and rivals keeping apart.
   packages folder.
 
 **The Fairground.** Down the lane from the green: a big top, a carousel, a hoopla stall and a high
-striker, with its bulbs lit after dark. The colony plays its games among themselves while you
-watch; you choose the game and, at most, who plays. Each game keeps a souvenir the first time it
-is seen through, and its records go up on the station's boards.
+striker, with its bulbs lit after dark, and clear sawdust in front for racing and pulling. The
+colony plays its games among themselves while you watch; you choose the game and, at most, who
+plays. Each game keeps a souvenir the first time it is seen through, and its records go up on the
+station's boards.
 - **Hide-and-seek.** Where each hides, how each gives itself away, and how "it" searches all come
   from temperament. A parent never finds its little one until last.
 - **The sack race.** Hop length and rhythm come from pace, energy and size. An impulsive one may
@@ -67,7 +68,17 @@ is seen through, and its records go up on the station's boards.
   line and is overtaken; an affectionate one helps a fallen friend up.
 - **The high striker.** The puck climbs by strength times timing: a patient one times it
   steadily, an impulsive one swings early, and a little one's parent helps hold the mallet so
-  together they can ring the bell.
+  together they can ring the bell. Whoever is waiting queues in a curving line before the big top.
+- **Hoopla.** Three rings each at the pegs and prizes along the counter, every one arcing over to
+  ring a prize, bounce off a peg, or fall short. A patient one measures each throw, an impulsive
+  one throws fast, a show-off throws its last behind its back, and a little one stands at the
+  nearer line. Whatever is won is carried about for the rest of the visit, unless an affectionate
+  winner gives it to its closest friend.
+- **The tug-of-war.** Two sides across a chalk line, with hay to tumble into. The colony sorts
+  itself, friends together and rivals apart, or you pick the sides. A close pair pulls in rhythm,
+  two who don't get on pull out of step, a lazybones lets the rope go slack, a show-off waves, a
+  parent pulls harder beside its little one, and an affectionate one cheers its side on. The
+  losers tumble into the hay, and everyone laughs it off.
 
 **The Woods.** Here you play, with a companion or two, for finds to take home. Who comes along
 changes how it goes and what turns up, but never rules anything out.
@@ -125,7 +136,6 @@ written here.
 
 ### Coming next
 
-- **The Fairground:** hoopla, and a tug-of-war for co-op and competitive play.
 - **The Woods:** scavenging and treasure routes, longer expeditions that combine activities, and
   growing the hedgerow's seeds and cuttings on the Hilltop.
 
@@ -191,7 +201,7 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | --- | --- |
 | `--render-station` | The station; `--at` seconds into the arrival, or settled |
 | `--render-green`, `--render-clubhouse`, `--render-fairground` | The place, `--at` seconds into free play |
-| `--render-hide-and-seek`, `--render-sack-race`, `--render-high-striker` | A game at the Fairground, `--at` seconds in |
+| `--render-hide-and-seek`, `--render-sack-race`, `--render-high-striker`, `--render-hoopla`, `--render-tug-of-war` | A game at the Fairground, `--at` seconds in |
 | `--render-woods`, `--render-fishing`, `--render-bug-hunt` | A Woods outing, `--at` seconds in |
 | `--render-meadow` | The meadow |
 | `--render-hedgerow` | A foray along the hedgerow, `--at` seconds in |

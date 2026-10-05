@@ -77,7 +77,8 @@ side of it.
 - The gate, which CI runs on macOS and Windows:
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 - `--render-station`, `--render-green`, `--render-clubhouse`, `--render-fairground`, `--render-hide-and-seek`,
-  `--render-sack-race`, `--render-high-striker`, `--render-woods`, `--render-fishing`,
+  `--render-sack-race`, `--render-high-striker`, `--render-hoopla`, `--render-tug-of-war`,
+  `--render-woods`, `--render-fishing`,
   `--render-bug-hunt`, `--render-meadow`, `--render-hedgerow`, `--render-hilltop`,
   `--render-building` (each with
   `--at <seconds>`), `--render-finds`, `--render-growing`, `--render-plans`, `--render-produce`, `--render-fish`,
