@@ -602,7 +602,7 @@ impl Expedition {
             self.events.push(Event::TooFar { place });
             return false;
         }
-        self.light -= way.cost;
+        self.light = (self.light - way.cost).max(0.0);
         let points = PATHS[way.path].walk_from(self.at);
         self.set_out(points, POINTING, now);
         self.phase = Phase::Walking {
@@ -646,7 +646,13 @@ impl Expedition {
             self.map.direct(reader, vec![Step::Beat(reads)], now);
         }
         self.repaint();
-        self.phase = Phase::Choosing;
+        if self.light <= 0.0 {
+            // The way here took the last of the light: nothing more can be done today.
+            self.events.push(Event::Dusk);
+            self.homeward(Ending::Dusk, now);
+        } else {
+            self.phase = Phase::Choosing;
+        }
     }
 
     /// Repaints the map, if what it shows has changed.
@@ -875,15 +881,15 @@ impl Expedition {
             .map(|(index, _)| index)
     }
 
-    /// The basket's slot under a point on the map, for leaving something behind.
+    /// The basket's slot under a point on the map, for leaving something behind: one in the
+    /// basket, or one waiting beside it.
     pub fn basket_slot_at(&self, x: f32, y: f32) -> Option<usize> {
-        let (left, top, slot) = basket_frame();
-        let (x, y) = (x as i32 - left - 2, y as i32 - top - 2);
-        if x < 0 || y < 0 || y >= slot {
-            return None;
-        }
-        let index = (x / slot) as usize;
-        (index < self.basket.len()).then_some(index)
+        let (_, _, slot) = basket_frame();
+        let (x, y) = (x as i32, y as i32);
+        (0..self.basket.len()).find(|&index| {
+            let (left, top) = slot_corner(index);
+            (left..left + slot).contains(&x) && (top..top + slot).contains(&y)
+        })
     }
 
     /// The scene as it is now: the map with the party on it, or the stop they are at.
@@ -923,13 +929,8 @@ impl Expedition {
         let width = slot * BASKET as i32 + 3;
         rect(scene, left, top, width, slot + 7, rgba(0x2a2018, 150));
         for index in 0..BASKET.max(self.basket.len()) as i32 {
-            let (x, y) = (left + 2 + index * slot, top + 2);
             let over = index >= BASKET as i32;
-            let (x, y) = if over {
-                (left - 2 - (index - BASKET as i32 + 1) * slot, y)
-            } else {
-                (x, y)
-            };
+            let (x, y) = slot_corner(index as usize);
             let ground = if over {
                 rgba(0xd05a40, 150)
             } else {
@@ -1008,6 +1009,18 @@ fn carried(before: &[Carried], now: &[&'static str], leader: Id) -> Vec<Carried>
             kept.unwrap_or(Carried { find, by: leader })
         })
         .collect()
+}
+
+/// Where a basket slot is drawn: in the basket, or, past what it holds, waiting to its left,
+/// the first nearest.
+fn slot_corner(index: usize) -> (i32, i32) {
+    let (left, top, slot) = basket_frame();
+    let index = index as i32;
+    if index >= BASKET as i32 {
+        (left - 2 - (index - BASKET as i32 + 1) * slot, top + 2)
+    } else {
+        (left + 2 + index * slot, top + 2)
+    }
 }
 
 /// Where the basket is drawn: left, top, and the size of a slot.
@@ -1933,5 +1946,51 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn whatever_waits_beside_the_basket_can_be_left_behind() {
+        let cast = sample();
+        let finder = cast.members[0].id;
+        let mut trip = setting_off(&cast, vec![finder], Known::default());
+        let any = finds::CATALOGUE[0].id;
+        trip.basket = (0..BASKET + 2)
+            .map(|_| Carried {
+                find: any,
+                by: finder,
+            })
+            .collect();
+        let (_, _, slot) = basket_frame();
+        for index in 0..trip.basket.len() {
+            let (left, top) = slot_corner(index);
+            let middle = ((left + slot / 2) as f32, (top + slot / 2) as f32);
+            assert_eq!(
+                trip.basket_slot_at(middle.0, middle.1),
+                Some(index),
+                "slot {index}, drawn at {:?}",
+                (left, top)
+            );
+        }
+    }
+
+    #[test]
+    fn a_way_that_takes_the_last_of_the_light_ends_the_day_there() {
+        let cast = sample();
+        let mut trip = setting_off(&cast, vec![cast.members[0].id], Known::default());
+        let now = arrived(&mut trip, &cast);
+        let way = trip.ways().into_iter().next().expect("somewhere to go");
+        trip.light = way.cost;
+        walk(&mut trip, &cast, way.to, now);
+        assert!(
+            matches!(
+                trip.phase(),
+                Phase::Homeward {
+                    why: Ending::Dusk,
+                    ..
+                }
+            ),
+            "{:?}",
+            trip.phase()
+        );
     }
 }

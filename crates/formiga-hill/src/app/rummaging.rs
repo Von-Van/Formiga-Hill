@@ -46,7 +46,16 @@ pub struct Woods {
     pub foray: Option<(Playground, crate::hedgerow::foraging::Foray)>,
     /// An expedition under way, and the map as planned for whoever is chosen.
     pub expedition: Option<crate::expedition::Expedition>,
-    pub plan: Option<(Vec<Id>, Canvas)>,
+    pub plan: Option<(PlannedFor, Canvas)>,
+}
+
+/// What the planning map was drawn for, so it is drawn again whenever any of it changes: who is
+/// coming, the far places the colony has been to, and whether anything on the Hilltop sees far.
+#[derive(PartialEq)]
+pub struct PlannedFor {
+    pub party: Vec<Id>,
+    pub far_places: std::collections::BTreeSet<String>,
+    pub far_sight: bool,
 }
 
 impl HillApp {

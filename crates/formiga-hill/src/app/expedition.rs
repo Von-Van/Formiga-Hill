@@ -179,17 +179,22 @@ impl HillApp {
         if self.woods.activity != super::rummaging::Activity::Expedition {
             return None;
         }
-        // Planning: the map, showing the ways the chosen company would open.
-        let party: Vec<Id> = self.woods.party.clone();
+        // Planning: the map, showing the ways the chosen company would open, and the far places
+        // the colony has found or can see from the Hilltop.
+        let now_for = super::rummaging::PlannedFor {
+            party: self.woods.party.clone(),
+            far_places: self.memories.colony().far_places.clone(),
+            far_sight: expedition::far_sight(&self.hilltop_standing()),
+        };
         let stale = self
             .woods
             .plan
             .as_ref()
-            .is_none_or(|(planned, _)| *planned != party);
+            .is_none_or(|(planned_for, _)| *planned_for != now_for);
         if stale {
             let known = self.known();
-            let picture = expedition::planned(&self.arrival.cast, &party, &known);
-            self.woods.plan = Some((party, picture));
+            let picture = expedition::planned(&self.arrival.cast, &now_for.party, &known);
+            self.woods.plan = Some((now_for, picture));
         }
         let (_, picture) = self.woods.plan.as_ref()?;
         let mut scene = picture.clone();
