@@ -34,12 +34,9 @@ const LANES: (f32, f32) = (146.0, 206.0);
 const LANE_GAP: f32 = 12.0;
 /// How far behind the line a racer stands to start.
 const TOE: f32 = 8.0;
-/// Where those not racing watch from: along the back of the course, either side of the drum, the
-/// nearest the finish first, each a little apart from the next.
-const CROWD: [Path; 2] = [
-    &[(330.0, 131.0), (266.0, 131.0)],
-    &[(222.0, 133.0), (144.0, 133.0)],
-];
+/// Where those not racing watch from: along the back of the course, the nearest the finish first,
+/// each a little apart from the next.
+const CROWD: [Path; 1] = [&[(338.0, 132.0), (144.0, 132.0)]];
 /// "Ready, steady…", and "go!" after this long.
 const STEADY_SECS: f32 = 1.8;
 /// The longest the racers are given to get to the line.

@@ -48,6 +48,22 @@ fn picture(id: &str) -> Option<([&'static str; SOUVENIR_ICON as usize], [u32; 4]
             ],
             [0x6b4a24, 0xd8b058, 0xfff0b8, 0x9a7434],
         ),
+        // A little teddy's face from the hoopla stall's shelf: round ears, bright eyes, and a
+        // pale muzzle with its nose in the middle.
+        super::HOOPLA_TEDDY => (
+            [
+                "##...##", "#x###x#", "#ooooo#", "#o*o*o#", "#ox#xo#", ".#xxx#.", "..###..",
+            ],
+            [0x5a3420, 0xb07a4a, 0x2e1a12, 0xe8c494],
+        ),
+        // A length of the tug-of-war's rope, its twist catching the light and its ends frayed,
+        // with the red ribbon from its middle still tied on.
+        super::TUG_ROPE => (
+            [
+                "#*.....", "*o*....", ".*o*.x.", "..xox..", ".x.*o*.", "....*o*", ".....*#",
+            ],
+            [0x6a5030, 0xb8955a, 0xe2c58c, 0xc8303e],
+        ),
         _ => return None,
     })
 }
@@ -59,8 +75,13 @@ mod tests {
     use formiga_core::Souvenir;
 
     /// The souvenirs Hill has pictures of.
-    fn ids() -> [&'static str; 2] {
-        [super::super::RACE_ROSETTE, super::super::STRIKER_BELL]
+    fn ids() -> [&'static str; 4] {
+        [
+            super::super::RACE_ROSETTE,
+            super::super::STRIKER_BELL,
+            super::super::HOOPLA_TEDDY,
+            super::super::TUG_ROPE,
+        ]
     }
 
     fn pixels_of(id: &str) -> Canvas {

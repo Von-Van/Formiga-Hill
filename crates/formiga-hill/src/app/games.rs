@@ -3,7 +3,7 @@
 
 use super::{HillApp, clock, tools};
 use crate::cast::{Cast, Id};
-use crate::fairground::{self, Event, Game, Phase, Players, high_striker, sack_race};
+use crate::fairground::{self, Event, Game, Phase, Players, high_striker, hoopla, sack_race};
 use crate::story::souvenirs;
 use eframe::egui;
 
@@ -76,12 +76,39 @@ fn standings(cast: &Cast, ranking: &[(Id, f32)]) -> String {
         .join("  \u{b7}  ")
 }
 
+/// Hoopla's tally as the bar shows it: "1st Fig, 3 rings · 2nd Biscuit, 1 ring".
+fn rung(cast: &Cast, tally: &[(Id, u32)]) -> String {
+    tally
+        .iter()
+        .enumerate()
+        .map(|(index, (id, rings))| {
+            format!(
+                "{} {}, {}",
+                place(index + 1),
+                name(cast, Some(*id)),
+                rings_rung(*rings)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("  \u{b7}  ")
+}
+
+/// "1 ring", "3 rings", "no rings".
+pub(super) fn rings_rung(rings: u32) -> String {
+    match rings {
+        0 => "no rings".to_owned(),
+        1 => "1 ring".to_owned(),
+        _ => format!("{rings} rings"),
+    }
+}
+
 /// Something to tell the person: a line as it is, or a game seen through, to be remembered first.
 enum Told {
     Line(String),
     AllFound { it: Option<Id>, took: f32 },
     AllHome { results: Vec<(Id, f32)>, took: f32 },
     AllDone { ranking: Vec<(Id, f32)> },
+    AllThrown { tally: Vec<(Id, u32)> },
 }
 
 /// What has happened in the games since last asked, in the person's words.
@@ -201,6 +228,65 @@ fn happenings(games: &mut fairground::Games, cast: &Cast) -> Vec<Told> {
             },
         });
     }
+    for event in games.hoopla.take_events() {
+        use hoopla::{Event, Landing};
+        told.push(match event {
+            Event::Up { player, near: true } => Told::Line(format!(
+                "{} takes its rings, and gets to throw from the nearer line.",
+                who(player)
+            )),
+            Event::Up { player, .. } => Told::Line(format!(
+                "{} takes its three rings to the line.",
+                who(player)
+            )),
+            Event::Measures { player } => Told::Line(format!(
+                "{} steadies itself and measures each throw.",
+                who(player)
+            )),
+            Event::BehindTheBack { player } => Told::Line(format!(
+                "{} turns its back to throw one over its shoulder\u{2026}",
+                who(player)
+            )),
+            Event::Landed {
+                player,
+                landing: Landing::Rung { prize },
+                behind_back: true,
+                ..
+            } => Told::Line(format!(
+                "Behind its back, and {} rings {}! Spectacular!",
+                who(player),
+                prize.name()
+            )),
+            Event::Landed {
+                player,
+                landing: Landing::Rung { prize },
+                ..
+            } => Told::Line(format!("{} rings {}!", who(player), prize.name())),
+            Event::Landed {
+                player,
+                landing: Landing::Peg,
+                ..
+            } => Told::Line(format!("Clink! {}'s ring bounces off a peg.", who(player))),
+            Event::Landed { player, .. } => {
+                Told::Line(format!("{}'s ring falls short.", who(player)))
+            }
+            Event::Gave { from, to, prize } => Told::Line(format!(
+                "{} gives {} to {}.",
+                who(from),
+                prize.name(),
+                who(to)
+            )),
+            Event::TurnOver { rings: 0, .. } => continue,
+            Event::TurnOver { player, rings } => Told::Line(match rings {
+                1 => format!("{} rang one of three.", who(player)),
+                2 => format!("{} rang two of three.", who(player)),
+                _ => format!("{} rang all three!", who(player)),
+            }),
+            Event::AllDone => Told::AllThrown {
+                tally: games.hoopla.tally(),
+            },
+        });
+    }
     told
 }
 
@@ -266,6 +352,25 @@ impl HillApp {
                     self.kept_line(&mut line, first, Game::HighStriker.souvenir());
                     line
                 }
+                Told::AllThrown { tally } => {
+                    let first = !self.kept(Game::Hoopla.souvenir());
+                    let more: Vec<String> =
+                        self.memories.hooped(&tally).into_iter().map(who).collect();
+                    let mut line = match tally.first() {
+                        Some((top, rings)) if *rings > 0 => format!(
+                            "Everyone's had their rings. {} rang the most: {}!",
+                            who(*top),
+                            rings_rung(*rings)
+                        ),
+                        _ => "Everyone's had their rings, and the prizes are all still there."
+                            .to_owned(),
+                    };
+                    if !more.is_empty() {
+                        line.push_str(&format!(" The most yet for {}.", listed(&more)));
+                    }
+                    self.kept_line(&mut line, first, Game::Hoopla.souvenir());
+                    line
+                }
             };
             last = Some(line);
         }
@@ -300,6 +405,7 @@ impl HillApp {
     pub(super) fn fairground_bar(&mut self, ui: &mut egui::Ui, now: f32) {
         let race_record = self.race_record();
         let striker_record = self.striker_record();
+        let hoopla_record = self.hoopla_record();
         let Some((ground, games)) = &mut self.fairground else {
             return;
         };
@@ -388,6 +494,9 @@ impl HillApp {
                         let record = match game {
                             Game::SackRace => race_record
                                 .map(|(who, seconds)| format!("Record: {who} {}", clock(seconds))),
+                            Game::Hoopla => hoopla_record.map(|(who, rings)| {
+                                format!("Most rings: {who}, {}", rings_rung(rings))
+                            }),
                             _ => striker_record.map(|(who, height)| {
                                 format!("Highest: {who}, {}", reached(height))
                             }),
@@ -397,6 +506,7 @@ impl HillApp {
                         }
                         let last = match game {
                             Game::SackRace => finish_order(cast, games.sack_race.results()),
+                            Game::Hoopla => rung(cast, &games.hoopla.tally()),
                             _ => standings(cast, &games.high_striker.ranking()),
                         };
                         if !last.is_empty() {
@@ -490,6 +600,32 @@ impl HillApp {
                     }
                 }
             }
+            Some(Game::Hoopla) => {
+                let stall = &games.hoopla;
+                match stall.phase() {
+                    hoopla::Phase::Playing { .. } => {
+                        let (done, of) = stall.progress();
+                        let mut status = stall.player().map_or(String::new(), |player| {
+                            format!("{} is throwing", name(cast, Some(player)))
+                        });
+                        status.push_str(&format!("  \u{b7}  {} of {of}", done + 1));
+                        if let Some((top, rings)) =
+                            stall.tally().first().filter(|(_, rings)| *rings > 0)
+                        {
+                            status.push_str(&format!(
+                                "  \u{b7}  most so far: {}, {}",
+                                name(cast, Some(*top)),
+                                rings_rung(*rings)
+                            ));
+                        }
+                        ui.label(status);
+                        call_off = ui.button("Call it off").clicked();
+                    }
+                    _ => {
+                        ui.label(rung(cast, &stall.tally()));
+                    }
+                }
+            }
         }
         if start {
             let picked = self.picks.of(self.game).to_vec();
@@ -519,6 +655,21 @@ impl HillApp {
                 Some((member.name.clone(), *best))
             })
             .min_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// The most rings rung in one turn at hoopla among those here: who, and how many.
+    pub(super) fn hoopla_record(&self) -> Option<(String, u32)> {
+        let colony = self.memories.colony();
+        self.arrival
+            .cast
+            .members
+            .iter()
+            .filter_map(|member| {
+                let best = colony.most_rings.get(&member.id.to_string())?;
+                Some((member.name.clone(), *best))
+            })
+            .filter(|(_, rings)| *rings > 0)
+            .max_by_key(|(_, rings)| *rings)
     }
 
     /// The highest swing at the striker among those here: who, and how high.

@@ -1,11 +1,13 @@
 //! The Fairground, down the lane from the green: free play among the stalls, and games the colony
 //! plays among themselves while the person watches. (Games the person plays, for finds to take
 //! home, belong to the Woods.) The person chooses a game and, at most, who plays it: hide-and-seek,
-//! the sack race, or the high striker.
+//! the sack race, the high striker, or hoopla.
 
 pub mod gear;
 mod hide_and_seek;
 pub mod high_striker;
+pub mod hoopla;
+pub mod prizes;
 pub mod sack_race;
 mod scenery;
 
@@ -14,6 +16,7 @@ use crate::daylight::Nightlights;
 use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Patch, Playground};
 use high_striker::HighStriker;
+use hoopla::Hoopla;
 use sack_race::SackRace;
 use scenery::GROUND;
 use std::sync::LazyLock;
@@ -212,6 +215,7 @@ pub fn open(cast: &Cast, now: f32) -> (Playground, Games) {
         hide_and_seek: HideAndSeek::new(places),
         sack_race: SackRace::new(),
         high_striker: HighStriker::new(),
+        hoopla: Hoopla::new(),
     };
     games.set_out(&mut ground, now);
     (ground, games)
@@ -224,6 +228,7 @@ pub enum Game {
     HideAndSeek,
     SackRace,
     HighStriker,
+    Hoopla,
 }
 
 /// How the person says who plays a game.
@@ -237,13 +242,19 @@ pub enum Players {
 }
 
 impl Game {
-    pub const ALL: [Self; 3] = [Self::HideAndSeek, Self::SackRace, Self::HighStriker];
+    pub const ALL: [Self; 4] = [
+        Self::HideAndSeek,
+        Self::SackRace,
+        Self::HighStriker,
+        Self::Hoopla,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
             Self::HideAndSeek => "Hide-and-seek",
             Self::SackRace => "The sack race",
             Self::HighStriker => "The high striker",
+            Self::Hoopla => "Hoopla",
         }
     }
 
@@ -251,7 +262,7 @@ impl Game {
         match self {
             Self::HideAndSeek => Players::It,
             Self::SackRace => Players::Some { least: 2 },
-            Self::HighStriker => Players::Some { least: 1 },
+            Self::HighStriker | Self::Hoopla => Players::Some { least: 1 },
         }
     }
 
@@ -261,6 +272,7 @@ impl Game {
             Self::HideAndSeek => crate::story::souvenirs::FAIR_TICKET,
             Self::SackRace => crate::story::souvenirs::RACE_ROSETTE,
             Self::HighStriker => crate::story::souvenirs::STRIKER_BELL,
+            Self::Hoopla => crate::story::souvenirs::HOOPLA_TEDDY,
         }
     }
 }
@@ -328,6 +340,7 @@ pub struct Games {
     pub hide_and_seek: HideAndSeek,
     pub sack_race: SackRace,
     pub high_striker: HighStriker,
+    pub hoopla: Hoopla,
 }
 
 impl Games {
@@ -339,6 +352,8 @@ impl Games {
             Some(Game::SackRace)
         } else if self.high_striker.phase() != high_striker::Phase::Ready {
             Some(Game::HighStriker)
+        } else if self.hoopla.phase() != hoopla::Phase::Ready {
+            Some(Game::Hoopla)
         } else {
             None
         }
@@ -362,6 +377,7 @@ impl Games {
                 .start(ground, picked.first().copied(), now),
             Game::SackRace => self.sack_race.start(ground, cast, picked, now),
             Game::HighStriker => self.high_striker.start(ground, picked, now),
+            Game::Hoopla => self.hoopla.start(ground, cast, picked, now),
         }
     }
 
@@ -370,15 +386,20 @@ impl Games {
         self.hide_and_seek.tick(ground, now);
         self.sack_race.tick(ground, now);
         self.high_striker.tick(ground, now);
+        self.hoopla.tick(ground, now);
         self.set_out(ground, now);
     }
 
-    /// The games' gear, where it is: the striker's bell, puck and mallet always, and the race's
-    /// chalk line, posts and ribbon while a race is on.
+    /// The games' gear, where it is: the striker's bell, puck and mallet and the hoopla's pegs,
+    /// prizes and rings always, and the race's chalk line, posts and ribbon while a race is on; and
+    /// whatever has been won at hoopla, carried by whoever won it.
     fn set_out(&self, ground: &mut Playground, now: f32) {
         let mut gear = self.high_striker.gear(ground, now);
         gear.extend(self.sack_race.gear(now));
+        gear.extend(self.hoopla.gear(ground, now));
         ground.set_fliers(gear);
+        ground.set_fixtures(vec![self.hoopla.counter(now)]);
+        ground.carry(self.hoopla.carried());
     }
 
     /// Calls off whatever game is on.
@@ -387,13 +408,14 @@ impl Games {
             Some(Game::HideAndSeek) => self.hide_and_seek.stop(ground, now),
             Some(Game::SackRace) => self.sack_race.stop(ground, now),
             Some(Game::HighStriker) => self.high_striker.stop(ground, now),
+            Some(Game::Hoopla) => self.hoopla.stop(ground, now),
             None => {}
         }
     }
 
     /// Who wears a name tag all game, so the person can follow them, and what it says after the
     /// name: "it" at hide-and-seek, whoever is in front in a race, whoever is having a go at the
-    /// striker.
+    /// striker or throwing at hoopla.
     pub fn tags(&self) -> Vec<(Id, &'static str)> {
         match self.playing() {
             Some(Game::HideAndSeek) => self
@@ -412,6 +434,12 @@ impl Games {
                 .high_striker
                 .player()
                 .map(|(id, _)| (id, "having a go"))
+                .into_iter()
+                .collect(),
+            Some(Game::Hoopla) => self
+                .hoopla
+                .player()
+                .map(|id| (id, "throwing"))
                 .into_iter()
                 .collect(),
             None => Vec::new(),
@@ -613,6 +641,39 @@ mod tests {
         games.start(Game::SackRace, &mut ground, &cast, &[], 0.0);
         assert!(!games.sack_race.gear(0.0).is_empty());
         assert_eq!(striker_only, 3, "the bell, the puck and the mallet");
+    }
+
+    #[test]
+    fn whatever_is_won_at_hoopla_is_carried_about_the_fairground() {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        for traveler in &mut snapshot.travelers {
+            traveler.character.axes.impulsiveness = 0.0;
+        }
+        let cast = Cast::new(snapshot).unwrap();
+        let (mut ground, mut games) = open(&cast, 0.0);
+        let mut now = 0.0;
+        for _ in 0..5 {
+            games.start(Game::Hoopla, &mut ground, &cast, &[], now);
+            while games.playing().is_some() && now < 2000.0 {
+                now += 1.0 / 30.0;
+                ground.tick(&cast, now);
+                games.tick(&mut ground, now);
+            }
+            if !games.hoopla.carried().is_empty() {
+                break;
+            }
+        }
+        let (carrier, _) = *games.hoopla.carried().first().expect("nobody won a thing");
+        // Drawn with it, and with it again however often the fairground goes on after.
+        for _ in 0..3 {
+            now += 1.0 / 30.0;
+            ground.tick(&cast, now);
+            games.tick(&mut ground, now);
+            let with = ground.bounds(carrier, now).unwrap();
+            ground.carry(&[]);
+            let without = ground.bounds(carrier, now).unwrap();
+            assert!(with.1 < without.1, "its prize isn't drawn with it");
+        }
     }
 
     #[test]

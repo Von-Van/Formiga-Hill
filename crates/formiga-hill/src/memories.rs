@@ -87,6 +87,9 @@ pub struct ColonyMemories {
     /// Forays in a row that brought home nothing new to the journal.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub forage_drought: u32,
+    /// The most rings each traveller has rung in one turn at hoopla, by its Desktop id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub most_rings: BTreeMap<String, u32>,
 }
 
 fn is_zero(count: &u32) -> bool {
@@ -273,6 +276,29 @@ impl Memories {
         keep_souvenir(colony, crate::story::souvenirs::STRIKER_BELL);
         self.keep();
         higher
+    }
+
+    /// Remembers a game of hoopla seen through: how many rings each player rang in its turn, by
+    /// its Desktop id, and the little teddy the first time. Says who beat a turn of its own from
+    /// an earlier game.
+    pub fn hooped(&mut self, rings: &[(u64, u32)]) -> Vec<u64> {
+        let colony = self.colony_mut();
+        let mut more = Vec::new();
+        for (id, rung) in rings {
+            match colony.most_rings.get_mut(&id.to_string()) {
+                Some(best) if *rung > *best => {
+                    *best = *rung;
+                    more.push(*id);
+                }
+                Some(_) => {}
+                None => {
+                    colony.most_rings.insert(id.to_string(), *rung);
+                }
+            }
+        }
+        keep_souvenir(colony, crate::story::souvenirs::HOOPLA_TEDDY);
+        self.keep();
+        more
     }
 
     /// Remembers an outing to the Woods: who went, and what came home in the basket, which goes
@@ -672,6 +698,31 @@ mod tests {
             memories.colony().souvenirs,
             vec!["striker_bell".to_owned(), "fair_ticket".to_owned()]
         );
+    }
+
+    #[test]
+    fn hoopla_remembers_each_players_most_rings_in_a_turn_and_gives_one_teddy() {
+        let mut memories = Memories::open(None, "c");
+        assert!(
+            memories.hooped(&[(7, 1), (9, 0)]).is_empty(),
+            "a first game is nobody's best yet: there was nothing to beat"
+        );
+        assert_eq!(memories.hooped(&[(7, 1), (9, 2)]), vec![9]);
+        assert_eq!(memories.hooped(&[(7, 3)]), vec![7]);
+        assert_eq!(memories.colony().most_rings["7"], 3);
+        assert_eq!(memories.colony().most_rings["9"], 2);
+        assert_eq!(memories.colony().souvenirs, vec!["hoopla_teddy".to_owned()]);
+    }
+
+    #[test]
+    fn a_book_kept_before_hoopla_reads_with_no_hoopla_record() {
+        let book: Book = serde_json::from_str(
+            r#"{"version": 2, "colonies": {"c": {"visits": 3, "quickest_racers": {"7": 12.5}}}}"#,
+        )
+        .unwrap();
+        let colony = &book.colonies["c"];
+        assert!(colony.most_rings.is_empty());
+        assert_eq!(colony.quickest_racers["7"], 12.5);
     }
 
     #[test]

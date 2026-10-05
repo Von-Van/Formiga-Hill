@@ -1,6 +1,6 @@
 //! Grooming and dressing up, in the window: brushing whoever the pointer is held on, the Green's
-//! dress-up box, and carrying what everyone has on, and who shines, from place to place for the
-//! rest of the visit. None of it goes home.
+//! dress-up box, and carrying what everyone has on, who shines, and whatever was won at hoopla,
+//! from place to place for the rest of the visit. None of it goes home.
 
 use super::{Area, HillApp};
 use crate::cast::Id;
@@ -109,8 +109,14 @@ impl HillApp {
         self.notice = Some((line, now));
     }
 
-    /// Everyone wears what they have on, and shines if groomed, wherever they are.
+    /// Everyone wears what they have on, shines if groomed, and carries whatever it won at
+    /// hoopla, wherever they are.
     pub(super) fn dress_everyone(&mut self) {
+        let carried = self
+            .fairground
+            .as_ref()
+            .map(|(_, games)| games.hoopla.carried().to_vec())
+            .unwrap_or_default();
         let (costumes, groomed) = (&self.costumes, &self.groomed);
         let grounds = [
             self.green.as_mut(),
@@ -127,6 +133,7 @@ impl HillApp {
         ];
         for ground in grounds.into_iter().flatten() {
             ground.dress(costumes, groomed);
+            ground.carry(&carried);
         }
     }
 

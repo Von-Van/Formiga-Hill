@@ -564,6 +564,260 @@ pub fn ribbon(
     )
 }
 
+// ---------------------------------------------------------------------------------------------
+// Hoopla
+// ---------------------------------------------------------------------------------------------
+
+/// A hoopla ring, by its colour: each player's three are red, gold and blue, thrown in that order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hoop {
+    Red,
+    Gold,
+    Blue,
+}
+
+/// Painted cane for the rings: red, gold and blue.
+const HOOP_BLUE: Ramp = Ramp::new(0x1e2c58, 0x2c4480, 0x3a5ea8, 0x5a7ec4, 0x9ab8e4);
+
+impl Hoop {
+    pub const ALL: [Self; 3] = [Self::Red, Self::Gold, Self::Blue];
+
+    fn ramp(self) -> Ramp {
+        match self {
+            Self::Red => SATIN,
+            Self::Gold => BRASS,
+            Self::Blue => HOOP_BLUE,
+        }
+    }
+}
+
+/// Paints rows of letters with their top-left at `(x, y)`, as `stamp` does, from a ring's ramp.
+fn hoop_rows(canvas: &mut Canvas, (x, y): (i32, i32), rows: &[&str], hoop: Hoop) {
+    stamp(canvas, (x, y), rows, hoop.ramp());
+}
+
+/// A ring lying flat, or seen flat in the air, about `(x, y)`: a hoop seen from a little above,
+/// wide enough to go over a prize's block, its far side lit and its near side in shade.
+fn hoop_flat(canvas: &mut Canvas, (x, y): (i32, i32), hoop: Hoop) {
+    hoop_rows(
+        canvas,
+        (x - 4, y - 1),
+        &[".LWLLLLB.", "L.......S", ".SSSSSSE."],
+        hoop,
+    );
+}
+
+/// A ring turning in the air, as it is seen through its spin: face on, then edge on.
+fn hoop_turning(canvas: &mut Canvas, (x, y): (i32, i32), spin: f32, hoop: Hoop) {
+    match (spin * 4.0).rem_euclid(4.0) as i32 {
+        0 => hoop_flat(canvas, (x, y), hoop),
+        2 => hoop_rows(
+            canvas,
+            (x - 1, y - 3),
+            &["L", "LB", "LB", "BS", "BS", "S"],
+            hoop,
+        ),
+        _ => hoop_rows(
+            canvas,
+            (x - 2, y - 2),
+            &[".LWB.", "L...S", "L...S", "B...E", ".SSE."],
+            hoop,
+        ),
+    }
+}
+
+/// A ring dropped over a prize's block whose foot is at `(x, foot)`, lying round it on the
+/// counter: its far side showing either side of the block, its sides, and its near side in front.
+fn hoop_round_block(canvas: &mut Canvas, (x, foot): (i32, i32), hoop: Hoop) {
+    let ramp = hoop.ramp();
+    put(canvas, x - 3, foot - 2, ramp.light);
+    put(canvas, x + 3, foot - 2, ramp.base);
+    put(canvas, x - 4, foot - 1, ramp.light);
+    put(canvas, x + 4, foot - 1, ramp.shadow);
+    for dx in -3..=3 {
+        let color = match dx {
+            -3 => ramp.base,
+            3 => ramp.edge,
+            _ => ramp.shadow,
+        };
+        put(canvas, x + dx, foot, color);
+    }
+}
+
+/// The painted blocks the prizes stand on: blue, red and gold, nearest the line first.
+const BLOCK_PAINT: [Ramp; 3] = [
+    HOOP_BLUE,
+    SATIN,
+    Ramp::new(0x6b4a24, 0x9a7434, 0xc9a14e, 0xe4c06c, 0xf6e3a2),
+];
+
+/// The hoopla counter's top, set out: the rings stacked at the end nearest the line, a peg either
+/// side of each prize, each prize on its block (`on_show`, unless it has just been carried off),
+/// shining a moment if it has just been rung, and the rings round the blocks or lying on the
+/// counter where they came down. Everything stands on the counter's top row.
+pub fn hoopla_counter(
+    on_show: [bool; 3],
+    shine: [Option<f32>; 3],
+    round: &[(usize, Hoop)],
+    lying: &[((i32, i32), Hoop)],
+    stacked: usize,
+    now: f32,
+    still: bool,
+) -> Prop {
+    use super::hoopla::{BLOCKS, COUNTER_TOP, PEGS, STACK};
+    use super::prizes::{Prize, standing};
+    use super::scenery::COUNTER;
+    let foot = COUNTER_TOP;
+    let area = (COUNTER.0, foot - 28, 66, 30);
+    piece(COUNTER.1 as f32 + 16.5, area, |canvas, (left, top)| {
+        let at = |(x, y): (i32, i32)| (x - left, y - top);
+        // The rings waiting, stacked flat at the end, as many as there are.
+        for (ring, hoop) in Hoop::ALL.iter().take(stacked).enumerate() {
+            let (x, y) = at((STACK.0 - 3, STACK.1 - ring as i32));
+            let ramp = hoop.ramp();
+            for dx in 0..8 {
+                let color = match dx {
+                    0 | 7 => ramp.edge,
+                    1 => ramp.shine,
+                    2..=4 => ramp.light,
+                    _ => ramp.base,
+                };
+                put(canvas, x + dx, y, color);
+            }
+        }
+        for &x in &PEGS {
+            peg(canvas, at((x, foot)));
+        }
+        for (block, &x) in BLOCKS.iter().enumerate() {
+            let (bx, by) = at((x, foot));
+            if on_show[block] {
+                standing(canvas, Prize::ALL[block], (bx, by - 4), now, still);
+                if let Some(since) = shine[block] {
+                    sparkle(canvas, (bx, by - 14), since, still);
+                }
+            }
+            crate::paint::bevel(canvas, bx - 2, by - 3, 5, 4, BLOCK_PAINT[block]);
+            for (_, hoop) in round.iter().filter(|(on, _)| *on == block) {
+                hoop_round_block(canvas, (bx, by), *hoop);
+            }
+        }
+        for &(spot, hoop) in lying {
+            let (x, y) = at(spot);
+            hoop_flat(canvas, (x, y - 1), hoop);
+        }
+    })
+}
+
+/// A turned hickory peg standing on `(x, foot)`, its knob at the top, lit from the left.
+fn peg(canvas: &mut Canvas, (x, foot): (i32, i32)) {
+    use super::hoopla::PEG_TALL;
+    let top = foot - PEG_TALL;
+    stamp(canvas, (x - 1, top), &[".W.", "LBS", ".E."], HICKORY);
+    for y in top + 3..=foot {
+        put(canvas, x - 1, y, HICKORY.light);
+        put(canvas, x, y, HICKORY.shadow);
+    }
+    put(canvas, x - 1, foot, HICKORY.base);
+    put(canvas, x, foot, HICKORY.edge);
+}
+
+/// A burst of sparkle about `(x, y)` for a prize just rung, `since` seconds ago: its rays
+/// flickering, or steady with motion reduced.
+fn sparkle(canvas: &mut Canvas, (x, y): (i32, i32), since: f32, still: bool) {
+    let beat = if still { 0 } else { (since * 10.0) as i32 };
+    for (ray, (dx, dy)) in [(-5, -2), (5, -3), (-4, 4), (6, 3), (0, -7), (-7, 1)]
+        .into_iter()
+        .enumerate()
+    {
+        if !still && (ray as i32 + beat) % 3 == 0 {
+            continue;
+        }
+        put(canvas, x + dx, y + dy, rgb(0xffffff));
+        put(canvas, x + dx + 1, y + dy, rgb(0xffe48a));
+        put(canvas, x + dx - 1, y + dy, rgb(0xffe48a));
+        put(canvas, x + dx, y + dy - 1, rgb(0xffe48a));
+        put(canvas, x + dx, y + dy + 1, rgb(0xffe48a));
+    }
+}
+
+/// A ring lying flat in the sawdust about `at`, under everyone, with a crumb of shade beside it.
+pub fn hoop_lying(at: (i32, i32), hoop: Hoop) -> Prop {
+    let area = (at.0 - 4, at.1 - 2, 9, 4);
+    piece(f32::MIN, area, |canvas, (left, top)| {
+        let (x, y) = (at.0 - left, at.1 - top);
+        hline_shade(canvas, x - 2, y + 2, 6);
+        hoop_flat(canvas, (x, y), hoop);
+    })
+}
+
+/// A row of soft shade.
+fn hline_shade(canvas: &mut Canvas, x: i32, y: i32, width: i32) {
+    for dx in 0..width {
+        put(canvas, x + dx, y, rgba(0x2a1e28, 60));
+    }
+}
+
+/// The rings a thrower still holds, hanging from its paw at `grip`, in front of it as it stands
+/// on row `feet`.
+pub fn hoops_held(grip: (i32, i32), hoops: &[Hoop], feet: f32) -> Prop {
+    let area = (grip.0 - 4, grip.1 - 1, 9, 9);
+    piece(feet + 0.5, area, |canvas, (left, top)| {
+        let (x, y) = (grip.0 - left, grip.1 - top);
+        for (index, hoop) in hoops.iter().enumerate().rev() {
+            let shift = index as i32;
+            hoop_rows(
+                canvas,
+                (x - 2 + shift, y + 1 - shift / 2),
+                &[".LWB.", "L...S", "L...S", "B...E", ".SSE."],
+                *hoop,
+            );
+        }
+    })
+}
+
+/// The ring in the air, if it is, at `at` and so far through its spin; and the arc it has flown,
+/// in dots, fading towards where it was thrown from. Drawn over everyone.
+pub fn hoop_flying(at: Option<((i32, i32), f32)>, hoop: Hoop, trail: &[(i32, i32)]) -> Prop {
+    let points: Vec<(i32, i32)> = trail
+        .iter()
+        .copied()
+        .chain(at.map(|(point, _)| point))
+        .collect();
+    let left = points.iter().map(|p| p.0).min().unwrap_or(0) - 5;
+    let top = points.iter().map(|p| p.1).min().unwrap_or(0) - 5;
+    let right = points.iter().map(|p| p.0).max().unwrap_or(0) + 5;
+    let bottom = points.iter().map(|p| p.1).max().unwrap_or(0) + 5;
+    piece(
+        f32::MAX,
+        (left, top, right - left + 1, bottom - top + 1),
+        |canvas, (left, top)| {
+            // Each dot of the arc, and the ring, with a crumb of shade under it, so they read
+            // against the stall and the sawdust alike.
+            let count = trail.len().max(1);
+            for (index, &(x, y)) in trail.iter().enumerate() {
+                if index % 2 == 1 {
+                    continue;
+                }
+                let fade = 140 + (115 * index / count) as u8;
+                put(canvas, x - left + 1, y - top + 1, rgba(0x2a1e28, fade / 2));
+                put(canvas, x - left, y - top, rgba(0xfff4d8, fade));
+            }
+            if let Some(((x, y), spin)) = at {
+                let mut ring = Canvas::new(canvas.width(), canvas.height());
+                hoop_turning(&mut ring, (x - left, y - top), spin, hoop);
+                for py in 0..ring.height() as i32 {
+                    for px in 0..ring.width() as i32 {
+                        if ring.get(px, py).a > 0 && ring.get(px + 1, py + 1).a == 0 {
+                            put(canvas, px + 1, py + 1, rgba(0x2a1e28, 150));
+                        }
+                    }
+                }
+                crate::paint::blit(canvas, &ring, 0, 0);
+            }
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

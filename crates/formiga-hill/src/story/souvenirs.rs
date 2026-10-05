@@ -13,7 +13,7 @@ enum Giver {
 }
 
 /// Every souvenir: its id, what it is called, and who gives it.
-const CATALOGUE: [(&str, &str, Giver); 9] = [
+const CATALOGUE: [(&str, &str, Giver); 11] = [
     (
         "picnic_ribbon",
         "A gingham ribbon from the first picnic",
@@ -39,6 +39,12 @@ const CATALOGUE: [(&str, &str, Giver); 9] = [
         "A little brass bell from the high striker",
         Giver::Game,
     ),
+    (
+        HOOPLA_TEDDY,
+        "A little teddy from the hoopla stall",
+        Giver::Game,
+    ),
+    (TUG_ROPE, "A knot of rope from the tug-of-war", Giver::Game),
 ];
 
 /// Given the first time everyone is found at hide-and-seek.
@@ -47,6 +53,10 @@ pub const FAIR_TICKET: &str = "fair_ticket";
 pub const RACE_ROSETTE: &str = "race_rosette";
 /// Given the first time everyone has a go at the high striker.
 pub const STRIKER_BELL: &str = "striker_bell";
+/// Given the first time everyone has had their three rings at hoopla.
+pub const HOOPLA_TEDDY: &str = "hoopla_teddy";
+/// Given the first time a tug-of-war is pulled to the end.
+pub const TUG_ROPE: &str = "tug_rope";
 
 /// Whether a story may give this souvenir.
 pub fn a_story_can_give(id: &str) -> bool {
@@ -101,7 +111,13 @@ mod tests {
 
     #[test]
     fn the_fairgrounds_souvenirs_are_won_at_its_games_and_never_given_by_a_story() {
-        for id in [FAIR_TICKET, RACE_ROSETTE, STRIKER_BELL] {
+        for id in [
+            FAIR_TICKET,
+            RACE_ROSETTE,
+            STRIKER_BELL,
+            HOOPLA_TEDDY,
+            TUG_ROPE,
+        ] {
             assert!(name(id).is_some(), "{id}");
             assert!(!a_story_can_give(id), "{id}");
             assert!(!for_stories().contains(&id), "{id}");

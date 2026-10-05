@@ -42,11 +42,11 @@ const QUEUE: [Path; 1] = [&[
     (262.0, 192.0),
 ]];
 /// Where everyone watches from once they have had their go, or if they are not playing: in front
-/// of the carousel, in rows, each a little apart from the next and clear of the drum.
+/// of the carousel, in rows, each a little apart from the next.
 const WATCH: [Path; 3] = [
-    &[(144.0, 134.0), (234.0, 134.0)],
-    &[(156.0, 149.0), (232.0, 149.0)],
-    &[(140.0, 163.0), (240.0, 163.0)],
+    &[(144.0, 134.0), (250.0, 134.0)],
+    &[(156.0, 149.0), (244.0, 149.0)],
+    &[(140.0, 163.0), (256.0, 163.0)],
 ];
 /// Picking up the mallet.
 const PICK_UP_SECS: f32 = 0.5;
