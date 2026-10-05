@@ -46,8 +46,8 @@ const GOLD: Ramp = Ramp::new(0x6b4a24, 0x9a7434, 0xc9a14e, 0xe4c06c, 0xf6e3a2);
 const CARAVAN_RED: Ramp = Ramp::new(0x4a1e2a, 0x6a2a3a, 0x8a3a4a, 0xa85060, 0xc87080);
 /// The boards at the back of the stall.
 const BOARDS: Ramp = Ramp::new(0x2e1c1e, 0x44282a, 0x5a3830, 0x6e4a3a, 0x86604a);
-/// Pine for the crates and the cart, oak for the barrel and the hoops of the drum, iron for the
-/// bands round them and the tyres of the wheels.
+/// Pine for the cart, oak for the barrel and the hoops of the drum, iron for the bands round them
+/// and the tyres of the wheels.
 const PINE: Ramp = Ramp::new(0x5e4228, 0x8a6640, 0xae8656, 0xc8a26e, 0xe0c08e);
 const OAK: Ramp = Ramp::new(0x3e2618, 0x5e3c26, 0x7e5434, 0x9c6e46, 0xb88a5e);
 const IRON: Ramp = Ramp::new(0x241e20, 0x3e3836, 0x5a524c, 0x7c7268, 0xa49888);
@@ -101,6 +101,17 @@ const VISTA: Vista = Vista {
 /// there.
 const BARREL: (i32, i32) = (118, 134);
 const BARREL_LANTERN: (i32, i32) = (4, -5);
+/// Where the other props stand, each by its sprite's top-left: the hay and the straw, and the
+/// handcart, in the front corners, the prize sack by the hoopla stall and the bass drum by the
+/// carousel, so the front of the field is clear sawdust for the sack race and the tug-of-war, and
+/// the ground before the big top is clear for the striker's queue.
+const HAY_STACK: (i32, i32) = (18, 176);
+const STRAW_BALE: (i32, i32) = (58, 188);
+const DRUM: (i32, i32) = (238, 118);
+const HANDCART: (i32, i32) = (338, 176);
+const PRIZE_SACK: (i32, i32) = (342, 100);
+/// The hoopla counter's left edge, and the row its top is on.
+pub const COUNTER: (i32, i32) = (278, 104);
 /// The high striker, between the big top and the carousel: the middle of its tower, and the row
 /// its plinth stands on.
 pub const STRIKER: (i32, i32) = (129, 117);
@@ -265,14 +276,17 @@ pub fn props() -> (Vec<Prop>, Vec<HidingPlace>) {
         props.push(Prop::new(sprite, at, base));
     };
     add("the tent door", tent_door(), 40.0);
-    add("the hay bales", hay_stack(22, 150), 22.0);
+    add("the hay bales", hay_stack(HAY_STACK.0, HAY_STACK.1), 22.0);
     add("the barrel", barrel(BARREL.0, BARREL.1), 20.0);
-    add("the crates", crates(170, 162), 24.0);
-    add("the bass drum", drum(236, 132), 19.0);
-    add("the prize sack", sack(292, 166), 18.0);
-    add("the handcart", handcart(330, 130), 16.0);
-    add("the hoopla counter", counter(278, 104), 22.0);
-    add("the straw bale", straw_bale(84, 186), 14.0);
+    add("the bass drum", drum(DRUM.0, DRUM.1), 19.0);
+    add("the prize sack", sack(PRIZE_SACK.0, PRIZE_SACK.1), 18.0);
+    add("the handcart", handcart(HANDCART.0, HANDCART.1), 16.0);
+    add("the hoopla counter", counter(COUNTER.0, COUNTER.1), 22.0);
+    add(
+        "the straw bale",
+        straw_bale(STRAW_BALE.0, STRAW_BALE.1),
+        14.0,
+    );
     (props, places)
 }
 
@@ -593,9 +607,13 @@ fn straw(scene: &mut Canvas, clear: &[(f32, f32)]) {
             )
         })
         .collect();
-    for (heap, (x, y, spread)) in [(22, 168, 40), (82, 196, 36), (118, 152, 22)]
-        .into_iter()
-        .enumerate()
+    for (heap, (x, y, spread)) in [
+        (HAY_STACK.0, HAY_STACK.1 + 18, 40),
+        (STRAW_BALE.0 - 2, STRAW_BALE.1 + 10, 36),
+        (118, 152, 22),
+    ]
+    .into_iter()
+    .enumerate()
     {
         for index in 0..26 {
             wisps.push((
@@ -2148,94 +2166,6 @@ fn barrel(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
     // A lantern left standing on it, lit after dark (see `lantern_light`).
     lantern(&mut s, BARREL_LANTERN.0, h + BARREL_LANTERN.1);
     (s, (left, top - h), (top + 20) as f32)
-}
-
-/// Three crates, two on the ground and one on top, the tallest cover there is.
-fn crates(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
-    let mut s = Canvas::new(30, 26);
-    ellipse(&mut s, 15, 24, 15, 2, SHADOW);
-    crate_box(&mut s, (0, 12), (14, 12), false, 681);
-    crate_box(&mut s, (14, 12), (14, 12), true, 682);
-    // Where the top crate rests, the ones under it are in its shade.
-    for x in 6..21 {
-        put(&mut s, x, 12, rgba(0x2a1e18, 120));
-        put(&mut s, x, 13, rgba(0x2a1e18, 70));
-    }
-    crate_box(&mut s, (6, 0), (15, 12), false, 683);
-    (s, (left, top), (top + 24) as f32)
-}
-
-/// A slatted crate with its top-left at `(x, y)`: its lid showing as a lit strip of boards, its
-/// front two wide slats between corner posts, nails in the posts, and maybe a star stencilled
-/// on it.
-fn crate_box(
-    s: &mut Canvas,
-    (x, y): (i32, i32),
-    (width, height): (i32, i32),
-    star: bool,
-    salt: u32,
-) {
-    let gap = 4 + (height - 5) / 2;
-    for py in y..y + height {
-        for px in x..x + width {
-            let (dx, dy) = (px - x, py - y);
-            let grain = noise(px / 2, py, salt).is_multiple_of(7);
-            let color = if dx == 0 || dx == width - 1 || dy == 0 || dy == height - 1 {
-                PINE.edge
-            } else if dy == 1 {
-                // The lid, catching the light, its boards butted end to end.
-                if (dx + 2) % 5 == 0 {
-                    PINE.base
-                } else if dx < width / 2 {
-                    PINE.shine
-                } else {
-                    PINE.light
-                }
-            } else if dy == 2 {
-                PINE.base
-            } else if dy == 3 {
-                mix(PINE.edge, PINE.shadow, 0.3)
-            } else if dx <= 2 {
-                // The posts at the corners.
-                if dx == 1 { PINE.light } else { PINE.base }
-            } else if dx >= width - 3 {
-                if dx == width - 2 {
-                    PINE.shadow
-                } else {
-                    PINE.base
-                }
-            } else {
-                // Two slats, each lit along its top, a dark gap between them.
-                if dy == gap {
-                    mix(PINE.edge, PINE.shadow, 0.4)
-                } else if dy == 4 || dy == gap + 1 {
-                    PINE.light
-                } else if grain || dy == height - 2 {
-                    PINE.shadow
-                } else {
-                    PINE.base
-                }
-            };
-            put(s, px, py, color);
-        }
-    }
-    for (nx, ny) in [
-        (x + 1, y + 5),
-        (x + width - 2, y + 5),
-        (x + 1, y + height - 3),
-        (x + width - 2, y + height - 3),
-    ] {
-        put(s, nx, ny, IRON.light);
-    }
-    if star {
-        let paint = mix(CANVAS_RED.base, PINE.base, 0.25);
-        let (sx, sy) = (x + width / 2 - 2, y + 5);
-        put(s, sx + 2, sy, paint);
-        hline(s, sx, sy + 1, 5, paint);
-        hline(s, sx + 1, sy + 2, 3, paint);
-        put(s, sx + 1, sy + 3, paint);
-        put(s, sx + 3, sy + 3, paint);
-    }
 }
 
 /// A bass drum lying on its side, its head turned towards us with a star painted on it.

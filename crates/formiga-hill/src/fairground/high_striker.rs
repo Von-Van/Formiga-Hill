@@ -13,6 +13,8 @@
 //! is no losing, only how high.
 
 use super::gear::{self, Mallet, RING_SECS};
+use super::scenery::PAD;
+use super::{LINE_GAP, Path, line_up, sizes};
 use crate::actor::Step;
 use crate::cast::Id;
 use crate::character::{Beat, Character, Cue};
@@ -25,28 +27,26 @@ use formiga_core::{ActionKind, Gesture, TemperamentKind};
 /// little one stands, behind it.
 pub const SPOT: (f32, f32) = (110.0, 125.0);
 const HELPER_SPOT: (f32, f32) = (101.0, 123.0);
-/// Where those waiting their turn queue up, in front of the big top, a little back from the
-/// striker so whoever is swinging has room.
-const QUEUE: [(f32, f32); 7] = [
-    (80.0, 123.0),
-    (56.0, 124.0),
-    (32.0, 123.0),
-    (68.0, 137.0),
-    (44.0, 138.0),
-    (22.0, 137.0),
-    (90.0, 139.0),
-];
+/// The way the queue goes, each one waiting a little apart from the next however big it is: from
+/// just behind whoever is swinging, along the front of the big top, round in front of the hay and
+/// out along the front of the sawdust, clear of the props.
+const QUEUE: [Path; 1] = [&[
+    (90.0, 129.0),
+    (50.0, 132.0),
+    (31.0, 142.0),
+    (28.0, 158.0),
+    (44.0, 170.0),
+    (72.0, 175.0),
+    (102.0, 179.0),
+    (134.0, 188.0),
+    (262.0, 192.0),
+]];
 /// Where everyone watches from once they have had their go, or if they are not playing: in front
-/// of the carousel.
-const WATCH: [(f32, f32); 8] = [
-    (154.0, 134.0),
-    (172.0, 139.0),
-    (190.0, 133.0),
-    (208.0, 138.0),
-    (224.0, 132.0),
-    (162.0, 149.0),
-    (182.0, 152.0),
-    (202.0, 148.0),
+/// of the carousel, in rows, each a little apart from the next and clear of the drum.
+const WATCH: [Path; 3] = [
+    &[(144.0, 134.0), (234.0, 134.0)],
+    &[(156.0, 149.0), (232.0, 149.0)],
+    &[(140.0, 163.0), (240.0, 163.0)],
 ];
 /// Picking up the mallet.
 const PICK_UP_SECS: f32 = 0.5;
@@ -207,6 +207,8 @@ pub struct HighStriker {
     reduce_motion: bool,
     /// The last game's players, highest first, with how high each went.
     ranking: Vec<(Id, f32)>,
+    /// Where each one waiting or watching was last sent to stand.
+    placed: Vec<(Id, (f32, f32))>,
 }
 
 impl Default for HighStriker {
@@ -228,6 +230,7 @@ impl HighStriker {
             rung: None,
             reduce_motion: false,
             ranking: Vec::new(),
+            placed: Vec::new(),
         }
     }
 
@@ -314,15 +317,77 @@ impl HighStriker {
         self.events.clear();
         self.rung = None;
         self.current = 0;
+        self.placed.clear();
         ground.reserve(everyone);
-        for (slot, id) in self.watchers.iter().enumerate() {
-            go_and_watch(ground, *id, slot, now);
-        }
-        for (place, turn) in self.turns.iter().enumerate().skip(1) {
-            queue_up(ground, turn.player, place - 1, now);
-        }
         self.phase = Phase::Playing { since: now };
+        self.place_everyone(ground, now);
         self.begin_turn(ground, now);
+    }
+
+    /// Those waiting their turn, first in line first, and those watching: everyone not playing,
+    /// then everyone who has had a go, in the order they went.
+    fn lines(&self) -> (Vec<Id>, Vec<Id>) {
+        let waiting = self
+            .turns
+            .iter()
+            .skip(self.current + 1)
+            .map(|turn| turn.player)
+            .collect();
+        let watching = self
+            .watchers
+            .iter()
+            .copied()
+            .chain(self.turns.iter().take(self.current).map(|turn| turn.player))
+            .collect();
+        (waiting, watching)
+    }
+
+    /// Everyone waiting to their place in the queue, facing the striker, and everyone else to
+    /// theirs among the watchers in front of the carousel: each a little apart from the next,
+    /// however big. Only those whose place has changed move; whoever is up, or helping, stays put
+    /// (its place is kept for it).
+    fn place_everyone(&mut self, ground: &mut Playground, now: f32) {
+        let busy: Vec<Id> = self
+            .turns
+            .get(self.current)
+            .map(|turn| std::iter::once(turn.player).chain(turn.helper).collect())
+            .unwrap_or_default();
+        let (waiting, watching) = self.lines();
+        let queue = line_up(&QUEUE, &sizes(ground, &waiting), LINE_GAP);
+        let watch = line_up(&WATCH, &sizes(ground, &watching), LINE_GAP);
+        let places = waiting
+            .iter()
+            .zip(queue)
+            .map(|(id, at)| (*id, at, true))
+            .chain(watching.iter().zip(watch).map(|(id, at)| (*id, at, false)));
+        for (id, at, queueing) in places.collect::<Vec<_>>() {
+            if busy.contains(&id) {
+                continue;
+            }
+            let moved = self
+                .placed
+                .iter()
+                .find(|(placed, _)| *placed == id)
+                .is_none_or(|(_, was)| *was != at);
+            if !moved {
+                continue;
+            }
+            self.placed.retain(|(placed, _)| *placed != id);
+            self.placed.push((id, at));
+            // The queue faces the striker's pad, from whichever side; the watchers face whoever
+            // is swinging.
+            let facing = if queueing { PAD.0 as f32 } else { SPOT.0 };
+            let wait = Beat::new(Gesture::Watch, ExpressionKind::Curious, 600.0);
+            ground.direct(
+                id,
+                vec![
+                    Step::Stride { to: at },
+                    Step::FaceX(facing),
+                    Step::Beat(wait),
+                ],
+                now,
+            );
+        }
     }
 
     /// The current player steps up, with its parent if it is helping.
@@ -548,38 +613,17 @@ impl HighStriker {
         };
     }
 
-    /// The player, and its parent if it helped, go to watch; the queue moves up; and the next
-    /// one steps up, or, if that was everyone, the game is over.
+    /// The player goes to watch, and its parent, if it helped, back to its place; the queue moves
+    /// up; and the next one steps up, or, if that was everyone, the game is over.
     fn next_turn(&mut self, ground: &mut Playground, turn: &Turn, now: f32) {
-        let watching = self.watchers.len() + self.current;
-        go_and_watch(ground, turn.player, watching, now);
-        if let Some(helper) = turn.helper {
-            // Back to its place in the queue if it has yet to go, otherwise to watch.
-            match self
-                .turns
-                .iter()
-                .skip(self.current + 1)
-                .position(|t| t.player == helper)
-            {
-                Some(place) => queue_up(ground, helper, place.saturating_sub(1), now),
-                None => {
-                    let gone = self
-                        .turns
-                        .iter()
-                        .take(self.current)
-                        .position(|t| t.player == helper);
-                    let slot = gone.map_or(watching + 1, |at| self.watchers.len() + at);
-                    go_and_watch(ground, helper, slot, now);
-                }
-            }
-        }
+        // Back from the striker, to wherever its place now is.
+        self.placed
+            .retain(|(id, _)| *id != turn.player && Some(*id) != turn.helper);
         self.current += 1;
+        self.place_everyone(ground, now);
         if self.current >= self.turns.len() {
             self.over(ground, now);
             return;
-        }
-        for (place, waiting) in self.turns.iter().enumerate().skip(self.current + 1) {
-            queue_up(ground, waiting.player, place - self.current - 1, now);
         }
         self.begin_turn(ground, now);
     }
@@ -863,38 +907,6 @@ fn picked_up(now: f32, until: f32, turn: &Turn) -> bool {
         Prelude::None => 0.0,
     };
     until - now < prelude + PICK_UP_SECS * 0.5
-}
-
-/// Off to the queue, facing the striker.
-fn queue_up(ground: &mut Playground, id: Id, place: usize, now: f32) {
-    let spot = QUEUE[place % QUEUE.len()];
-    let spot = (spot.0, spot.1 + (place / QUEUE.len()) as f32 * 3.0);
-    let wait = Beat::new(Gesture::Watch, ExpressionKind::Curious, 600.0);
-    ground.direct(
-        id,
-        vec![
-            Step::Stride { to: spot },
-            Step::FaceX(SPOT.0 + 100.0),
-            Step::Beat(wait),
-        ],
-        now,
-    );
-}
-
-/// Off to watch the rest, from in front of the carousel, facing the striker.
-fn go_and_watch(ground: &mut Playground, id: Id, slot: usize, now: f32) {
-    let spot = WATCH[slot % WATCH.len()];
-    let spot = (spot.0 + (slot / WATCH.len()) as f32 * 9.0, spot.1);
-    let watch = Beat::new(Gesture::Watch, ExpressionKind::Curious, 600.0);
-    ground.direct(
-        id,
-        vec![
-            Step::Stride { to: spot },
-            Step::FaceX(SPOT.0),
-            Step::Beat(watch),
-        ],
-        now,
-    );
 }
 
 #[cfg(test)]
@@ -1323,6 +1335,78 @@ mod tests {
             moved_within(&mut ground, &cast, &everyone, over, 30.0) > 0,
             "the colony is still stood at the striker half a minute on"
         );
+    }
+
+    #[test]
+    fn the_queue_waits_in_an_orderly_line_each_a_little_apart_and_clear_of_the_props() {
+        use crate::fairground::testing::{area, colony_of, overlap};
+        for count in [6, 9] {
+            let cast = colony_of(count);
+            let (mut ground, mut striker) = ready(&cast);
+            striker.start(&mut ground, &[], 6.0);
+            // Until everyone is in its place, while the first is still up.
+            let mut now = 6.0;
+            let settled = |striker: &HighStriker, ground: &Playground| {
+                let (waiting, watching) = striker.lines();
+                waiting
+                    .iter()
+                    .chain(&watching)
+                    .all(|id| !ground.walking(*id))
+            };
+            while now < 40.0 && !settled(&striker, &ground) {
+                now += TICK;
+                ground.tick(&cast, now);
+                striker.tick(&mut ground, now);
+            }
+            assert_eq!(
+                striker.current, 0,
+                "the first had its go before the rest were in line"
+            );
+            let (waiting, _) = striker.lines();
+            assert!(
+                waiting.len() >= count - 2,
+                "{count}: only {} waiting",
+                waiting.len()
+            );
+            let drawn: Vec<_> = waiting
+                .iter()
+                .map(|id| ground.bounds(*id, now).unwrap())
+                .collect();
+            for id in &waiting {
+                eprintln!(
+                    "{} at {:?} drawn {:?} size {:?}",
+                    cast.member(*id).unwrap().name,
+                    ground.position(*id),
+                    ground.bounds(*id, now),
+                    (ground.width(*id), ground.height(*id))
+                );
+            }
+            for (a, first) in drawn.iter().enumerate() {
+                for second in &drawn[a + 1..] {
+                    let shared = overlap(*first, *second);
+                    assert!(
+                        shared * 10 <= area(*first).min(area(*second)),
+                        "{count}: two in the queue stand over each other: {first:?} {second:?}"
+                    );
+                }
+                // Well in front of anything it is drawn over: never behind it, or on top of it.
+                for prop in ground.props() {
+                    if overlap(*first, prop.bounds()) > 0 {
+                        assert!(
+                            prop.base + 8.0 <= first.3 as f32,
+                            "{count}: someone queues at {first:?}, against a prop at {:?}",
+                            prop.bounds()
+                        );
+                    }
+                }
+            }
+            // Everyone waiting faces the striker.
+            for id in &waiting {
+                let (x, _) = ground.position(*id).unwrap();
+                let facing_right = ground.facing_right(*id).unwrap();
+                assert_eq!(facing_right, x < PAD.0 as f32, "{count}: {id} faces away");
+            }
+        }
     }
 
     #[test]

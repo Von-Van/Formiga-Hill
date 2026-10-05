@@ -438,8 +438,9 @@ pub fn mallet(at: Mallet) -> Prop {
     })
 }
 
-/// The chalk line the racers start from, across the course from `from` to `to` (the back of the
-/// course to the front): drawn under everyone, a little uneven, with chalk dust either side.
+/// A chalk line on the ground from `from` to `to` (the back of it to the front), slanting either
+/// way: drawn under everyone, a little uneven, with chalk dust either side. The line the racers
+/// start from, and the one across the middle of the tug-of-war.
 pub fn chalk_line(from: (i32, i32), to: (i32, i32)) -> Prop {
     let left = from.0.min(to.0) - 3;
     let area = (left, from.1, (from.0 - to.0).abs() + 7, to.1 - from.1 + 1);
@@ -447,10 +448,11 @@ pub fn chalk_line(from: (i32, i32), to: (i32, i32)) -> Prop {
         let rows = (to.1 - from.1).max(1) as f32;
         let across = |y: i32| from.0 as f32 + (to.0 - from.0) as f32 * (y - from.1) as f32 / rows;
         for scene_y in from.1..=to.1 {
-            let (start, end) = (
+            let (here, next) = (
                 across(scene_y).round() as i32,
                 across(scene_y + 1).round() as i32,
             );
+            let (start, end) = (here.min(next), here.max(next));
             for scene_x in start..end.max(start + 1) {
                 let (x, y) = (scene_x - left, scene_y - top);
                 if !chance(scene_x, scene_y, 933, 30) {
@@ -524,8 +526,8 @@ pub fn ribbon(
             let mut strip = |from: (f32, f32), to: (f32, f32), sag: f32| {
                 let at = |t: f32| {
                     (
-                        from.0 + (to.0 - from.0) * t + sag * 4.0 * t * (1.0 - t),
-                        from.1 + (to.1 - from.1) * t,
+                        from.0 + (to.0 - from.0) * t,
+                        from.1 + (to.1 - from.1) * t + sag * 4.0 * t * (1.0 - t),
                     )
                 };
                 let mut previous = at(0.0);
@@ -549,7 +551,9 @@ pub fn ribbon(
                     } else {
                         (since * 7.0).sin() * (2.5 - since).max(0.0)
                     };
-                    for (end, side) in [(back, 1.0), (front, -1.0)] {
+                    // Each end hangs from its post towards the other.
+                    for (end, other) in [(back, front), (front, back)] {
+                        let side = if other.0 >= end.0 { 1.0 } else { -1.0 };
                         let start = float(end);
                         let tip = (start.0 + side * 2.0 + swing, start.1 + 9.0);
                         strip(start, tip, 0.0);

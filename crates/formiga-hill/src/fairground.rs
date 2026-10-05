@@ -25,7 +25,7 @@ const SPOTS: [(&str, (f32, f32)); 4] = [
     ("centre", (200.0, 152.0)),
     ("front", (192.0, 198.0)),
     ("left", (56.0, 176.0)),
-    ("right", (350.0, 190.0)),
+    ("right", (318.0, 186.0)),
 ];
 
 /// The ground just behind each prop, where whoever stands is hidden: free play keeps out of it,
@@ -63,6 +63,133 @@ pub fn layout() -> Layout {
         entrance: (400.0, 196.0),
         entrance_step: (18.0, 5.0),
     }
+}
+
+/// A stretch of ground for a line of companions to stand along, from one end to the other: points
+/// walked straight between.
+pub type Path = &'static [(f32, f32)];
+
+/// How much room a line of companions keeps between each one and the next.
+pub const LINE_GAP: f32 = 3.0;
+
+/// Where each of a line of companions stands along `paths`, in order, given how wide and how tall
+/// each is: the first just inside the start, and each next one far enough along that nobody stands
+/// over anyone else, side by side or one in front of another, however big they are, with `gap`
+/// between, and nobody over the end. When a path is full the line goes on along the next; anyone
+/// there is no room for at all stands a rank behind, between two places there, so nobody is ever
+/// left without somewhere to be.
+pub fn line_up(paths: &[Path], sizes: &[(f32, f32)], gap: f32) -> Vec<(f32, f32)> {
+    let mut line: Vec<(f32, f32)> = Vec::with_capacity(sizes.len());
+    let mut stood: Vec<((f32, f32), (f32, f32))> = Vec::new();
+    let (mut path, mut along, mut last_half) = (0, 0.0, None::<f32>);
+    for &(width, height) in sizes {
+        let size = (width.max(1.0), height.max(1.0));
+        let half = size.0 / 2.0;
+        while let Some(&points) = paths.get(path) {
+            let mut at = last_half.map_or(half, |last| along + last + gap + half);
+            // On round a bend, a little further, until it is clear of everyone.
+            let clear = |point: (f32, f32)| {
+                stood
+                    .iter()
+                    .all(|&(other, other_size)| apart((point, size), (other, other_size), gap))
+            };
+            let mut found = None;
+            while at + half <= length(points) {
+                match point_along(points, at) {
+                    Some(point) if clear(point) => {
+                        found = Some(point);
+                        break;
+                    }
+                    Some(_) => at += 1.0,
+                    None => break,
+                }
+            }
+            if let Some(point) = found {
+                line.push(point);
+                stood.push((point, size));
+                (along, last_half) = (at, Some(half));
+                break;
+            }
+            (path, along, last_half) = (path + 1, 0.0, None);
+        }
+        if paths.get(path).is_none() {
+            break;
+        }
+    }
+    // Anyone left over stands a rank behind, between two in the line.
+    let placed = line.len();
+    for extra in 0..sizes.len() - placed {
+        let rank = extra as f32 + 1.0;
+        let spot = match placed {
+            0 => paths
+                .first()
+                .and_then(|path| path.first())
+                .map_or((0.0, 0.0), |&(x, y)| (x + 8.0 * rank, y - 9.0 * rank)),
+            1 => (line[0].0 + 8.0 * rank, line[0].1 - 9.0),
+            _ => {
+                let between = extra % (placed - 1);
+                let rank = 1 + extra / (placed - 1);
+                let (a, b) = (line[between], line[between + 1]);
+                ((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0 - 9.0 * rank as f32)
+            }
+        };
+        line.push(spot);
+    }
+    line
+}
+
+/// How wide and tall each of `ids` stands, for lining them up.
+pub fn sizes(ground: &Playground, ids: &[Id]) -> Vec<(f32, f32)> {
+    ids.iter()
+        .map(|id| {
+            (
+                ground.width(*id).unwrap_or(24.0),
+                ground.height(*id).unwrap_or(24.0),
+            )
+        })
+        .collect()
+}
+
+/// Whether two companions standing with their feet at these points, this wide and tall, are
+/// drawn clear of each other by `gap`: side by side, or the one in front wholly below the other.
+fn apart(
+    ((ax, ay), (aw, ah)): ((f32, f32), (f32, f32)),
+    ((bx, by), (bw, bh)): ((f32, f32), (f32, f32)),
+    gap: f32,
+) -> bool {
+    let side_by_side = (ax - bx).abs() >= (aw + bw) / 2.0 + gap;
+    let in_front = if ay >= by {
+        ay - ah >= by + gap
+    } else {
+        by - bh >= ay + gap
+    };
+    side_by_side || in_front
+}
+
+/// How long `path` is, end to end.
+fn length(path: &[(f32, f32)]) -> f32 {
+    path.windows(2)
+        .map(|pair| ((pair[1].0 - pair[0].0).powi(2) + (pair[1].1 - pair[0].1).powi(2)).sqrt())
+        .sum()
+}
+
+/// The point `distance` along `path`, if the path is that long.
+fn point_along(path: &[(f32, f32)], distance: f32) -> Option<(f32, f32)> {
+    let mut left = distance;
+    let first = *path.first()?;
+    if left <= 0.0 {
+        return Some(first);
+    }
+    for pair in path.windows(2) {
+        let ((x0, y0), (x1, y1)) = (pair[0], pair[1]);
+        let long = ((x1 - x0).powi(2) + (y1 - y0).powi(2)).sqrt();
+        if left <= long && long > 0.0 {
+            let t = left / long;
+            return Some((x0 + (x1 - x0) * t, y0 + (y1 - y0) * t));
+        }
+        left -= long;
+    }
+    None
 }
 
 /// Shows what stands on the Hilltop, in silhouette on the skyline.
@@ -292,9 +419,66 @@ impl Games {
     }
 }
 
+/// Colonies to play the games with in tests.
+#[cfg(test)]
+pub mod testing {
+    use crate::cast::Cast;
+    use formiga_travel::TravelerId;
+
+    /// Desktop's sample colony grown to `count`, as big as a trip brings, by more of the same
+    /// coming along under new names.
+    pub fn colony_of(count: usize) -> Cast {
+        let mut snapshot = formiga_travel::sample::snapshot();
+        let originals = snapshot.travelers.clone();
+        for extra in 0..count.saturating_sub(originals.len()) {
+            let mut traveler = originals[extra % originals.len()].clone();
+            traveler.id = TravelerId(traveler.id.0 ^ (0x5eed_0000 + extra as u64));
+            traveler.name = format!("{} {}", traveler.name, extra + 2);
+            snapshot.travelers.push(traveler);
+        }
+        snapshot.travelers.truncate(count);
+        Cast::new(snapshot).unwrap()
+    }
+
+    /// How much two drawn rectangles, inclusive, overlap: in pixels.
+    pub fn overlap(a: (i32, i32, i32, i32), b: (i32, i32, i32, i32)) -> i32 {
+        let across = (a.2.min(b.2) - a.0.max(b.0) + 1).max(0);
+        let down = (a.3.min(b.3) - a.1.max(b.1) + 1).max(0);
+        across * down
+    }
+
+    /// How many pixels a drawn rectangle, inclusive, covers.
+    pub fn area(a: (i32, i32, i32, i32)) -> i32 {
+        (a.2 - a.0 + 1).max(0) * (a.3 - a.1 + 1).max(0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_line_keeps_everyone_a_little_apart_and_inside_its_ends() {
+        let path: Path = &[(10.0, 50.0), (110.0, 50.0)];
+        let places = line_up(&[path], &[(20.0, 9.0), (30.0, 9.0), (10.0, 9.0)], 4.0);
+        assert_eq!(places, [(20.0, 50.0), (49.0, 50.0), (73.0, 50.0)]);
+        // Round a corner, the next stands far enough on that it is clear of the last.
+        let corner: Path = &[(30.0, 0.0), (0.0, 0.0), (0.0, 100.0)];
+        let places = line_up(&[corner], &[(20.0, 30.0), (20.0, 30.0)], 2.0);
+        let (first, second) = (places[0], places[1]);
+        assert!(
+            (first.0 - second.0).abs() >= 22.0 || second.1 - 30.0 >= first.1,
+            "{first:?} and {second:?} stand over each other"
+        );
+        // A second path takes whoever the first has no room for, and anyone there is no room for
+        // at all stands a rank behind, between two in the line.
+        let short: Path = &[(0.0, 0.0), (40.0, 0.0)];
+        let other: Path = &[(0.0, 20.0), (25.0, 20.0)];
+        let places = line_up(&[short, other], &[(20.0, 9.0); 4], 4.0);
+        assert_eq!(&places[..2], [(10.0, 0.0), (10.0, 20.0)]);
+        assert_eq!(places.len(), 4, "nobody is left without somewhere to be");
+        assert!(places[2].1 < 20.0 && places[3].1 < 20.0);
+    }
 
     #[test]
     fn spots_and_the_way_in_are_clear_of_the_props() {

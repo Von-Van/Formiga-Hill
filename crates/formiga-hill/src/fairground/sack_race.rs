@@ -11,6 +11,7 @@
 //! glare at each other as one passes the other. Nobody loses anything by coming last.
 
 use super::gear;
+use super::{LINE_GAP, Path, line_up, sizes};
 use crate::actor::Step;
 use crate::cast::{Cast, Id};
 use crate::character::{Beat, Character, Cue};
@@ -19,28 +20,25 @@ use crate::playground::{Playground, Prop};
 use formiga_art::{BodyClip, ExpressionKind};
 use formiga_core::{ActionKind, Gesture, TemperamentKind};
 
-/// The course runs along the front of the fairground, its lanes from the furthest back to the
-/// nearest the front, at most `LANE_GAP` apart. The start line and the finish run across it on a
-/// slant, parallel, so every lane is as long as the next and nobody stands square behind anyone
-/// else at the line: the back lane starts at `START_X`, clear of the straw bale, and each lane
-/// nearer the front a little further on. The finish is clear of the prize sack.
-const START_X: f32 = 124.0;
-const SLANT: f32 = 2.2;
-pub const COURSE: f32 = 185.0;
-const LANES: (f32, f32) = (189.0, 209.0);
-const LANE_GAP: f32 = 8.0;
+/// The course runs across the clear sawdust at the front of the fairground, its lanes from the
+/// furthest back to the nearest the front, at most `LANE_GAP` apart. The start line and the finish
+/// run across it on a slant, parallel, so every lane is as long as the next and nobody stands
+/// square behind anyone else: the back lane starts at `START_X`, and each lane nearer the front a
+/// little further back, so whoever is in front stands down and to the left of its neighbour,
+/// over its tail and never its face (they all face the way they hop). The front lane starts clear
+/// of the straw bale, and the back lane finishes clear of the stall and the handcart.
+const START_X: f32 = 218.0;
+const SLANT: f32 = 1.75;
+pub const COURSE: f32 = 136.0;
+const LANES: (f32, f32) = (146.0, 206.0);
+const LANE_GAP: f32 = 12.0;
 /// How far behind the line a racer stands to start.
 const TOE: f32 = 8.0;
-/// Where those not racing watch from: behind the course, by the finish.
-const CROWD: [(f32, f32); 8] = [
-    (298.0, 152.0),
-    (320.0, 157.0),
-    (342.0, 160.0),
-    (364.0, 164.0),
-    (282.0, 158.0),
-    (270.0, 150.0),
-    (376.0, 172.0),
-    (308.0, 145.0),
+/// Where those not racing watch from: along the back of the course, either side of the drum, the
+/// nearest the finish first, each a little apart from the next.
+const CROWD: [Path; 2] = [
+    &[(330.0, 131.0), (266.0, 131.0)],
+    &[(222.0, 133.0), (144.0, 133.0)],
 ];
 /// "Ready, steady…", and "go!" after this long.
 const STEADY_SECS: f32 = 1.8;
@@ -67,7 +65,7 @@ const LONGEST: f32 = 150.0;
 
 /// Where the start line crosses row `y`.
 fn start_at(y: f32) -> f32 {
-    START_X + (y - LANES.0) * SLANT
+    START_X - (y - LANES.0) * SLANT
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -414,26 +412,48 @@ impl SackRace {
         self.cheer = false;
         self.results.clear();
 
-        // The biggest at the back, so nobody is lost behind someone bigger, and each little one
-        // in the lane just in front of its parent.
+        // The tallest at the back, so nobody is lost behind someone taller; and a parent comes
+        // forward to the lane just behind its little ones, so they race side by side.
         let mut order: Vec<(Id, Character)> = chosen
             .iter()
             .filter_map(|id| ground.character(*id).map(|c| (*id, c.clone())))
             .collect();
-        order.sort_by(|a, b| b.1.size.total_cmp(&a.1.size).then(a.0.cmp(&b.0)));
+        let tall = |id: Id| ground.height(id).unwrap_or(0.0);
+        let wide = |id: Id| ground.width(id).unwrap_or(0.0);
+        order.sort_by(|a, b| {
+            tall(b.0)
+                .total_cmp(&tall(a.0))
+                .then(wide(b.0).total_cmp(&wide(a.0)))
+                .then(a.0.cmp(&b.0))
+        });
         let minis: Vec<(Id, Id)> = order
             .iter()
             .filter_map(|(id, c)| c.parent.filter(|p| chosen.contains(p)).map(|p| (*id, p)))
             .collect();
-        for (mini, parent) in &minis {
-            if let Some(at) = order.iter().position(|(id, _)| id == mini) {
-                let moved = order.remove(at);
-                let after = order
-                    .iter()
-                    .position(|(id, _)| id == parent)
-                    .map_or(order.len(), |at| at + 1);
-                order.insert(after, moved);
+        let mut parents: Vec<Id> = Vec::new();
+        for (_, parent) in &minis {
+            if !parents.contains(parent) {
+                parents.push(*parent);
             }
+        }
+        for parent in parents {
+            let family = |id: &Id| *id == parent || minis.contains(&(*id, parent));
+            let Some(first_mini) = order
+                .iter()
+                .position(|(id, _)| minis.contains(&(*id, parent)))
+            else {
+                continue;
+            };
+            let at = order[..first_mini]
+                .iter()
+                .filter(|(id, _)| !family(id))
+                .count();
+            let (mut moving, rest): (Vec<_>, Vec<_>) =
+                order.into_iter().partition(|(id, _)| family(id));
+            // The parent first, then its little ones in the order they had.
+            moving.sort_by_key(|(id, _)| *id != parent);
+            order = rest;
+            order.splice(at..at, moving);
         }
         let count = order.len();
         let gap = ((LANES.1 - LANES.0) / (count - 1).max(1) as f32).min(LANE_GAP);
@@ -526,13 +546,14 @@ impl SackRace {
             let spot = (racer.x(-TOE), racer.lane);
             ground.direct(racer.id, vec![Step::Stride { to: spot }], now);
         }
-        for (index, id) in self.crowd.iter().enumerate() {
-            let spot = CROWD[index % CROWD.len()];
-            let spot = (spot.0, spot.1 + (index / CROWD.len()) as f32 * 4.0);
+        let spots = line_up(&CROWD, &sizes(ground, &self.crowd), LINE_GAP);
+        // Each turned towards the middle of the course.
+        let middle = start_at((LANES.0 + LANES.1) / 2.0) + COURSE / 2.0;
+        for (id, spot) in self.crowd.iter().zip(spots) {
             let watch = Beat::new(Gesture::Watch, ExpressionKind::Curious, 600.0);
             let steps = vec![
                 Step::Stride { to: spot },
-                Step::FaceX(START_X),
+                Step::FaceX(middle),
                 Step::Beat(watch),
             ];
             ground.direct(*id, steps, now);
@@ -1797,6 +1818,73 @@ mod tests {
             moved > 0,
             "the racers are still posing at the line half a minute on"
         );
+    }
+
+    #[test]
+    fn six_racers_have_room_at_the_line_and_along_the_way() {
+        use crate::fairground::testing::overlap;
+        let cast = sample();
+        assert_eq!(cast.members.len(), 6);
+        let (mut ground, mut race) = ready(&cast);
+        race.start(&mut ground, &cast, &[], 6.0);
+        let mut now = 6.0;
+        while !matches!(race.phase(), Phase::Steady { .. }) && now < 40.0 {
+            now += TICK;
+            ground.tick(&cast, now);
+            race.tick(&mut ground, now);
+        }
+        assert!(
+            matches!(race.phase(), Phase::Steady { .. }),
+            "nobody got to the line"
+        );
+        // A lane each, well apart, and nobody in front hiding the face of anyone behind.
+        let mut lanes: Vec<f32> = race.racers.iter().map(|racer| racer.lane).collect();
+        lanes.sort_by(f32::total_cmp);
+        assert!(
+            lanes.windows(2).all(|pair| pair[1] - pair[0] >= 10.0),
+            "{lanes:?}"
+        );
+        for racer in &race.racers {
+            let (x, y) = ground.face(racer.id).unwrap();
+            let face = (x - 4, y - 4, x + 4, y + 4);
+            for other in &race.racers {
+                if other.lane > racer.lane {
+                    let drawn = ground.bounds(other.id, now).unwrap();
+                    assert_eq!(
+                        overlap(face, drawn),
+                        0,
+                        "the racer in lane {} hides the face of the one in lane {}",
+                        other.lane,
+                        racer.lane
+                    );
+                }
+            }
+        }
+        // Nobody stands at the line or hops along the course behind something, or against it:
+        // anything a racer is drawn over is well behind it.
+        let mut checked = 0;
+        while race.phase() != Phase::Ready && now < 300.0 {
+            now += TICK;
+            ground.tick(&cast, now);
+            race.tick(&mut ground, now);
+            if !matches!(race.phase(), Phase::Steady { .. } | Phase::Racing { .. }) {
+                continue;
+            }
+            for racer in &race.racers {
+                let drawn = ground.bounds(racer.id, now).unwrap();
+                for prop in ground.props() {
+                    if overlap(drawn, prop.bounds()) > 0 {
+                        assert!(
+                            prop.base + 8.0 <= racer.lane,
+                            "a racer at {drawn:?} is against a prop at {:?}",
+                            prop.bounds()
+                        );
+                    }
+                }
+                checked += 1;
+            }
+        }
+        assert!(checked > 1000, "the race was hardly seen");
     }
 
     #[test]

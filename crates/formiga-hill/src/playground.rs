@@ -350,6 +350,16 @@ impl Playground {
         self.index_of(id).map(|index| self.actors[index].pos)
     }
 
+    /// How wide a traveller stands at rest: how much room it takes in a line.
+    pub fn width(&self, id: Id) -> Option<f32> {
+        self.index_of(id).map(|index| self.actors[index].width())
+    }
+
+    /// How tall a traveller stands at rest: how much of anyone behind it it hides.
+    pub fn height(&self, id: Id) -> Option<f32> {
+        self.index_of(id).map(|index| self.actors[index].height())
+    }
+
     pub fn ids(&self) -> Vec<Id> {
         self.actors.iter().map(|actor| actor.id).collect()
     }
@@ -587,6 +597,32 @@ impl Playground {
             }
         }
         None
+    }
+
+    /// Where a traveller is drawn, in scene pixels, inclusive: left, top, right and bottom.
+    #[cfg(test)]
+    pub fn bounds(&mut self, id: Id, now: f32) -> Option<(i32, i32, i32, i32)> {
+        let index = self.index_of(id)?;
+        Some(self.actors[index].bounds(now))
+    }
+
+    /// The props standing here, for seeing who is behind what.
+    #[cfg(test)]
+    pub fn props(&self) -> &[Prop] {
+        &self.props
+    }
+
+    /// Which way a traveller faces.
+    #[cfg(test)]
+    pub fn facing_right(&self, id: Id) -> Option<bool> {
+        self.index_of(id)
+            .map(|index| self.actors[index].facing_right)
+    }
+
+    /// Where the middle of a traveller's face is drawn, as it stands at rest.
+    #[cfg(test)]
+    pub fn face(&self, id: Id) -> Option<(i32, i32)> {
+        self.index_of(id).map(|index| self.actors[index].face_at())
     }
 
     /// The top middle of a traveller as drawn, for a name tag over its head.
