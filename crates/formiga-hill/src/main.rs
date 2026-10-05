@@ -1373,7 +1373,8 @@ fn sample_arrangement() -> hilltop::Arrangement {
 fn finds_sheet() -> Canvas {
     const CELL: (i32, i32) = (56, 70);
     let columns = 7;
-    // A row for each kind, a row for the relics, the hedgerow's finds, and the finds from afar.
+    // A row for each kind, a row for the relics, the hedgerow's finds, the old track's, and the
+    // finds from afar.
     let rows: Vec<Vec<&finds::Find>> = finds::Kind::ALL
         .into_iter()
         .map(|kind| {
@@ -1385,6 +1386,11 @@ fn finds_sheet() -> Canvas {
         .chain(std::iter::once(finds::RELICS.iter().collect()))
         .chain(
             finds::FORAGED
+                .chunks(columns as usize)
+                .map(|row| row.iter().collect()),
+        )
+        .chain(
+            finds::SCAVENGED
                 .chunks(columns as usize)
                 .map(|row| row.iter().collect()),
         )
