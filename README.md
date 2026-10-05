@@ -89,9 +89,10 @@ written here.
 **The Hilltop.** The colony's own place, empty at first.
 - **Arranging.** Any find can stand on any of its eighteen spots, wherever you like, and the colony
   goes to visit what stands there.
-- **Growing.** Bluebells, an oak, a berry bush and five more grow once planted. They start as a
-  sprout in turned earth and grow a stage with every visit, and the colony tends them, each in
-  its own way. Nothing wilts while the colony is away.
+- **Growing.** Bluebells, an oak, a berry bush and five more grow once planted, and so do the
+  hedgerow's seeds and cuttings, into a strawberry bed, a hazel, a crab apple, a wild rose and a
+  cushion of thyme. They start as a sprout in turned earth and grow a stage with every visit, and
+  the colony tends them, each in its own way. Nothing wilts while the colony is away.
 - **Building.** A plan comes to mind with the first find that goes into it: ten of them, from a
   grand cairn and a picnic table to the great telescope, a wishing well and the bandstand. Build
   one from the satchel, and the colony gathers round to lend a hand before it appears in a puff of
@@ -126,8 +127,7 @@ written here.
 ### Coming next
 
 - **The Fairground:** hoopla, and a tug-of-war for co-op and competitive play.
-- **The Woods:** scavenging and treasure routes, longer expeditions that combine activities, and
-  growing the hedgerow's seeds and cuttings on the Hilltop.
+- **The Woods:** scavenging and treasure routes, and longer expeditions that combine activities.
 
 ## Getting there
 
