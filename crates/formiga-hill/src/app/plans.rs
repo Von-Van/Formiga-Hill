@@ -67,7 +67,11 @@ pub(super) fn short_of(
             Some(find) if !found(id) => format!(
                 "something {} not found yet, {}",
                 find.tier.label(),
-                find.kind.whereabouts()
+                if finds::is_scavenged(id) {
+                    "on the old track"
+                } else {
+                    find.kind.whereabouts()
+                }
             ),
             _ if count == 1 && satchel.get(id).is_some_and(|have| *have > 0) => {
                 format!("one more {}", strip_article(&some(id, 1)))

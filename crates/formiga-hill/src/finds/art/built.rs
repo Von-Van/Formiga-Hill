@@ -31,6 +31,8 @@ pub fn piece(id: &str) -> Option<Piece> {
         "great_telescope" => great_telescope(),
         "bandstand" => bandstand(),
         "burrow_house" => burrow_house(),
+        "woodshed" => super::track::woodshed(),
+        "tea_party" => super::track::tea_party(),
         _ => return None,
     })
 }
@@ -49,7 +51,7 @@ pub fn lights(id: &str) -> Vec<(Rgba, (i32, i32))> {
             (candle, BACK_WINDOW),
             (candle, (31, 31)),
         ],
-        _ => Vec::new(),
+        _ => super::track::built_lights(id),
     }
 }
 

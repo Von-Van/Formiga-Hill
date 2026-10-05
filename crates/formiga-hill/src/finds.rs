@@ -609,13 +609,148 @@ pub const FORAGED: [Find; 12] = [
     },
 ];
 
+/// What the old track gives, scavenged from its heaps or dug up in a chest at the end of a map: a
+/// catalogue of its own, so nothing here turns up rummaging or foraging, and nothing from there
+/// turns up on the old track (see `track`). The commoner things lie in the heaps, the rare ones
+/// deep in them or in a chest, and the exceptional ones only in a chest. The china teacup is the
+/// one thing that breaks: crushed in a heap as it shifts, it comes home as the cracked one. Their
+/// `kind` is only the sort of place in the glade each draws the eye to on the Hilltop.
+pub const SCAVENGED: [Find; 12] = [
+    Find {
+        id: "cracked_teacup",
+        name: "A cracked teacup",
+        piece: "A teacup planter",
+        kind: Dig,
+        tier: Common,
+        leanings: &[Cosy, Tiny],
+        use_: Use::Look,
+        blurb: "Blue birds on white china, and a crack from rim to foot. It still holds a little soil.",
+    },
+    Find {
+        id: "copper_kettle",
+        name: "A copper kettle",
+        piece: "A camp kettle",
+        kind: Scoop,
+        tier: Common,
+        leanings: &[Cosy, Shiny],
+        use_: Use::Sit,
+        blurb: "Dented, green at the spout, and with the woodcutter's last tea leaves still in it.",
+    },
+    Find {
+        id: "tin_soldier",
+        name: "A tin soldier",
+        piece: "A sentry box",
+        kind: Dig,
+        tier: Common,
+        leanings: &[Tiny, Old],
+        use_: Use::Play,
+        blurb: "Saluting, the paint worn off his coat. He has kept watch in that tin a long time.",
+    },
+    Find {
+        id: "straw_hat",
+        name: "An old straw hat",
+        piece: "A scarecrow",
+        kind: Shake,
+        tier: Common,
+        leanings: &[Cosy, Odd],
+        use_: Use::Look,
+        blurb: "Battered and wide, with a feather still in the band. It wants a head to sit on.",
+    },
+    Find {
+        id: "china_teacup",
+        name: "A china teacup",
+        piece: "A teacup tower",
+        kind: Dig,
+        tier: Uncommon,
+        leanings: &[Cosy, Old],
+        use_: Use::Look,
+        blurb: "Blue birds on white china, not a chip on it: a small wonder, under all that.",
+    },
+    Find {
+        id: "brass_bell",
+        name: "A brass bell",
+        piece: "A bell frame",
+        kind: Reach,
+        tier: Uncommon,
+        leanings: &[Shiny, Old],
+        use_: Use::Play,
+        blurb: "Off the old cart horse's harness. It still rings, a little out of tune.",
+    },
+    Find {
+        id: "carved_sign",
+        name: "A carved sign",
+        piece: "A signpost",
+        kind: Shake,
+        tier: Uncommon,
+        leanings: &[Old, Wild],
+        use_: Use::Look,
+        blurb: "A board carved with a hand pointing the way, and letters worn too smooth to read.",
+    },
+    Find {
+        id: "woodcutters_lantern",
+        name: "A woodcutter's lantern",
+        piece: "A lantern by a log seat",
+        kind: Reach,
+        tier: Uncommon,
+        leanings: &[Old, Cosy],
+        use_: Use::Rest,
+        blurb: "Tin and glass in a wire guard, with a hook to hang it by. The wick is still good.",
+    },
+    Find {
+        id: "pocket_compass",
+        name: "A pocket compass",
+        piece: "A compass rose",
+        kind: Dig,
+        tier: Rare,
+        leanings: &[Wild, Old],
+        use_: Use::Sit,
+        blurb: "Its needle swings round and settles, and somehow always points home to the Hill.",
+    },
+    Find {
+        id: "cuckoo_clock",
+        name: "A cuckoo clock",
+        piece: "A cuckoo clock on a post",
+        kind: Reach,
+        tier: Rare,
+        leanings: &[Odd, Cosy],
+        use_: Use::Play,
+        blurb: "Carved with oak leaves. Wound up, the cuckoo comes out and looks surprised.",
+    },
+    Find {
+        id: "ship_in_a_bottle",
+        name: "A ship in a bottle",
+        piece: "The bottled ship",
+        kind: Scoop,
+        tier: Exceptional,
+        leanings: &[Odd, Old],
+        use_: Use::Look,
+        blurb: "A tall ship in full sail, three masts and every rope, somehow inside a bottle.",
+    },
+    Find {
+        id: "golden_axe",
+        name: "The golden axe",
+        piece: "The golden axe in its stump",
+        kind: Reach,
+        tier: Exceptional,
+        leanings: &[Shiny, Old],
+        use_: Use::Look,
+        blurb: "The honest woodcutter's, from the old story: gold from head to handle, and far too fine to chop with.",
+    },
+];
+
 pub fn find(id: &str) -> Option<&'static Find> {
     CATALOGUE
         .iter()
         .chain(FORAGED.iter())
+        .chain(SCAVENGED.iter())
         .chain(RELICS.iter())
         .chain(AFAR.iter())
         .find(|find| find.id == id)
+}
+
+/// Whether a find comes from the old track, scavenged or dug up, rather than anywhere else.
+pub fn is_scavenged(id: &str) -> bool {
+    SCAVENGED.iter().any(|find| find.id == id)
 }
 
 /// Whether a find is one of the secret relics.
