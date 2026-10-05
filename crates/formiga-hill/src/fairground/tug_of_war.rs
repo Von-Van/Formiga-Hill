@@ -1252,28 +1252,55 @@ mod tests {
         assert!((l - r).abs() / (l + r) < 0.2, "{l} against {r}");
     }
 
-    #[test]
-    fn rivals_are_sorted_onto_opposite_sides_and_close_friends_onto_the_same_one() {
+    /// The grown-ups, each as strong as `strong` says.
+    fn of_strength(strong: impl Fn(usize) -> bool) -> TravelSnapshot {
         let mut snapshot = grown_ups();
+        for (index, traveler) in snapshot.travelers.iter_mut().enumerate() {
+            let pull = if strong(index) { 1.0 } else { 0.2 };
+            traveler.character.axes.feistiness = pull;
+            traveler.character.axes.energy = pull;
+            traveler.stature_percent = 100;
+            traveler.scale_percent = 100;
+        }
+        snapshot
+    }
+
+    #[test]
+    fn two_who_dont_get_on_are_sorted_onto_opposite_sides_even_with_a_friend_in_common() {
+        // Both are close to a third, who would have them both on its side; but they don't get on.
+        let mut snapshot = of_strength(|_| false);
         bond(&mut snapshot, 0, 1, Band::Low, Band::High);
-        bond(&mut snapshot, 2, 3, Band::High, Band::None);
+        bond(&mut snapshot, 0, 2, Band::High, Band::None);
+        bond(&mut snapshot, 1, 2, Band::High, Band::None);
         let cast = Cast::new(snapshot).unwrap();
         let ids: Vec<Id> = cast.ids().collect();
         assert!(cast.at_odds(ids[0], ids[1]));
-        assert!(close(&cast, ids[2], ids[3]));
         let (left, _) = sort(&cast, &characters(&cast));
-        let together = |a: Id, b: Id| left.contains(&a) == left.contains(&b);
-        assert!(!together(ids[0], ids[1]), "the rivals were put together");
-        assert!(together(ids[2], ids[3]), "the friends were split up");
-        // Swap who is close and who is at odds, and the sides change with them.
-        let mut snapshot = grown_ups();
-        bond(&mut snapshot, 0, 1, Band::High, Band::None);
-        bond(&mut snapshot, 2, 3, Band::Low, Band::High);
-        let swapped = Cast::new(snapshot).unwrap();
-        let (left, _) = sort(&swapped, &characters(&swapped));
-        let together = |a: Id, b: Id| left.contains(&a) == left.contains(&b);
-        assert!(together(ids[0], ids[1]));
-        assert!(!together(ids[2], ids[3]));
+        assert_ne!(
+            left.contains(&ids[0]),
+            left.contains(&ids[1]),
+            "the two who don't get on were put together"
+        );
+    }
+
+    #[test]
+    fn close_friends_are_sorted_onto_the_same_side_even_if_they_are_the_strongest() {
+        // Evening out the strength would split the two strongest; but they are close.
+        let mut snapshot = of_strength(|index| index >= 3);
+        bond(&mut snapshot, 3, 4, Band::High, Band::None);
+        let cast = Cast::new(snapshot).unwrap();
+        let ids: Vec<Id> = cast.ids().collect();
+        assert!(close(&cast, ids[3], ids[4]));
+        let (left, _) = sort(&cast, &characters(&cast));
+        assert_eq!(
+            left.contains(&ids[3]),
+            left.contains(&ids[4]),
+            "the friends were split up"
+        );
+        // Strangers, the two strongest are split up to even out the strength.
+        let strangers = Cast::new(of_strength(|index| index >= 3)).unwrap();
+        let (left, _) = sort(&strangers, &characters(&strangers));
+        assert_ne!(left.contains(&ids[3]), left.contains(&ids[4]));
     }
 
     #[test]
@@ -1599,7 +1626,7 @@ mod tests {
         let cast = Cast::new(snapshot).unwrap();
         let (mut ground, mut tug) = ready(&cast);
         tug.start(&mut ground, &cast, &[], None, 6.0);
-        let (mut ticks, mut moves) = (0, 0);
+        let mut moved_at: Vec<f32> = Vec::new();
         let mut last: Vec<(f32, f32)> = Vec::new();
         let (_, over) = run(
             &mut ground,
@@ -1607,25 +1634,30 @@ mod tests {
             &cast,
             6.0,
             300.0,
-            |tug, ground, _| {
+            |tug, ground, now| {
                 if !matches!(tug.phase(), Phase::Pulling { .. }) {
                     return;
                 }
-                let now: Vec<(f32, f32)> = tug
+                let here: Vec<(f32, f32)> = tug
                     .pullers
                     .iter()
                     .map(|p| ground.position(p.id).unwrap())
                     .collect();
-                ticks += 1;
-                if !last.is_empty() && now != last {
-                    moves += 1;
+                if !last.is_empty() && here != last {
+                    moved_at.push(now);
                 }
-                last = now;
+                last = here;
             },
         );
         assert!(over.is_some());
-        assert!(moves * 8 < ticks, "{moves} moves in {ticks} ticks");
-        assert!(moves > 2, "the rope never moved");
+        assert!(moved_at.len() > 2, "the rope never moved");
+        // Only ever a cut at a time, never a heave or a slide between.
+        assert!(
+            moved_at
+                .windows(2)
+                .all(|pair| pair[1] - pair[0] >= CUT_SECS - TICK * 1.5),
+            "{moved_at:?}"
+        );
     }
 
     #[test]
