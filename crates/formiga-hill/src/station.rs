@@ -19,7 +19,7 @@ use formiga_core::ActionKind;
 use journey::Place;
 use train::{Passenger, Train};
 
-pub use journey::Journey;
+pub use journey::{Heard, Journey};
 pub use scenery::STAND_Y;
 
 pub const SCENE_WIDTH: u32 = 384;
@@ -220,6 +220,12 @@ impl Station {
     /// Whether the train is coming or going, which wants a faster redraw.
     pub fn in_motion(&self, now: f32) -> bool {
         !self.is_settled() && !self.gone_home(now)
+    }
+
+    /// What is heard of the train after `from` and up to `now`.
+    pub fn heard(&self, from: f32, now: f32) -> Vec<Heard> {
+        self.journey
+            .heard(from, now, self.travelers.len(), self.reduce_motion)
     }
 
     /// What is showing at `now`: the scene only needs composing again when this changes.

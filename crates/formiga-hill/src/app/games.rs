@@ -2,6 +2,7 @@
 //! person is told as it goes; and what Hill remembers of each game once it is seen through.
 
 use super::{HillApp, clock, tools};
+use crate::audio::Cue;
 use crate::cast::{Cast, Id};
 use crate::fairground::tug_of_war::{self, Side};
 use crate::fairground::{self, Event, Game, Phase, Players, high_striker, hoopla, sack_race};
@@ -146,12 +147,22 @@ enum Told {
     },
 }
 
-/// What has happened in the games since last asked, in the person's words.
-fn happenings(games: &mut fairground::Games, cast: &Cast) -> Vec<Told> {
+/// What has happened in the games since last asked, in the person's words; and how it sounded,
+/// each cue with how loud, into `heard`.
+fn happenings(
+    games: &mut fairground::Games,
+    cast: &Cast,
+    heard: &mut Vec<(Cue, f32)>,
+) -> Vec<Told> {
     let who = |id: Id| name(cast, Some(id));
     let mut told = Vec::new();
     let it = games.hide_and_seek.seeker();
     for event in games.hide_and_seek.take_events() {
+        match event {
+            Event::Coming => heard.push((Cue::ReadyOrNot, 1.0)),
+            Event::Found { .. } => heard.push((Cue::Found, 1.0)),
+            _ => {}
+        }
         let place_name = |place| games.hide_and_seek.place_name(place);
         told.push(match event {
             Event::Dozed => Told::Line(format!("{} has nodded off mid-count.", name(cast, it))),
@@ -176,6 +187,9 @@ fn happenings(games: &mut fairground::Games, cast: &Cast) -> Vec<Told> {
     }
     for event in games.sack_race.take_events() {
         use sack_race::Event;
+        if event == Event::Go {
+            heard.push((Cue::StartWhistle, 1.0));
+        }
         told.push(match event {
             Event::Steady => Told::Line("\u{201c}Ready, steady\u{2026}\u{201d}".to_owned()),
             Event::FalseStart { racer } => Told::Line(format!(
@@ -213,6 +227,13 @@ fn happenings(games: &mut fairground::Games, cast: &Cast) -> Vec<Told> {
     }
     for event in games.high_striker.take_events() {
         use high_striker::Event;
+        match event {
+            Event::Swung { .. } => heard.push((Cue::Strike, 1.0)),
+            // A half-hearted tap is heard as one.
+            Event::Tap { .. } => heard.push((Cue::Strike, 0.35)),
+            Event::Rang { .. } => heard.push((Cue::Bell, 1.0)),
+            _ => {}
+        }
         told.push(match event {
             Event::Up {
                 player,
@@ -265,6 +286,14 @@ fn happenings(games: &mut fairground::Games, cast: &Cast) -> Vec<Told> {
     }
     for event in games.hoopla.take_events() {
         use hoopla::{Event, Landing};
+        if let Event::Landed { landing, .. } = event {
+            match landing {
+                Landing::Rung { .. } => heard.extend([(Cue::Clink, 1.0), (Cue::Prize, 1.0)]),
+                Landing::Peg => heard.push((Cue::Clink, 1.0)),
+                // Into the sawdust, without a sound.
+                Landing::Short => {}
+            }
+        }
         told.push(match event {
             Event::Up { player, near: true } => Told::Line(format!(
                 "{} takes its rings, and gets to throw from the nearer line.",
@@ -325,6 +354,9 @@ fn happenings(games: &mut fairground::Games, cast: &Cast) -> Vec<Told> {
     let sides = games.tug_of_war.sides();
     for event in games.tug_of_war.take_events() {
         use tug_of_war::Event;
+        if let Event::Won { .. } = event {
+            heard.push((Cue::Cheer, 1.0));
+        }
         told.push(match event {
             Event::Sides { chosen: true } => {
                 Told::Line(format!("{}, as you picked them.", against(cast, &sides)))
@@ -372,10 +404,14 @@ fn happenings(games: &mut fairground::Games, cast: &Cast) -> Vec<Told> {
 impl HillApp {
     /// Tells the person what is happening in the game, and remembers how it went once it is over.
     pub(super) fn fairground_events(&mut self, now: f32) {
+        let mut heard = Vec::new();
         let told = match &mut self.fairground {
-            Some((_, games)) => happenings(games, &self.arrival.cast),
+            Some((_, games)) => happenings(games, &self.arrival.cast, &mut heard),
             None => return,
         };
+        for (cue, loudness) in heard {
+            self.sound.play_softly(cue, loudness);
+        }
         let mut last = None;
         for told in told {
             let cast = &self.arrival.cast;

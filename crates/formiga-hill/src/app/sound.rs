@@ -1,16 +1,83 @@
-//! Sound in the window: the piece for wherever the person is, and the Sound window, with its
-//! levels and mute.
+//! Sound in the window: the piece for wherever the person is; what the train, the sack race, the
+//! rope, the colony at work and a story are heard doing, listened for each frame; and the Sound
+//! window, with its levels and mute. The cues for things that tell the window themselves are
+//! played where they are told, beside their notices.
 
 use super::{Area, HillApp};
 use crate::audio::{Cue, Music, Track};
+use crate::character::Offer;
 use crate::clearing::sovereign::State;
+use crate::station::Heard;
 use eframe::egui;
+
+/// How far the brush moves over someone, in scene pixels, for each stroke heard.
+const STROKE: f32 = 10.0;
 
 /// What has been heard so far, so each thing is heard once.
 #[derive(Debug, Default)]
 pub struct Listening {
+    /// How far into the visit the train has been listened to.
+    train: f32,
+    /// The sack race's hops, the rope's heaves and the hammer taps heard so far.
+    hops: u32,
+    heaves: u32,
+    taps: u32,
+    /// What a story, or the clearing, was showing when last looked at.
+    page: Option<Page>,
+    /// How far the brush has moved since the last stroke was heard.
+    pub brushed: f32,
     /// Whether the Sound window is open.
     window: bool,
+}
+
+/// What a story shows at a moment: a line, choices to make, or neither while it plays on.
+#[derive(Clone, Debug, PartialEq)]
+enum Page {
+    Line(String),
+    Choosing(usize),
+    Between,
+}
+
+impl Page {
+    fn of(line: Option<&str>, choices: usize) -> Self {
+        match (line, choices) {
+            (Some(text), _) => Page::Line(text.to_owned()),
+            (None, 0) => Page::Between,
+            (None, choices) => Page::Choosing(choices),
+        }
+    }
+}
+
+/// What is heard as a story goes from showing `before` to showing `now`: a page turned as it
+/// opens or reads on past a line, a choice as one is made, and nothing as it plays on by itself.
+fn turned(before: Option<&Page>, now: Option<&Page>) -> Option<Cue> {
+    match (before, now?) {
+        (Some(Page::Choosing(_)), Page::Choosing(_)) => None,
+        (Some(Page::Choosing(_)), _) => Some(Cue::Choice),
+        (None, _) => Some(Cue::Page),
+        (Some(Page::Line(was)), now) if *now != Page::Line(was.clone()) => Some(Cue::Page),
+        _ => None,
+    }
+}
+
+/// What a pat, a snack, a toy or the brush sounds like, held out.
+pub(super) fn offered(offer: Offer) -> Cue {
+    match offer {
+        Offer::Pet => Cue::Pat,
+        Offer::Snack => Cue::Snack,
+        Offer::Toy => Cue::Toy,
+        Offer::Brush => Cue::Brush,
+    }
+}
+
+/// How many hammer taps are heard in `worked` seconds of building: three quick ones and a
+/// breath, over and over, the first as the work begins.
+fn taps(worked: f32) -> u32 {
+    const ROUND: f32 = 0.9;
+    const GAP: f32 = 0.2;
+    let rounds = (worked.max(0.0) / ROUND) as u32;
+    let into = worked - rounds as f32 * ROUND;
+    rounds * 3 + ((into / GAP) as u32 + 1).min(3)
 }
 
 impl HillApp {
@@ -33,9 +100,69 @@ impl HillApp {
         Some(Music::new(track, self.daylight.lamps() >= 0.5))
     }
 
-    /// Keeps the music to wherever the person is.
-    pub(super) fn listen(&mut self, _now: f32) {
+    /// Listens to everything that is heard without telling the window it has happened: the
+    /// train on its timeline, the hops of the sack race, the heaves of the rope, the hammers on
+    /// the Hilltop, and the pages and choices of a story.
+    pub(super) fn listen(&mut self, now: f32) {
         self.sound.music(self.wanted_music());
+        for heard in self.station.heard(self.listening.train, now) {
+            match heard {
+                Heard::Whistle => self.sound.play(Cue::Whistle),
+                Heard::Chuff { near } => self.sound.play_softly(Cue::Chuff, near),
+                Heard::Brakes => self.sound.play(Cue::Brakes),
+            }
+        }
+        self.listening.train = now;
+        let (hops, heaves) = match &self.fairground {
+            Some((_, games)) => (games.sack_race.hops(), games.tug_of_war.heaves(now)),
+            None => (0, 0),
+        };
+        if hops > self.listening.hops {
+            self.sound.play(Cue::Hop);
+        }
+        if heaves > self.listening.heaves {
+            self.sound.play(Cue::Heave);
+        }
+        (self.listening.hops, self.listening.heaves) = (hops, heaves);
+        let taps = self
+            .crafting
+            .building
+            .as_ref()
+            .and_then(|building| building.worked_for(now))
+            .map_or(0, taps);
+        if taps > self.listening.taps {
+            self.sound.play(Cue::Hammer);
+        }
+        self.listening.taps = taps;
+        self.turn_pages();
+    }
+
+    /// A page turned as a story, or the clearing, reads on, and a choice made when one is.
+    fn turn_pages(&mut self) {
+        let page = match (self.area, &self.story, &self.clearing) {
+            (Area::Clubhouse, Some((_, director)), _) => Some(Page::of(
+                director.shown().map(|shown| shown.text.as_str()),
+                director.choices().len(),
+            )),
+            (Area::Clearing, _, Some((_, sovereign))) => Some(Page::of(
+                sovereign.stage.line.as_ref().map(|(_, text)| text.as_str()),
+                sovereign.choices().len(),
+            )),
+            _ => None,
+        };
+        if let Some(cue) = turned(self.listening.page.as_ref(), page.as_ref()) {
+            self.sound.play(cue);
+        }
+        self.listening.page = page;
+    }
+
+    /// The brush heard once for every so much stroking.
+    pub(super) fn hear_brushing(&mut self, stroke: f32) {
+        self.listening.brushed += stroke;
+        if self.listening.brushed >= STROKE {
+            self.listening.brushed = 0.0;
+            self.sound.play(Cue::Brush);
+        }
     }
 
     /// Mutes everything, or brings it back, and says which.
@@ -134,5 +261,57 @@ impl HillApp {
             self.sound.keep();
         }
         self.listening.window = open;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_hammers_tap_three_times_and_take_a_breath() {
+        assert_eq!(taps(0.0), 1, "the first tap is as the work begins");
+        assert_eq!(taps(0.45), 3);
+        assert_eq!(taps(0.85), 3, "a breath");
+        assert_eq!(taps(0.9), 4);
+        assert_eq!(taps(3.2), 12);
+        assert!((0..200).map(|step| taps(step as f32 * 0.02)).is_sorted());
+    }
+
+    #[test]
+    fn every_offer_is_heard_as_itself() {
+        let cues: std::collections::BTreeSet<&str> =
+            [Offer::Pet, Offer::Snack, Offer::Toy, Offer::Brush]
+                .into_iter()
+                .map(|offer| offered(offer).name())
+                .collect();
+        assert_eq!(cues.len(), 4);
+    }
+
+    #[test]
+    fn a_page_is_turned_as_a_story_reads_on_and_a_choice_made_as_one_is() {
+        let line = |text: &str| Some(Page::of(Some(text), 0));
+        let between = Some(Page::of(None, 0));
+        let choosing = Some(Page::of(None, 2));
+        let heard =
+            |before: &Option<Page>, now: &Option<Page>| turned(before.as_ref(), now.as_ref());
+        assert_eq!(
+            heard(&None, &line("Once")),
+            Some(Cue::Page),
+            "the story opens"
+        );
+        assert_eq!(heard(&line("Once"), &line("upon")), Some(Cue::Page));
+        assert_eq!(heard(&line("Once"), &between), Some(Cue::Page));
+        assert_eq!(heard(&line("Once"), &line("Once")), None, "still reading");
+        assert_eq!(
+            heard(&between, &line("a time")),
+            None,
+            "it played on by itself"
+        );
+        assert_eq!(heard(&line("Which?"), &choosing), Some(Cue::Page));
+        assert_eq!(heard(&choosing, &choosing), None, "still choosing");
+        assert_eq!(heard(&choosing, &between), Some(Cue::Choice));
+        assert_eq!(heard(&choosing, &line("So be it")), Some(Cue::Choice));
+        assert_eq!(heard(&line("The end."), &None), None, "the story is over");
     }
 }

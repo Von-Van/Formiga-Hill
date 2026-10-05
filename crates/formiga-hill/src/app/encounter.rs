@@ -2,6 +2,7 @@
 //! its arrow home.
 
 use super::{Area, HillApp, INK, PAPER};
+use crate::audio::Cue;
 use crate::cast::Id;
 use crate::clearing::{
     self,
@@ -32,6 +33,7 @@ impl HillApp {
         self.clearing = Some((ground, sovereign));
         self.notice = None;
         self.go_to(Area::Clearing, now);
+        self.sound.play(Cue::Sting);
     }
 
     pub(super) fn tick_clearing(&mut self, now: f32) {
@@ -44,6 +46,7 @@ impl HillApp {
         for event in sovereign.take_events() {
             match event {
                 Event::Bested => {
+                    self.sound.play(Cue::Bested);
                     let party = sovereign.party();
                     let first = self.memories.bested_the_sovereign(&party);
                     let line = if first {

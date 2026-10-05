@@ -806,6 +806,7 @@ impl eframe::App for HillApp {
                                 && let (Some(id), Some(ground)) = (hovered, &mut self.hilltop)
                             {
                                 ground.offer(id, self.tool, &mut self.trust, now);
+                                self.sound.play(sound::offered(self.tool));
                             }
                             hovered.filter(|_| piece.is_none())
                         }
@@ -818,6 +819,7 @@ impl eframe::App for HillApp {
                                 ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                                 if response.clicked() {
                                     ground.offer(id, self.tool, &mut self.trust, now);
+                                    self.sound.play(sound::offered(self.tool));
                                 }
                             }
                             // "It", whoever is in front, or whoever is having a go wears its name
@@ -867,6 +869,7 @@ impl eframe::App for HillApp {
                                 ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                                 if response.clicked() {
                                     ground.offer(id, self.tool, &mut self.trust, now);
+                                    self.sound.play(sound::offered(self.tool));
                                 }
                             }
                             if let Some(id) = hovered
@@ -887,6 +890,7 @@ impl eframe::App for HillApp {
                                         dress_on = Some(id);
                                     } else {
                                         green.offer(id, self.tool, &mut self.trust, now);
+                                        self.sound.play(sound::offered(self.tool));
                                     }
                                 }
                             }

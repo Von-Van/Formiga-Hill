@@ -4,6 +4,7 @@
 
 use super::HillApp;
 use super::arranging::Placing;
+use crate::audio::Cue;
 use crate::finds;
 use crate::finds::plans::{PLANS, Plan};
 use crate::hilltop::building::{Building, Moment, PUFF_SECS, puff};
@@ -151,6 +152,7 @@ impl HillApp {
         if !self.arrival.cast.reduce_motion() {
             self.crafting.puffs.push((spot, now));
         }
+        self.sound.play(Cue::Puff);
         self.refresh_hilltop();
     }
 
@@ -177,6 +179,7 @@ impl HillApp {
                 if let Some(name) = name {
                     self.notice = Some((format!("The colony built {name}!"), now));
                 }
+                self.sound.play(Cue::Puff);
                 self.refresh_hilltop();
             }
             Some(Moment::Over) => self.crafting.building = None,

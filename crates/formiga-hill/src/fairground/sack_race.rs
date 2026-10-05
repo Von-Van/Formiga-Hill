@@ -236,6 +236,9 @@ struct Racer {
     shown: Option<Look>,
     /// How far along it is shown: with motion reduced, only where it was at the last cut.
     shown_along: f32,
+    /// Hops landed so far this race, and whether the one under way has landed yet.
+    landings: u32,
+    landed: bool,
 }
 
 impl Racer {
@@ -275,6 +278,10 @@ impl Racer {
         }
         let through = (t / self.gait.air).min(1.0);
         self.along = self.from + self.length * through;
+        if through >= 1.0 && !self.landed {
+            self.landed = true;
+            self.landings += 1;
+        }
         through >= 1.0
     }
 
@@ -282,6 +289,7 @@ impl Racer {
         self.from = self.along;
         self.length = length.max(0.0);
         self.since = now;
+        self.landed = false;
     }
 
     /// How far into the air part of its hop it is, from 0 to 1, if it is in the air.
@@ -369,6 +377,11 @@ impl SackRace {
     /// The order the race finished in, so far or last time, with each one's time.
     pub fn results(&self) -> &[(Id, f32)] {
         &self.results
+    }
+
+    /// How many hops have landed this race, everyone's together, for each to be heard.
+    pub fn hops(&self) -> u32 {
+        self.racers.iter().map(|racer| racer.landings).sum()
     }
 
     /// Seconds since "go".
@@ -517,6 +530,8 @@ impl SackRace {
                     stop: COURSE + 10.0 + (index % 2) as f32 * 5.0,
                     shown: None,
                     shown_along: -TOE,
+                    landings: 0,
+                    landed: false,
                 }
             })
             .collect();
@@ -1335,6 +1350,28 @@ mod tests {
 
     fn count(events: &[Event], wanted: impl Fn(&Event) -> bool) -> usize {
         events.iter().filter(|event| wanted(event)).count()
+    }
+
+    #[test]
+    fn every_hop_is_counted_once_as_it_lands() {
+        let cast = sample();
+        let racers = cast.members.len() as u32;
+        let (mut ground, mut race) = ready(&cast);
+        race.start(&mut ground, &cast, &[], 6.0);
+        let mut counted = 0;
+        let mut most = 0;
+        run(&mut ground, &mut race, &cast, 6.0, 400.0, |race, _, _| {
+            let hops = race.hops();
+            if race.phase() != Phase::Ready {
+                assert!(hops >= counted, "the count went back");
+                assert!(hops - counted <= racers, "a hop was counted twice");
+            }
+            counted = hops;
+            most = most.max(hops);
+        });
+        // Nobody covers the course in fewer than a handful of hops.
+        assert!(most >= racers * 5, "only {most} hops heard");
+        assert_eq!(race.hops(), 0, "a race over leaves nothing to hear");
     }
 
     #[test]

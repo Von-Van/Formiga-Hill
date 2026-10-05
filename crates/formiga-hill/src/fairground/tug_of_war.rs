@@ -495,6 +495,16 @@ impl TugOfWar {
         }
     }
 
+    /// How many heaves of the rope there have been since "pull!", which is the first: one each
+    /// turn of the colony's heaving, for the rope to be heard creaking in time with it. None
+    /// before "pull!" or once the bout is won.
+    pub fn heaves(&self, now: f32) -> u32 {
+        match self.phase {
+            Phase::Pulling { since } => ((now - since).max(0.0) / HEAVE_SECS) as u32 + 1,
+            _ => 0,
+        }
+    }
+
     /// Starts a bout: the person's own sides, if it has chosen them, or else everyone (or those
     /// picked) as the colony sorts itself. The rest watch.
     pub fn start(
@@ -1286,6 +1296,45 @@ mod tests {
             Event::Won { side, .. } => Some(*side),
             _ => None,
         })
+    }
+
+    #[test]
+    fn the_rope_is_heaved_in_time_from_pull_until_the_bout_is_won() {
+        let cast = sample();
+        let (mut ground, mut tug) = ready(&cast);
+        tug.start(&mut ground, &cast, &[], None, 6.0);
+        let mut heard = Vec::new();
+        let mut last = 0;
+        let (events, over) = run(&mut ground, &mut tug, &cast, 6.0, 300.0, |tug, _, now| {
+            let heaves = tug.heaves(now);
+            if heaves > last {
+                heard.push((now, matches!(tug.phase(), Phase::Pulling { .. })));
+            }
+            last = heaves;
+        });
+        assert!(over.is_some());
+        assert!(heard.len() >= 2, "only {} heaves", heard.len());
+        assert!(
+            heard.iter().all(|(_, pulling)| *pulling),
+            "a heave before pull!"
+        );
+        for pair in heard.windows(2) {
+            assert!(
+                (pair[1].0 - pair[0].0 - HEAVE_SECS).abs() < 0.05,
+                "out of time"
+            );
+        }
+        let took = events.iter().find_map(|event| match event {
+            Event::Won { took, .. } => Some(*took),
+            _ => None,
+        });
+        let expected = (took.unwrap() / HEAVE_SECS) as usize + 1;
+        assert!(
+            heard.len().abs_diff(expected) <= 1,
+            "{} for {expected}",
+            heard.len()
+        );
+        assert_eq!(tug.heaves(400.0), 0, "a bout over is heaved no more");
     }
 
     #[test]

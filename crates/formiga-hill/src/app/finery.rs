@@ -3,6 +3,7 @@
 //! from place to place for the rest of the visit. None of it goes home.
 
 use super::{Area, HillApp};
+use crate::audio::Cue;
 use crate::cast::Id;
 use crate::character::{Brushing, Offer};
 use crate::costume;
@@ -44,6 +45,7 @@ impl HillApp {
             .zip(self.pointer);
         let Some((id, at)) = touching else {
             self.stroke = None;
+            self.listening.brushed = 0.0;
             return;
         };
         let stroke = match self.stroke {
@@ -51,6 +53,7 @@ impl HillApp {
             _ => 0.0,
         };
         self.stroke = Some((id, at));
+        self.hear_brushing(stroke);
         let mut trust = std::mem::take(&mut self.trust);
         let reached = self
             .ground_for_finery()
@@ -78,6 +81,7 @@ impl HillApp {
         let line = match pick {
             Pick::Piece(piece) => {
                 self.costumes.insert(id, piece);
+                self.sound.play(Cue::Costume);
                 let called = costume::piece(piece).map_or("something", |piece| piece.name);
                 format!("{name} is wearing {}.", lower_first(called))
             }
