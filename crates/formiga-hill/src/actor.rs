@@ -6,6 +6,7 @@
 
 use crate::cast::{Id, Member};
 use crate::character::{Beat, Character};
+use crate::fairground::prizes::{self, CARRIED_ABOVE, Prize};
 use crate::paint::{blit, ellipse, rgba};
 use formiga_art::{
     AccessoryArt, AnimationSpec, BodyClip, Canvas, CreatureRenderer, ExpressionKind, EyelidPose,
@@ -78,6 +79,8 @@ pub struct Actor {
     face_below_crown: i32,
     /// A piece from the Green's dress-up box, worn for the visit, if it has one on.
     costume: Option<&'static str>,
+    /// A prize won at hoopla, carried for the visit, if it has one.
+    prize: Option<Prize>,
     /// Groomed till it shines, for the rest of the visit.
     shining: bool,
     /// In a sack for the sack race, and which one: each racer's has its own coloured band.
@@ -85,6 +88,10 @@ pub struct Actor {
     /// How far across its sack goes in a frame facing right, from its resting frame, so the
     /// sack keeps its size whatever it does in it.
     girth: Option<(i32, i32)>,
+    /// How wide and how tall it stands at rest, in pixels: how much room it takes in a line, and
+    /// how much of whoever is behind it it hides.
+    width: f32,
+    height: f32,
     /// Tipped over on its side, as after a tumble in its sack.
     tipped: bool,
     /// The frame with its sack and costume on, turned on its side, as last drawn tipped over.
@@ -128,9 +135,22 @@ impl Actor {
             face,
             face_below_crown,
             costume: None,
+            prize: None,
             shining: false,
             sack: None,
             girth: crate::fairground::gear::girth(&resting.canvas),
+            width: resting
+                .canvas
+                .alpha_bounds()
+                .map_or(FRAME_SIZE as f32 / 2.0, |(left, _, right, _)| {
+                    (right - left + 1) as f32
+                }),
+            height: resting
+                .canvas
+                .alpha_bounds()
+                .map_or(FRAME_SIZE as f32 / 2.0, |(_, top, _, bottom)| {
+                    (bottom - top + 1) as f32
+                }),
             tipped: false,
             turned: None,
             foot_row: FRAME_SIZE as i32 - 1 - baseline as i32,
@@ -174,6 +194,29 @@ impl Actor {
             self.steps.front(),
             Some(Step::Walk { .. } | Step::Stride { .. })
         )
+    }
+
+    /// How wide it stands at rest.
+    pub fn width(&self) -> f32 {
+        self.width
+    }
+
+    /// How tall it stands at rest.
+    pub fn height(&self) -> f32 {
+        self.height
+    }
+
+    /// Whether it is lying on its side.
+    #[cfg(test)]
+    pub fn tipped(&self) -> bool {
+        self.tipped
+    }
+
+    /// Where the middle of its face is drawn, in scene pixels, as it stands at rest.
+    #[cfg(test)]
+    pub fn face_at(&self) -> (i32, i32) {
+        let (x, y) = self.origin();
+        (x + face_x(self.face.0, self.facing_right), y + self.face.1)
     }
 
     pub fn current_beat(&self) -> Option<&Beat> {
@@ -405,8 +448,18 @@ impl Actor {
                 at.1 + b as i32,
             ))
         });
-        match worn {
+        let body = match worn {
             Some((l, t, r, b)) => (body.0.min(l), body.1.min(t), body.2.max(r), body.3.max(b)),
+            None => body,
+        };
+        // A prize carried rises over its head, either side of it.
+        match self.prize {
+            Some(_) => (
+                body.0.min(crown.0 - 12),
+                body.1.min(crown.1 - CARRIED_ABOVE),
+                body.2.max(crown.0 + 12),
+                body.3,
+            ),
             None => body,
         }
     }
@@ -457,11 +510,27 @@ impl Actor {
                 key.facing_right,
             );
         }
+        if let Some(prize) = self.prize {
+            prizes::carried(
+                scene,
+                prize,
+                (x + crown.0, y + crown.1),
+                self.face_below_crown + THROAT_BELOW_FACE,
+                key.facing_right,
+                now,
+                self.reduce_motion,
+            );
+        }
     }
 
     /// Puts on a piece from the dress-up box, or takes it off.
     pub fn wear(&mut self, costume: Option<&'static str>) {
         self.costume = costume;
+    }
+
+    /// Carries a prize won at hoopla, or nothing.
+    pub fn carry(&mut self, prize: Option<Prize>) {
+        self.prize = prize;
     }
 
     /// Groomed till it shines, or not.

@@ -3,7 +3,8 @@
 
 use super::{HillApp, clock, tools};
 use crate::cast::{Cast, Id};
-use crate::fairground::{self, Event, Game, Phase, Players, high_striker, sack_race};
+use crate::fairground::tug_of_war::{self, Side};
+use crate::fairground::{self, Event, Game, Phase, Players, high_striker, hoopla, sack_race};
 use crate::story::souvenirs;
 use eframe::egui;
 
@@ -76,12 +77,73 @@ fn standings(cast: &Cast, ranking: &[(Id, f32)]) -> String {
         .join("  \u{b7}  ")
 }
 
+/// Hoopla's tally as the bar shows it: "1st Fig, 3 rings · 2nd Biscuit, 1 ring".
+fn rung(cast: &Cast, tally: &[(Id, u32)]) -> String {
+    tally
+        .iter()
+        .enumerate()
+        .map(|(index, (id, rings))| {
+            format!(
+                "{} {}, {}",
+                place(index + 1),
+                name(cast, Some(*id)),
+                rings_rung(*rings)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("  \u{b7}  ")
+}
+
+/// "1 ring", "3 rings", "no rings".
+pub(super) fn rings_rung(rings: u32) -> String {
+    match rings {
+        0 => "no rings".to_owned(),
+        1 => "1 ring".to_owned(),
+        _ => format!("{rings} rings"),
+    }
+}
+
+/// The two sides of a tug-of-war as the bar says them: "Fig, Moss and Pip against Button, Tansy
+/// and Biscuit".
+fn against(cast: &Cast, (left, right): &(Vec<Id>, Vec<Id>)) -> String {
+    let names = |ids: &[Id]| -> String {
+        let names: Vec<String> = ids.iter().map(|id| name(cast, Some(*id))).collect();
+        listed(&names)
+    };
+    format!("{} against {}", names(left), names(right))
+}
+
+/// A side of the rope as the bar calls it, by whoever anchors it at the back: "Fig's side".
+fn side_of(cast: &Cast, sides: &(Vec<Id>, Vec<Id>), side: Side) -> String {
+    let ids = match side {
+        Side::Left => &sides.0,
+        Side::Right => &sides.1,
+    };
+    format!("{}'s side", name(cast, ids.last().copied()))
+}
+
 /// Something to tell the person: a line as it is, or a game seen through, to be remembered first.
 enum Told {
     Line(String),
-    AllFound { it: Option<Id>, took: f32 },
-    AllHome { results: Vec<(Id, f32)>, took: f32 },
-    AllDone { ranking: Vec<(Id, f32)> },
+    AllFound {
+        it: Option<Id>,
+        took: f32,
+    },
+    AllHome {
+        results: Vec<(Id, f32)>,
+        took: f32,
+    },
+    AllDone {
+        ranking: Vec<(Id, f32)>,
+    },
+    AllThrown {
+        tally: Vec<(Id, u32)>,
+    },
+    Pulled {
+        winners: Vec<Id>,
+        losers: Vec<Id>,
+        took: f32,
+    },
 }
 
 /// What has happened in the games since last asked, in the person's words.
@@ -201,6 +263,109 @@ fn happenings(games: &mut fairground::Games, cast: &Cast) -> Vec<Told> {
             },
         });
     }
+    for event in games.hoopla.take_events() {
+        use hoopla::{Event, Landing};
+        told.push(match event {
+            Event::Up { player, near: true } => Told::Line(format!(
+                "{} takes its rings, and gets to throw from the nearer line.",
+                who(player)
+            )),
+            Event::Up { player, .. } => Told::Line(format!(
+                "{} takes its three rings to the line.",
+                who(player)
+            )),
+            Event::Measures { player } => Told::Line(format!(
+                "{} steadies itself and measures each throw.",
+                who(player)
+            )),
+            Event::BehindTheBack { player } => Told::Line(format!(
+                "{} turns its back to throw one over its shoulder\u{2026}",
+                who(player)
+            )),
+            Event::Landed {
+                player,
+                landing: Landing::Rung { prize },
+                behind_back: true,
+                ..
+            } => Told::Line(format!(
+                "Behind its back, and {} rings {}! Spectacular!",
+                who(player),
+                prize.name()
+            )),
+            Event::Landed {
+                player,
+                landing: Landing::Rung { prize },
+                ..
+            } => Told::Line(format!("{} rings {}!", who(player), prize.name())),
+            Event::Landed {
+                player,
+                landing: Landing::Peg,
+                ..
+            } => Told::Line(format!("Clink! {}'s ring bounces off a peg.", who(player))),
+            Event::Landed { player, .. } => {
+                Told::Line(format!("{}'s ring falls short.", who(player)))
+            }
+            Event::Gave { from, to, prize } => Told::Line(format!(
+                "{} gives {} to {}.",
+                who(from),
+                prize.name(),
+                who(to)
+            )),
+            Event::TurnOver { rings: 0, .. } => continue,
+            Event::TurnOver { player, rings } => Told::Line(match rings {
+                1 => format!("{} rang one of three.", who(player)),
+                2 => format!("{} rang two of three.", who(player)),
+                _ => format!("{} rang all three!", who(player)),
+            }),
+            Event::AllDone => Told::AllThrown {
+                tally: games.hoopla.tally(),
+            },
+        });
+    }
+    let sides = games.tug_of_war.sides();
+    for event in games.tug_of_war.take_events() {
+        use tug_of_war::Event;
+        told.push(match event {
+            Event::Sides { chosen: true } => {
+                Told::Line(format!("{}, as you picked them.", against(cast, &sides)))
+            }
+            Event::Sides { .. } => Told::Line(format!(
+                "{}: the colony has sorted itself.",
+                against(cast, &sides)
+            )),
+            Event::InStep { a, b } => {
+                Told::Line(format!("{} and {} pull in rhythm.", who(a), who(b)))
+            }
+            Event::OutOfStep { a, b } => {
+                Told::Line(format!("{} and {} can't keep in step.", who(a), who(b)))
+            }
+            Event::Beside { parent, little } => Told::Line(format!(
+                "{} pulls all the harder beside {}.",
+                who(parent),
+                who(little)
+            )),
+            Event::Pull => Told::Line("\u{201c}Pull!\u{201d}".to_owned()),
+            Event::Slack { puller } => {
+                Told::Line(format!("{} lets the rope go slack\u{2026}", who(puller)))
+            }
+            Event::Waves { puller } => {
+                Told::Line(format!("{} stops to wave to the crowd!", who(puller)))
+            }
+            Event::Cheers { puller } => Told::Line(format!("{} cheers its side on!", who(puller))),
+            Event::Won { side, took } => {
+                let (winners, losers) = match side {
+                    Side::Left => (sides.0.clone(), sides.1.clone()),
+                    Side::Right => (sides.1.clone(), sides.0.clone()),
+                };
+                Told::Pulled {
+                    winners,
+                    losers,
+                    took,
+                }
+            }
+            Event::AllDone => continue,
+        });
+    }
     told
 }
 
@@ -266,6 +431,45 @@ impl HillApp {
                     self.kept_line(&mut line, first, Game::HighStriker.souvenir());
                     line
                 }
+                Told::AllThrown { tally } => {
+                    let first = !self.kept(Game::Hoopla.souvenir());
+                    let more: Vec<String> =
+                        self.memories.hooped(&tally).into_iter().map(who).collect();
+                    let mut line = match tally.first() {
+                        Some((top, rings)) if *rings > 0 => format!(
+                            "Everyone's had their rings. {} rang the most: {}!",
+                            who(*top),
+                            rings_rung(*rings)
+                        ),
+                        _ => "Everyone's had their rings, and the prizes are all still there."
+                            .to_owned(),
+                    };
+                    if !more.is_empty() {
+                        line.push_str(&format!(" The most yet for {}.", listed(&more)));
+                    }
+                    self.kept_line(&mut line, first, Game::Hoopla.souvenir());
+                    line
+                }
+                Told::Pulled {
+                    winners,
+                    losers,
+                    took,
+                } => {
+                    let first = !self.kept(Game::TugOfWar.souvenir());
+                    self.memories.tugged(&winners);
+                    let names = |ids: &[Id]| {
+                        let names: Vec<String> = ids.iter().map(|id| who(*id)).collect();
+                        listed(&names)
+                    };
+                    let mut line = format!(
+                        "Over the line! {} win in {}, and into the hay go {}.",
+                        names(&winners),
+                        clock(took),
+                        names(&losers)
+                    );
+                    self.kept_line(&mut line, first, Game::TugOfWar.souvenir());
+                    line
+                }
             };
             last = Some(line);
         }
@@ -300,6 +504,8 @@ impl HillApp {
     pub(super) fn fairground_bar(&mut self, ui: &mut egui::Ui, now: f32) {
         let race_record = self.race_record();
         let striker_record = self.striker_record();
+        let hoopla_record = self.hoopla_record();
+        let tug_record = self.tug_record();
         let Some((ground, games)) = &mut self.fairground else {
             return;
         };
@@ -317,11 +523,15 @@ impl HillApp {
                             ui.selectable_value(&mut self.game, game, game.name());
                         }
                     });
-                let enough = self.picks.enough(self.game);
+                let travellers = cast.members.len();
+                let enough = self.picks.enough(self.game, travellers);
                 let watch = ui.add_enabled(enough, egui::Button::new("Watch"));
-                start = watch
-                    .on_disabled_hover_text("Pick two or more to race, or nobody for everyone.")
-                    .clicked();
+                let why = match self.game.players() {
+                    _ if travellers < 2 => "It takes two or more travellers to play this.",
+                    Players::Sides => "Put someone on each side, or nobody for them to sort.",
+                    _ => "Pick two or more to race, or nobody for everyone.",
+                };
+                start = watch.on_disabled_hover_text(why).clicked();
                 let game = self.game;
                 match game.players() {
                     Players::It => {
@@ -388,6 +598,9 @@ impl HillApp {
                         let record = match game {
                             Game::SackRace => race_record
                                 .map(|(who, seconds)| format!("Record: {who} {}", clock(seconds))),
+                            Game::Hoopla => hoopla_record.map(|(who, rings)| {
+                                format!("Most rings: {who}, {}", rings_rung(rings))
+                            }),
                             _ => striker_record.map(|(who, height)| {
                                 format!("Highest: {who}, {}", reached(height))
                             }),
@@ -397,12 +610,117 @@ impl HillApp {
                         }
                         let last = match game {
                             Game::SackRace => finish_order(cast, games.sack_race.results()),
+                            Game::Hoopla => rung(cast, &games.hoopla.tally()),
                             _ => standings(cast, &games.high_striker.ranking()),
                         };
                         if !last.is_empty() {
                             ui.label("Last time").on_hover_text(last);
                         }
                     }
+                    Players::Sides => {
+                        let (left, right) = self.picks.sides();
+                        let chosen = if left.is_empty() && right.is_empty() {
+                            "the colony sorts itself".to_owned()
+                        } else {
+                            format!("{} against {}", left.len(), right.len())
+                        };
+                        let sorted = {
+                            let everyone: Vec<(Id, crate::character::Character)> = cast
+                                .members
+                                .iter()
+                                .map(|m| (m.id, crate::character::Character::of(m)))
+                                .collect();
+                            tug_of_war::sort(cast, &everyone)
+                        };
+                        egui::ComboBox::from_id_salt("sides")
+                            .selected_text(format!("Sides: {chosen}"))
+                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+                            .show_ui(ui, |ui| {
+                                let sorting = left.is_empty() && right.is_empty();
+                                if ui
+                                    .selectable_label(sorting, "Let the colony sort itself")
+                                    .on_hover_text(against(cast, &sorted))
+                                    .clicked()
+                                {
+                                    self.picks.unsort();
+                                }
+                                egui::Grid::new("sides-grid").show(ui, |ui| {
+                                    for member in &cast.members {
+                                        ui.label(&member.name);
+                                        let now_on = self.picks.side(member.id);
+                                        for (label, side) in [
+                                            ("Left", Some(Side::Left)),
+                                            ("Right", Some(Side::Right)),
+                                            ("Out", None),
+                                        ] {
+                                            if ui.selectable_label(now_on == side, label).clicked()
+                                            {
+                                                self.picks.put(member.id, side);
+                                            }
+                                        }
+                                        ui.end_row();
+                                    }
+                                });
+                            })
+                            .response
+                            .on_hover_text(if left.is_empty() && right.is_empty() {
+                                against(cast, &sorted)
+                            } else {
+                                against(cast, &(left.clone(), right.clone()))
+                            });
+                        if let Some((who, wins)) = &tug_record {
+                            ui.label(format!("Most wins: {who}, {wins}"));
+                        }
+                        if let Some(winners) = games.tug_of_war.winners() {
+                            let sides = games.tug_of_war.sides();
+                            ui.label("Last time").on_hover_text(format!(
+                                "{} won: {}",
+                                side_of(cast, &sides, winners),
+                                against(cast, &sides)
+                            ));
+                        }
+                    }
+                }
+            }
+            Some(Game::TugOfWar) => {
+                let tug = &games.tug_of_war;
+                let sides = tug.sides();
+                let status = match tug.phase() {
+                    tug_of_war::Phase::TakingUp { .. } => {
+                        format!("{}, taking up the rope\u{2026}", against(cast, &sides))
+                    }
+                    tug_of_war::Phase::Strain { .. } => "Take the strain\u{2026}".to_owned(),
+                    tug_of_war::Phase::Pulling { .. } => {
+                        let ribbon = tug.ribbon();
+                        let way = if ribbon.abs() < 2.0 {
+                            "level".to_owned()
+                        } else {
+                            let side = if ribbon > 0.0 {
+                                Side::Right
+                            } else {
+                                Side::Left
+                            };
+                            format!("going {}'s way", side_of(cast, &sides, side))
+                        };
+                        format!(
+                            "The tug-of-war  \u{b7}  {}  \u{b7}  {way}",
+                            clock(tug.pulling_for(now))
+                        )
+                    }
+                    tug_of_war::Phase::Tumbling { winners, .. }
+                    | tug_of_war::Phase::Over { winners, .. } => {
+                        format!("{} won!", side_of(cast, &sides, winners))
+                    }
+                    tug_of_war::Phase::Ready => String::new(),
+                };
+                ui.label(status);
+                if matches!(
+                    tug.phase(),
+                    tug_of_war::Phase::TakingUp { .. }
+                        | tug_of_war::Phase::Strain { .. }
+                        | tug_of_war::Phase::Pulling { .. }
+                ) {
+                    call_off = ui.button("Call it off").clicked();
                 }
             }
             Some(Game::HideAndSeek) => match games.hide_and_seek.phase() {
@@ -490,10 +808,40 @@ impl HillApp {
                     }
                 }
             }
+            Some(Game::Hoopla) => {
+                let stall = &games.hoopla;
+                match stall.phase() {
+                    hoopla::Phase::Playing { .. } => {
+                        let (done, of) = stall.progress();
+                        let mut status = stall.player().map_or(String::new(), |player| {
+                            format!("{} is throwing", name(cast, Some(player)))
+                        });
+                        status.push_str(&format!("  \u{b7}  {} of {of}", done + 1));
+                        if let Some((top, rings)) =
+                            stall.tally().first().filter(|(_, rings)| *rings > 0)
+                        {
+                            status.push_str(&format!(
+                                "  \u{b7}  most so far: {}, {}",
+                                name(cast, Some(*top)),
+                                rings_rung(*rings)
+                            ));
+                        }
+                        ui.label(status);
+                        call_off = ui.button("Call it off").clicked();
+                    }
+                    _ => {
+                        ui.label(rung(cast, &stall.tally()));
+                    }
+                }
+            }
         }
         if start {
-            let picked = self.picks.of(self.game).to_vec();
-            games.start(self.game, ground, cast, &picked, now);
+            if self.game == Game::TugOfWar {
+                games.start_tug(ground, cast, self.picks.sides(), now);
+            } else {
+                let picked = self.picks.of(self.game).to_vec();
+                games.start(self.game, ground, cast, &picked, now);
+            }
             self.picks.used(self.game);
         }
         if call_off {
@@ -519,6 +867,35 @@ impl HillApp {
                 Some((member.name.clone(), *best))
             })
             .min_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// The most rings rung in one turn at hoopla among those here: who, and how many.
+    pub(super) fn hoopla_record(&self) -> Option<(String, u32)> {
+        let colony = self.memories.colony();
+        self.arrival
+            .cast
+            .members
+            .iter()
+            .filter_map(|member| {
+                let best = colony.most_rings.get(&member.id.to_string())?;
+                Some((member.name.clone(), *best))
+            })
+            .filter(|(_, rings)| *rings > 0)
+            .max_by_key(|(_, rings)| *rings)
+    }
+
+    /// The most tug-of-war wins among those here: who, and how many.
+    pub(super) fn tug_record(&self) -> Option<(String, u32)> {
+        let colony = self.memories.colony();
+        self.arrival
+            .cast
+            .members
+            .iter()
+            .filter_map(|member| {
+                let wins = colony.tug_wins.get(&member.id.to_string())?;
+                Some((member.name.clone(), *wins))
+            })
+            .max_by_key(|(_, wins)| *wins)
     }
 
     /// The highest swing at the striker among those here: who, and how high.

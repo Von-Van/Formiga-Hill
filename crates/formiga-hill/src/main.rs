@@ -63,6 +63,9 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-sack-race <PNG> Draw a sack race at the Fairground, --at seconds after the off
   --render-high-striker <PNG>
                            Draw the colony at the high striker, --at seconds into the game
+  --render-hoopla <PNG>    Draw the colony throwing rings at the hoopla stall, --at seconds in
+  --render-tug-of-war <PNG>
+                           Draw the colony at the tug-of-war, --at seconds into the bout
   --render-woods <PNG>     Draw a rummage in the Woods, --at seconds into it
   --render-hilltop <PNG>   Draw the Hilltop with a sample of finds placed on it
   --render-finds <PNG>     Draw every find's icon and Hilltop piece on one sheet, for review
@@ -109,6 +112,10 @@ enum Area {
     SackRace,
     /// The Fairground, the colony taking turns at the high striker.
     HighStriker,
+    /// The Fairground, the colony taking turns at the hoopla stall.
+    Hoopla,
+    /// The Fairground, the colony at the tug-of-war.
+    TugOfWar,
     Woods,
     Hilltop,
     /// Not an area: the review sheet of every find.
@@ -280,6 +287,8 @@ fn main() -> Result<()> {
             Area::HideAndSeek => hiding_moment(&arrival.cast, args.at.unwrap_or(4.0), daylight),
             Area::SackRace => race_moment(&arrival.cast, args.at.unwrap_or(5.0), daylight),
             Area::HighStriker => striker_moment(&arrival.cast, args.at.unwrap_or(9.0), daylight),
+            Area::Hoopla => hoopla_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
+            Area::TugOfWar => tug_moment(&arrival.cast, args.at.unwrap_or(10.0), daylight),
             Area::Woods => woods_moment(&arrival.cast, args.at.unwrap_or(12.0), daylight),
             Area::Hilltop => {
                 let until = args.at.unwrap_or(20.0);
@@ -410,6 +419,10 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             }
             Some("--render-high-striker") => {
                 render = Some((Area::HighStriker, value("--render-high-striker")?));
+            }
+            Some("--render-hoopla") => render = Some((Area::Hoopla, value("--render-hoopla")?)),
+            Some("--render-tug-of-war") => {
+                render = Some((Area::TugOfWar, value("--render-tug-of-war")?));
             }
             Some("--render-woods") => render = Some((Area::Woods, value("--render-woods")?)),
             Some("--render-hilltop") => {
@@ -663,6 +676,47 @@ fn striker_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas 
             games.start(fairground::Game::HighStriker, &mut ground, cast, &[], now);
         }
         for event in games.high_striker.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    ground.compose(now)
+}
+
+/// The colony taking turns at the hoopla stall, `at` seconds after the game starts.
+fn hoopla_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    const SETTLE: f32 = 6.0;
+    let (mut ground, mut games) = fairground::open(cast, 0.0);
+    ground.set_daylight(daylight);
+    let mut now = 0.0;
+    while now < SETTLE + at {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        games.tick(&mut ground, now);
+        if now >= SETTLE && now - 1.0 / 30.0 < SETTLE {
+            games.start(fairground::Game::Hoopla, &mut ground, cast, &[], now);
+        }
+        for event in games.hoopla.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    ground.compose(now)
+}
+
+/// A tug-of-war at the Fairground, the colony sorting itself into sides, `at` seconds after the
+/// bout starts.
+fn tug_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
+    const SETTLE: f32 = 6.0;
+    let (mut ground, mut games) = fairground::open(cast, 0.0);
+    ground.set_daylight(daylight);
+    let mut now = 0.0;
+    while now < SETTLE + at {
+        now += 1.0 / 30.0;
+        ground.tick(cast, now);
+        games.tick(&mut ground, now);
+        if now >= SETTLE && now - 1.0 / 30.0 < SETTLE {
+            games.start(fairground::Game::TugOfWar, &mut ground, cast, &[], now);
+        }
+        for event in games.tug_of_war.take_events() {
             println!("{now:6.1}s  {event:?}");
         }
     }
@@ -1364,6 +1418,22 @@ mod tests {
             args.render,
             Some((Area::HighStriker, PathBuf::from("striker.png")))
         );
+        let args = parse(&["--render-hoopla", "hoopla.png", "--at", "20"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            args.render,
+            Some((Area::Hoopla, PathBuf::from("hoopla.png")))
+        );
+        assert_eq!(args.at, Some(20.0));
+        let args = parse(&["--render-tug-of-war", "tug.png", "--at", "8"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            args.render,
+            Some((Area::TugOfWar, PathBuf::from("tug.png")))
+        );
+        assert_eq!(args.at, Some(8.0));
     }
 
     #[test]

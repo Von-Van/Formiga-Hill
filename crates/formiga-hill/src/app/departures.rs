@@ -4,7 +4,7 @@
 //! asks anything of anyone: a notice is news or an invitation, never a chore or a reminder of
 //! time away.
 
-use super::games::reached;
+use super::games::{reached, rings_rung};
 use super::{Area, HillApp, Visit, clock};
 use crate::character::Character;
 use crate::hilltop::Standing;
@@ -167,6 +167,9 @@ pub(super) struct Board {
     /// 0 to 1, the bell).
     pub race_record: Option<(String, f32)>,
     pub striker_record: Option<(String, f32)>,
+    /// The most rings rung in one turn at hoopla among those here, and the most tug-of-war wins.
+    pub hoopla_record: Option<(String, u32)>,
+    pub tug_record: Option<(String, u32)>,
     /// Souvenirs that go home on the train to this Desktop.
     pub going_home: usize,
     /// Community packages that could not be read.
@@ -343,6 +346,20 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
             )
         });
     }
+    if let Some((name, rings)) = &board.hoopla_record {
+        records.push(match rings {
+            3.. => format!("{name} rang all three in one turn at hoopla."),
+            2 => format!("{name} rang two in one turn at hoopla, the most yet."),
+            _ => format!("{name} rang one in a turn at hoopla, the most yet."),
+        });
+    }
+    if let Some((name, wins)) = &board.tug_record {
+        records.push(match wins {
+            1 => format!("{name} has won the tug-of-war."),
+            2 => format!("{name} has won the tug-of-war twice."),
+            _ => format!("{name} has won the tug-of-war {wins} times."),
+        });
+    }
     if !records.is_empty() {
         let heading = if records.len() == 1 {
             "Fairground record"
@@ -398,7 +415,9 @@ pub(super) fn departures(board: &Board) -> Vec<Departure> {
         ),
     };
     let mut fair =
-        "Hide-and-seek, the sack race and the high striker, for the colony to play".to_owned();
+        "Hide-and-seek, the sack race, the high striker, hoopla and the tug-of-war, for \
+                    the colony to play"
+            .to_owned();
     let records: Vec<String> = [
         board
             .record
@@ -412,6 +431,18 @@ pub(super) fn departures(board: &Board) -> Vec<Departure> {
             .striker_record
             .as_ref()
             .map(|(name, height)| format!("the high striker, {name} ({})", reached(*height))),
+        board
+            .hoopla_record
+            .as_ref()
+            .map(|(name, rings)| format!("hoopla, {name} ({})", rings_rung(*rings))),
+        board.tug_record.as_ref().map(|(name, wins)| {
+            let wins = if *wins == 1 {
+                "1 win".to_owned()
+            } else {
+                format!("{wins} wins")
+            };
+            format!("the tug-of-war, {name} ({wins})")
+        }),
     ]
     .into_iter()
     .flatten()
@@ -507,6 +538,8 @@ impl HillApp {
             record,
             race_record: self.race_record(),
             striker_record: self.striker_record(),
+            hoopla_record: self.hoopla_record(),
+            tug_record: self.tug_record(),
             going_home,
             problems: self.library.problems.len(),
         }
@@ -786,6 +819,8 @@ mod tests {
             record: Some(("Fern".into(), 42.0)),
             race_record: Some(("Pip".into(), 14.0)),
             striker_record: Some(("Moss".into(), 1.0)),
+            hoopla_record: Some(("Fig".into(), 3)),
+            tug_record: Some(("Tansy".into(), 4)),
             ..Board::default()
         });
         let records = all
@@ -793,8 +828,31 @@ mod tests {
             .find(|n| n.heading.starts_with("Fairground"))
             .unwrap();
         assert_eq!(records.heading, "Fairground records");
-        assert_eq!(records.text.lines().count(), 3);
+        assert_eq!(records.text.lines().count(), 5);
         assert!(records.text.contains("Moss rang the bell"));
+        assert!(
+            records
+                .text
+                .contains("Fig rang all three in one turn at hoopla.")
+        );
+        assert!(
+            records
+                .text
+                .contains("Tansy has won the tug-of-war 4 times.")
+        );
+        let few = notices(&Board {
+            hoopla_record: Some(("Fig".into(), 1)),
+            tug_record: Some(("Tansy".into(), 1)),
+            ..Board::default()
+        });
+        let records = few
+            .iter()
+            .find(|n| n.heading.starts_with("Fairground"))
+            .unwrap();
+        assert_eq!(
+            records.text,
+            "Fig rang one in a turn at hoopla, the most yet.\nTansy has won the tug-of-war."
+        );
         let short = notices(&Board {
             striker_record: Some(("Moss".into(), 0.74)),
             ..Board::default()
@@ -817,7 +875,13 @@ mod tests {
                 .unwrap()
         };
         let bare = fair(&Board::default());
-        for game in ["Hide-and-seek", "the sack race", "the high striker"] {
+        for game in [
+            "Hide-and-seek",
+            "the sack race",
+            "the high striker",
+            "hoopla",
+            "the tug-of-war",
+        ] {
             assert!(bare.on.contains(game), "{}", bare.on);
         }
         assert!(!bare.on.contains("Records"));
@@ -834,6 +898,17 @@ mod tests {
             row.on
         );
         assert_eq!(row.keen, ["Fern (sack race)"]);
+        let row = fair(&Board {
+            hoopla_record: Some(("Fig".into(), 2)),
+            tug_record: Some(("Tansy".into(), 1)),
+            ..Board::default()
+        });
+        assert!(
+            row.on
+                .ends_with("Records: hoopla, Fig (2 rings); the tug-of-war, Tansy (1 win)"),
+            "{}",
+            row.on
+        );
     }
 
     #[test]
