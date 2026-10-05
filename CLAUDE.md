@@ -78,11 +78,12 @@ side of it.
   `cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace`
 - `--render-station`, `--render-green`, `--render-clubhouse`, `--render-fairground`, `--render-hide-and-seek`,
   `--render-sack-race`, `--render-high-striker`, `--render-hoopla`, `--render-tug-of-war`,
-  `--render-woods`, `--render-fishing`,
-  `--render-bug-hunt`, `--render-meadow`, `--render-hedgerow`, `--render-hilltop`,
-  `--render-building`, `--render-expedition`, `--render-falls` (each with
+  `--render-woods`, `--render-fishing`, `--render-bug-hunt`, `--render-meadow`, `--render-hedgerow`,
+  `--render-track`, `--render-treasure`, `--render-hilltop`, `--render-building`,
+  `--render-expedition`, `--render-falls` (each with
   `--at <seconds>`), `--render-finds`, `--render-growing`, `--render-plans`, `--render-produce`, `--render-fish`,
-  `--render-bugs`, `--render-sovereign`, `--render-reactions` and `--render-costumes` draw
+  `--render-bugs`, `--render-landmarks`, `--render-sovereign`, `--render-reactions` and
+  `--render-costumes` draw
   without a window (any with `--hour <0-24>` to see it at that hour); look at them, cropped and
   enlarged, after changing anything visual or any behaviour in `character.rs`.
 - Behaviour is never written for a particular creature: it is read from the snapshot (axes,
