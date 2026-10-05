@@ -108,11 +108,12 @@ changes how it goes and what turns up, but never rules anything out.
   a heap; the right way ends at a dig, with a chest.
 - **Expeditions.** A whole day out on the Woods' map with up to three companions, on one day's
   light. Choose the way at each fork; every path spends some of the light. Stop on the way for a
-  short go at rummaging, fishing, bug catching or foraging, or for a picnic on the fallen log, and
-  put everything in one small basket. An explorer, a little one, a close pair, a bold one or a
-  reader of old signs each opens a way of their own. Past the signpost, the Far Falls bring down
-  things found nowhere else, each a landmark for the Hilltop. Head home when you like, or at dusk,
-  with the whole basket; the journal keeps a page of the day.
+  short go at rummaging, fishing, bug catching or foraging, a heap or two on the old track, or a
+  picnic on the fallen log, and put everything in one small basket. An explorer, a little one, a
+  close pair, a bold one or a reader of old signs each opens a way of their own. Past the
+  signpost, the Far Falls bring down things found nowhere else, each a landmark for the Hilltop.
+  Head home when you like, or at dusk, with the whole basket and any torn map found on the way;
+  the journal keeps a page of the day.
 
 And somewhere in the Woods there is a secret, played completely straight. How to find it isn't
 written here.
@@ -161,10 +162,6 @@ written here.
 | The Woods | Space to try, to strike, or to swing; hold the pointer, ↑ or W to creep up on a bug |
 | The Hilltop | Esc puts down whatever you are holding |
 | Anywhere | C for the camera, and Esc to put it away; M mutes the sound, or brings it back |
-
-### Coming next
-
-- **The Woods:** the old track as a stop on the expedition map.
 
 ## Getting there
 
