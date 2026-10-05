@@ -1213,11 +1213,12 @@ fn treasure_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas
 
 /// An expedition `at` seconds in, played by a steady hand. A parent and its little one go with
 /// whoever is boldest, if the colony has them, so the ways only some company opens show on the
-/// map. From the edge of the Woods it rummages in the glade, rests on the fallen log, takes the
-/// steep way up the crag to the Far Falls and wades in there, and goes down the stream to fish at
-/// the pool. The Hilltop has no telescope, so the falls are found out of the mist.
+/// map. From the edge of the Woods it rummages in the glade, scavenges a heap or two on the old
+/// track, fishes at the pool, crosses the stepping stones up to the Far Falls and wades in there,
+/// and comes down the steep way to rest on the fallen log. The Hilltop has no telescope, so the
+/// falls are found out of the mist.
 fn expedition_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canvas {
-    use expedition::map::{FAR_FALLS, GLADE, LOG, POOL};
+    use expedition::map::{FAR_FALLS, GLADE, LOG, OLD_TRACK, POOL};
     use expedition::{Expedition, Known, Outset, Phase};
     let family = cast
         .members
@@ -1245,7 +1246,7 @@ fn expedition_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canv
     };
     let mut trip = Expedition::new(cast, outset, known, 0.0);
     trip.set_daylight(daylight);
-    let route = [GLADE, LOG, FAR_FALLS, POOL];
+    let route = [GLADE, OLD_TRACK, POOL, FAR_FALLS, LOG];
     let mut next = 0;
     let mut now = 0.0;
     while now < at {
