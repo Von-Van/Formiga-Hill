@@ -6,6 +6,7 @@ mod bug_hunt;
 mod camera;
 mod departures;
 mod encounter;
+mod expedition;
 mod finery;
 mod fishing_trip;
 mod foraging;
@@ -315,6 +316,9 @@ impl HillApp {
             ground.set_daylight(daylight);
             foray.set_hour_dark(daylight.darkness());
         }
+        if let Some(expedition) = &mut self.woods.expedition {
+            expedition.set_daylight(daylight);
+        }
     }
 
     /// Seconds since the window opened: the clock the whole visit runs on.
@@ -360,6 +364,9 @@ impl HillApp {
         }
         if self.woods.foray.is_some() {
             self.finish_foraging(now);
+        }
+        if self.woods.expedition.is_some() {
+            self.finish_expedition(now);
         }
         self.placing = None;
         self.notices_open = false;
@@ -714,6 +721,9 @@ impl eframe::App for HillApp {
                             if let Some((ground, _)) = &mut self.woods.foray {
                                 ground.set_pointer(pointer);
                                 hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+                            }
+                            if self.woods.expedition.is_some() {
+                                hovered = self.expedition_point(pointer, now);
                             }
                             let spot = self.woods_hover(pointer);
                             if let Some((label, (x, y))) = &spot {

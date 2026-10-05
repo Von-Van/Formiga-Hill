@@ -23,6 +23,7 @@ pub enum Activity {
     Fish,
     Bugs,
     Forage,
+    Expedition,
 }
 
 #[derive(Default)]
@@ -43,6 +44,9 @@ pub struct Woods {
     /// The hedgerow with nobody foraging, and a foray under way.
     pub hedgerow: Option<Playground>,
     pub foray: Option<(Playground, crate::hedgerow::foraging::Foray)>,
+    /// An expedition under way, and the map as planned for whoever is chosen.
+    pub expedition: Option<crate::expedition::Expedition>,
+    pub plan: Option<(Vec<Id>, Canvas)>,
 }
 
 impl HillApp {
@@ -108,6 +112,10 @@ impl HillApp {
     /// Plays the outing on; with reduced motion, `holding` turns the marker.
     pub(super) fn tick_woods(&mut self, now: f32, holding: bool, dt: f32) {
         let cast = &self.arrival.cast;
+        if self.woods.expedition.is_some() {
+            self.tick_expedition(now, holding, self.woods.creeping, dt);
+            return;
+        }
         if self.woods.fishing.is_some() {
             self.tick_fishing(now, holding);
             return;
@@ -204,6 +212,9 @@ impl HillApp {
     }
 
     pub(super) fn compose_woods(&mut self, now: f32) -> Canvas {
+        if let Some(scene) = self.compose_expedition(now) {
+            return scene;
+        }
         if let Some(scene) = self.compose_pool(now) {
             return scene;
         }
@@ -244,6 +255,10 @@ impl HillApp {
 
     /// A click in the glade: choose a spot, or catch the moment.
     pub(super) fn woods_click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
+        if self.woods.expedition.is_some() {
+            self.expedition_click(pointer, now);
+            return;
+        }
         if self.woods.fishing.is_some() {
             self.fishing_click(pointer, now);
             return;
@@ -277,6 +292,7 @@ impl HillApp {
 
     /// The key for catching, for anyone not using the pointer.
     pub(super) fn woods_strike(&mut self, now: f32) {
+        self.expedition_strike(now);
         self.fishing_strike(now);
         self.bug_hunt_swing(now);
         if let Some((ground, rummage)) = &mut self.woods.outing
@@ -289,6 +305,9 @@ impl HillApp {
 
     /// What to call the spot under the pointer, and where, while choosing.
     pub(super) fn woods_hover(&self, pointer: Option<(f32, f32)>) -> Option<(String, (f32, f32))> {
+        if self.woods.expedition.is_some() {
+            return self.expedition_hover(pointer);
+        }
         if self.woods.fishing.is_some() {
             return self.fishing_hover(pointer);
         }
@@ -315,6 +334,13 @@ impl HillApp {
     pub(super) fn woods_bar(&mut self, ui: &mut egui::Ui, now: f32) {
         let mut set_off = false;
         let mut home = false;
+        if self.woods.expedition.is_some() {
+            self.expedition_bar(ui, now);
+            if ui.button("Journal").clicked() {
+                self.journal = !self.journal;
+            }
+            return;
+        }
         if self.woods.fishing.is_some() {
             self.fishing_bar(ui, now);
             if ui.button("Journal").clicked() {
@@ -343,9 +369,17 @@ impl HillApp {
                     (Activity::Fish, "Fish"),
                     (Activity::Bugs, "Catch bugs"),
                     (Activity::Forage, "Forage"),
+                    (Activity::Expedition, "Expedition"),
                 ] {
                     ui.selectable_value(&mut self.woods.activity, activity, label);
                 }
+                // Only an expedition takes three.
+                let most = if self.woods.activity == Activity::Expedition {
+                    crate::expedition::PARTY
+                } else {
+                    PARTY
+                };
+                self.woods.party.truncate(most);
                 ui.separator();
                 ui.label("Who's coming?");
                 let cast = &self.arrival.cast;
@@ -370,6 +404,9 @@ impl HillApp {
                         Activity::Forage => {
                             super::foraging::forager_hint(colony, member.id, &character)
                         }
+                        Activity::Expedition => {
+                            super::expedition::expeditioner_hint(colony, member.id, &character)
+                        }
                     };
                     if ui
                         .selectable_label(chosen, &member.name)
@@ -378,7 +415,7 @@ impl HillApp {
                     {
                         if chosen {
                             self.woods.party.retain(|id| *id != member.id);
-                        } else if self.woods.party.len() < PARTY {
+                        } else if self.woods.party.len() < most {
                             self.woods.party.push(member.id);
                         } else {
                             // Swap out whoever was chosen last.
@@ -424,6 +461,7 @@ impl HillApp {
                 Activity::Fish => self.set_off_fishing(now),
                 Activity::Bugs => self.set_off_bug_hunting(now),
                 Activity::Forage => self.set_off_foraging(now),
+                Activity::Expedition => self.set_off_expedition(now),
             }
         }
         if home && let Some((ground, rummage)) = &mut self.woods.outing {

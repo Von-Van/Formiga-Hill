@@ -418,6 +418,28 @@ impl Foray {
         }
     }
 
+    /// Starts this foray partway through a longer day than a foray's own, as a leg of an
+    /// expedition: with `light` left of that day's `full`, so everything is as ripe as the
+    /// expedition's hour makes it (what has gone over by then is gone already), and with the
+    /// basket carried in already in it.
+    pub fn partway(mut self, light: f32, full: f32, basket: Vec<&'static str>) -> Self {
+        self.light = light;
+        self.full = full;
+        self.basket = basket;
+        let gone = self.gone();
+        for item in &mut self.items {
+            if gone >= item.ripe_at + item.window + LINGER {
+                item.fate = Fate::Gone;
+            }
+        }
+        self
+    }
+
+    /// The light left, on the day's own scale.
+    pub fn light(&self) -> f32 {
+        self.light
+    }
+
     pub fn phase(&self) -> Phase {
         self.phase
     }

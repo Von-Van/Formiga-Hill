@@ -3,9 +3,6 @@
 //! water has been, and the party wades at the pool's edge to catch them as the eddy brings them
 //! round (see `wading`). What comes down here comes down nowhere else (see `finds::afar`).
 
-// Being built: the expeditions that lead here are still to come.
-#![allow(dead_code)]
-
 mod scenery;
 pub mod wading;
 

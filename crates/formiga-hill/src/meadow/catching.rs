@@ -394,6 +394,20 @@ impl Hunt {
         hunt
     }
 
+    /// Starts this hunt partway through a longer day than a hunt's own, as a leg of an
+    /// expedition: with `light` left of that day's `full`, so the dusk's bugs wait for the
+    /// expedition's dusk.
+    pub fn partway(mut self, light: f32, full: f32) -> Self {
+        self.light = light;
+        self.full = full;
+        self
+    }
+
+    /// The light left, on the day's own scale.
+    pub fn light(&self) -> f32 {
+        self.light
+    }
+
     pub fn phase(&self) -> Phase {
         self.phase
     }
