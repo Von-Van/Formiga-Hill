@@ -1883,7 +1883,11 @@ mod tests {
         if let Play::Fish { casts, .. } = &mut leg.play {
             *casts = legs::CASTS;
         }
-        leg.click(Some((200.0, 112.0)), now);
+        assert_eq!(
+            leg.click(Some((200.0, 112.0)), now),
+            None,
+            "no third cast, so none is heard"
+        );
         assert!(ready(&trip), "cast a third time");
         // And the next tick sees the leg is done, and the party back to the map.
         let stopped = now;
@@ -1904,7 +1908,7 @@ mod tests {
         let (first, other) = (0, 6);
         let click = |trip: &mut Expedition, patch: usize, now: f32| {
             let (x, y) = crate::hedgerow::PATCHES[patch].stand;
-            trip.leg_mut().unwrap().click(Some((x, y - 8.0)), now);
+            trip.leg_mut().unwrap().click(Some((x, y - 8.0)), now)
         };
         let foray = |trip: &Expedition| match trip.leg().map(|leg| &leg.play) {
             Some(Play::Forage { foray }) => (foray.phase(), foray.at()),
@@ -1916,13 +1920,21 @@ mod tests {
             trip.tick(&cast, Input::default(), now);
             assert!(now < 100.0);
         }
-        click(&mut trip, first, now);
+        assert_eq!(
+            click(&mut trip, first, now),
+            Some(legs::Act::Foraged),
+            "going to a patch is heard, as on a foray of its own"
+        );
         while foray(&trip).1.is_none() {
             now += 1.0 / 30.0;
             trip.tick(&cast, Input::default(), now);
             assert!(now < 200.0);
         }
-        click(&mut trip, other, now);
+        assert_eq!(
+            click(&mut trip, other, now),
+            None,
+            "one patch a stop, so the second isn't gone to"
+        );
         for _ in 0..60 {
             now += 1.0 / 30.0;
             trip.tick(&cast, Input::default(), now);

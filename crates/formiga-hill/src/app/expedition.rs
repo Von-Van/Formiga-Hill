@@ -221,8 +221,8 @@ impl HillApp {
         };
         match expedition.phase() {
             Phase::Stopped => {
-                if let Some(leg) = expedition.leg_mut() {
-                    leg.click(pointer, now);
+                if let Some(act) = expedition.leg_mut().and_then(|leg| leg.click(pointer, now)) {
+                    self.sound.play(super::sound::acted(act));
                 }
             }
             Phase::Choosing | Phase::MakingRoom => {
@@ -255,8 +255,9 @@ impl HillApp {
     pub(super) fn expedition_strike(&mut self, now: f32) {
         if let Some(expedition) = &mut self.woods.expedition
             && let Some(leg) = expedition.leg_mut()
+            && let Some(act) = leg.strike(now)
         {
-            leg.strike(now);
+            self.sound.play(super::sound::acted(act));
         }
     }
 

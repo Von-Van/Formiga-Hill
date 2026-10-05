@@ -77,6 +77,19 @@ pub enum LegEvent {
     Falls(falls::wading::Event),
 }
 
+/// What the person did at a stop, so the window hears it as it would on that place's own outing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Act {
+    /// Chose a spot in the glade.
+    Rummaged,
+    /// Cast a line at the pool.
+    Cast,
+    /// Swung the net in the meadow.
+    Swung,
+    /// Went to a patch of the hedgerow.
+    Foraged,
+}
+
 /// Something caught and let go: what kind, how big, and who caught it.
 pub type Caught = (&'static str, f32, Id);
 
@@ -409,8 +422,9 @@ impl Leg {
     }
 
     /// A click in the leg's scene, as the activity takes it, kept to the leg: at the pool a cast
-    /// or two, at the hedgerow one patch.
-    pub fn click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
+    /// or two, at the hedgerow one patch. Says what was done, if it was something the window
+    /// hears.
+    pub fn click(&mut self, pointer: Option<(f32, f32)>, now: f32) -> Option<Act> {
         let ground = &mut self.ground;
         let reduce_motion = ground.reduce_motion();
         match &mut self.play {
@@ -427,6 +441,7 @@ impl Leg {
                     rummage::Phase::Exploring | rummage::Phase::Catching(_) => {
                         if let Some(spot) = spot {
                             rummage.choose(ground, spot, now);
+                            return Some(Act::Rummaged);
                         }
                     }
                     _ => {}
@@ -438,6 +453,7 @@ impl Leg {
                         angling.cast(ground, at, now);
                         if angling.phase() != fishing::angling::Phase::Ready {
                             *casts += 1;
+                            return Some(Act::Cast);
                         }
                     }
                 }
@@ -445,59 +461,54 @@ impl Leg {
                 _ => {}
             },
             Play::Bugs { hunt, .. } => {
-                let Some((x, y)) = pointer else {
-                    return;
-                };
+                let (x, y) = pointer?;
                 let chosen = hunt.target().map(|(_, at)| at);
                 let on_chosen = chosen.is_some_and(|at| distance(at, (x, y)) <= 9.0);
                 if on_chosen && hunt.in_reach(ground) {
                     hunt.swing(ground, now);
-                } else {
-                    hunt.choose(ground, x, y, now);
+                    return Some(Act::Swung);
                 }
+                hunt.choose(ground, x, y, now);
             }
             Play::Forage { foray } => {
-                let Some((x, y)) = pointer else {
-                    return;
-                };
+                let (x, y) = pointer?;
                 if let Some(slot) = foray.basket_slot_at(x, y, ground.backdrop().width()) {
                     foray.put_back(slot);
-                    return;
+                    return None;
                 }
                 if let Some(item) = foray.item_at(x, y)
                     && let Some((_, patch, _)) = foray.item(item)
                     && foray.at() == Some(patch)
                 {
                     foray.pick(ground, item, now);
-                    return;
+                    return None;
                 }
                 // One patch a stop: somewhere to go, until the party is at one.
                 if foray.at().is_none()
                     && let Some(patch) = foray.patch_at(x, y)
                 {
                     foray.choose(ground, patch, now);
+                    return Some(Act::Foraged);
                 }
             }
             Play::Scavenge { scavenge, heaps } => {
-                let Some((x, y)) = pointer else {
-                    return;
-                };
+                let (x, y) = pointer?;
                 if let Some(slot) = scavenge.basket_slot_at(x, y, ground.backdrop().width()) {
                     scavenge.put_back(slot);
-                    return;
+                    return None;
                 }
                 let here = scavenge.at();
                 if let Some((heap, hidden)) = scavenge.open_at(x, y)
                     && here == Some(heap)
                 {
                     scavenge.take(ground, heap, hidden, now);
-                    return;
+                    return None;
                 }
                 if let Some((heap, item)) = scavenge.item_at(x, y)
                     && here == Some(heap)
                 {
                     scavenge.act(ground, item, now);
-                    return;
+                    return None;
                 }
                 if let Some(heap) = scavenge.heap_at(x, y) {
                     go_to_heap(scavenge, heaps, ground, heap, now);
@@ -510,10 +521,12 @@ impl Leg {
                 }
             }
         }
+        None
     }
 
-    /// The key for trying, striking or swinging, for anyone not using the pointer.
-    pub fn strike(&mut self, now: f32) {
+    /// The key for trying, striking or swinging, for anyone not using the pointer. Says what
+    /// was done, if it was something the window hears.
+    pub fn strike(&mut self, now: f32) -> Option<Act> {
         let ground = &mut self.ground;
         let reduce_motion = ground.reduce_motion();
         match &mut self.play {
@@ -527,7 +540,10 @@ impl Leg {
                     angling.strike(ground, now);
                 }
             }
-            Play::Bugs { hunt, .. } => hunt.swing(ground, now),
+            Play::Bugs { hunt, .. } => {
+                hunt.swing(ground, now);
+                return Some(Act::Swung);
+            }
             Play::Falls { wading } => {
                 if !reduce_motion {
                     wading.strike(ground, now);
@@ -535,6 +551,7 @@ impl Leg {
             }
             Play::Forage { .. } | Play::Scavenge { .. } | Play::Rest { .. } => {}
         }
+        None
     }
 
     /// The person would rather move on: the party finishes up here and goes back to the map
