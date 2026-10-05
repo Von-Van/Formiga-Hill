@@ -91,6 +91,9 @@ impl HillApp {
         };
         let find_name = |id: &str| finds::find(id).map_or("something", |find| find.name);
         for event in events {
+            if let Some(cue) = super::sound::foraged(&event) {
+                self.sound.play(cue);
+            }
             let line = match event {
                 Event::Opened { who, reach, pair } => match (reach, pair) {
                     (Reach::Tucked, _) => {
@@ -235,6 +238,7 @@ impl HillApp {
         }
         if let Some(patch) = foray.patch_at(x, y) {
             foray.choose(lane, patch, now);
+            self.sound.play(crate::audio::Cue::Forage);
         }
     }
 

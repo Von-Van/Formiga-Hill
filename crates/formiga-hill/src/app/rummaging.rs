@@ -174,6 +174,9 @@ impl HillApp {
         let events = rummage.take_events();
         let place = |spot: usize| rummage.spot(spot).map_or("somewhere", |spot| spot.name);
         for event in events {
+            if let Some(cue) = super::sound::rummaged(&event) {
+                self.sound.play(cue);
+            }
             let line = match event {
                 Event::Opened { who, spot } => match rummage.opener_of(spot) {
                     Some(Opener::Explorer) => {
@@ -343,6 +346,7 @@ impl HillApp {
             Phase::Exploring | Phase::Catching(_) => {
                 if let Some(spot) = spot {
                     rummage.choose(ground, spot, now);
+                    self.sound.play(crate::audio::Cue::Rummage);
                 }
             }
             _ => {}

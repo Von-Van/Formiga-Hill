@@ -140,7 +140,8 @@ written here.
   lamps, lit windows and fireflies. Nothing in play depends on the hour.
 - Each place has its own soft music, slower and quieter once the lamps are lit, crossfading as you
   go from one to the next; and what happens has a sound: the train, a pat or a snack, the games,
-  the colony building on the Hilltop. All of it is placeholder audio made in code for now. The
+  a find in the Woods, a splash at the pool, the colony building on the Hilltop. All of it is
+  placeholder audio made in code for now. The
   speaker in every bar opens the Sound window, with levels for everything, the music and the
   sounds, and a mute (M). Sound is never needed to play, and the Hill plays on quietly where there
   is nothing to play it on.

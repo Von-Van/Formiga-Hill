@@ -56,6 +56,9 @@ impl HillApp {
         };
         let kind = |id: &str| fish::fish(id).map_or("a fish", |fish| fish.name);
         for event in angling.take_events() {
+            if let Some(cue) = super::sound::angled(&event) {
+                self.sound.play(cue);
+            }
             let line = match event {
                 Event::Spooked { fish } => format!("{} darted off at the splash.", kind(fish)),
                 Event::Nibble => "A nibble\u{2026}".to_owned(),
@@ -136,6 +139,7 @@ impl HillApp {
             Phase::Ready => {
                 if let Some(at) = pointer {
                     angling.cast(ground, at, now);
+                    self.sound.play(crate::audio::Cue::Cast);
                 }
             }
             Phase::Waiting { .. } => angling.strike(ground, now),

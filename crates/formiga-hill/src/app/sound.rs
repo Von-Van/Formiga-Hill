@@ -10,6 +10,83 @@ use crate::clearing::sovereign::State;
 use crate::station::Heard;
 use eframe::egui;
 
+// What the Woods are heard doing, from what each outing tells the window: a find, a splash, a
+// flutter, a pick, treasure. What the person does there (a rummage, a cast, a swing, a paw into
+// the hedge, a dig) is heard where they do it.
+
+/// What a rummage in the glade is heard doing.
+pub(super) fn rummaged(event: &crate::woods::rummage::Event) -> Option<Cue> {
+    matches!(event, crate::woods::rummage::Event::Got { .. }).then_some(Cue::Find)
+}
+
+/// What a fishing trip is heard doing.
+pub(super) fn angled(event: &crate::fishing::angling::Event) -> Option<Cue> {
+    use crate::fishing::angling::Event;
+    match event {
+        Event::Spooked { .. } | Event::Hooked { .. } => Some(Cue::Splash),
+        Event::Landed { .. } => Some(Cue::Find),
+        _ => None,
+    }
+}
+
+/// What a bug hunt is heard doing.
+pub(super) fn hunted(event: &crate::meadow::catching::Event) -> Option<Cue> {
+    use crate::meadow::catching::Event;
+    match event {
+        Event::Startled { .. } => Some(Cue::Flutter),
+        Event::Caught { .. } | Event::Netted { .. } => Some(Cue::Find),
+        _ => None,
+    }
+}
+
+/// What a foray along the hedgerow is heard doing.
+pub(super) fn foraged(event: &crate::hedgerow::foraging::Event) -> Option<Cue> {
+    use crate::hedgerow::foraging::Event;
+    match event {
+        Event::Picked { .. } | Event::Saved { .. } => Some(Cue::Pick),
+        _ => None,
+    }
+}
+
+/// What a scavenge along the old track is heard doing: things lifted off a heap, a heap coming
+/// down, and anything found in it.
+pub(super) fn scavenged(event: &crate::track::scavenging::Event) -> Option<Cue> {
+    use crate::track::scavenging::Event;
+    match event {
+        Event::Lifted { .. } | Event::Together { .. } => Some(Cue::Rummage),
+        Event::Tumbled { .. } => Some(Cue::Thunk),
+        Event::Got { .. } | Event::Map { .. } => Some(Cue::Find),
+        _ => None,
+    }
+}
+
+/// What a treasure hunt is heard doing: the heaps down a wrong turn, and the chest.
+pub(super) fn treasure_heard(event: &crate::track::treasure::Event) -> Option<Cue> {
+    use crate::track::treasure::Event;
+    match event {
+        Event::Heap(event) => scavenged(event),
+        Event::Treasure { .. } => Some(Cue::Treasure),
+        Event::Also { .. } => Some(Cue::Find),
+        _ => None,
+    }
+}
+
+/// What an expedition is heard doing: each leg as that place's own outing is, the far place found,
+/// and whatever comes down the falls.
+pub(super) fn expedition_heard(event: &crate::expedition::Event) -> Option<Cue> {
+    use crate::expedition::Event;
+    use crate::expedition::legs::LegEvent;
+    match event {
+        Event::Found { .. } => Some(Cue::Find),
+        Event::Leg(LegEvent::Rummage(event)) => rummaged(event),
+        Event::Leg(LegEvent::Fish(event)) => angled(event),
+        Event::Leg(LegEvent::Bugs(event)) => hunted(event),
+        Event::Leg(LegEvent::Forage(event)) => foraged(event),
+        Event::Leg(LegEvent::Falls(crate::falls::wading::Event::Caught { .. })) => Some(Cue::Find),
+        _ => None,
+    }
+}
+
 /// How far the brush moves over someone, in scene pixels, for each stroke heard.
 const STROKE: f32 = 10.0;
 
@@ -267,6 +344,58 @@ impl HillApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every one of the Woods' own cues is heard from something its outing tells the window, or
+    /// played where the person acts; and an expedition's legs sound as their places' outings do.
+    #[test]
+    fn the_woods_are_heard_from_what_each_outing_tells() {
+        use crate::expedition::{Event as Day, legs::LegEvent};
+        use crate::track::heap::{How, Stuff};
+        use crate::{
+            fishing::angling, hedgerow::foraging, meadow::catching, track, woods::rummage,
+        };
+        let got = rummage::Event::Got {
+            find: "smooth_pebble",
+            spot: 0,
+        };
+        assert_eq!(rummaged(&got), Some(Cue::Find));
+        assert_eq!(rummaged(&rummage::Event::Glint), None);
+        assert_eq!(
+            angled(&angling::Event::Hooked { fish: "trout" }),
+            Some(Cue::Splash)
+        );
+        assert_eq!(
+            hunted(&catching::Event::Startled { bug: "butterfly" }),
+            Some(Cue::Flutter)
+        );
+        assert_eq!(
+            foraged(&foraging::Event::Picked {
+                find: "hazelnut",
+                item: 0
+            }),
+            Some(Cue::Pick)
+        );
+        let lifted = track::scavenging::Event::Lifted {
+            who: 1,
+            stuff: Stuff::Plank,
+            how: How::Plain,
+        };
+        assert_eq!(scavenged(&lifted), Some(Cue::Rummage));
+        assert_eq!(
+            treasure_heard(&track::treasure::Event::Treasure { find: "golden_axe" }),
+            Some(Cue::Treasure)
+        );
+        assert_eq!(
+            treasure_heard(&track::treasure::Event::Heap(lifted)),
+            Some(Cue::Rummage),
+            "a heap down a wrong turn sounds as one along the track"
+        );
+        assert_eq!(
+            expedition_heard(&Day::Leg(LegEvent::Rummage(got))),
+            Some(Cue::Find),
+            "a leg sounds as its place's outing does"
+        );
+    }
 
     #[test]
     fn the_hammers_tap_three_times_and_take_a_breath() {
