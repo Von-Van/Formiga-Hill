@@ -4,6 +4,7 @@
 //! of any wherever the person chooses. Photos are Hill's: nothing goes to Desktop.
 
 use super::{HillApp, SCENE_HEIGHT, SCENE_WIDTH};
+use crate::audio::Cue;
 use crate::photos::{self, Album};
 use eframe::egui;
 use formiga_art::Canvas;
@@ -111,6 +112,7 @@ impl HillApp {
         let line = match self.album().keep(photo, OffsetDateTime::now_utc()) {
             Ok(()) => {
                 self.camera.flashed = Some(now);
+                self.sound.play(Cue::Shutter);
                 "Snap! It's in the album.".to_owned()
             }
             Err(error) if self.album().is_full() => {

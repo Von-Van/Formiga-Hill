@@ -103,6 +103,15 @@ impl Building {
         self.appeared.is_some()
     }
 
+    /// How long the colony has been hard at work, from when everyone was gathered round until
+    /// what they are building appears; nothing before or after.
+    pub fn worked_for(&self, now: f32) -> Option<f32> {
+        match (self.working_since, self.appeared) {
+            (Some(since), None) => Some((now - since).max(0.0)),
+            _ => None,
+        }
+    }
+
     /// Plays the building on to `now`, and says when it reaches a turn.
     pub fn tick(&mut self, ground: &mut Playground, now: f32) -> Option<Moment> {
         if self.over {
@@ -262,6 +271,7 @@ mod tests {
         let kinds: Vec<Moment> = moments.iter().map(|(_, moment)| *moment).collect();
         assert_eq!(kinds, [Moment::Appeared, Moment::Over]);
         assert!(building.showing());
+        assert_eq!(building.worked_for(moments[0].0), None, "the work is done");
         let (appeared, over) = (moments[0].0, moments[1].0);
         assert!(
             appeared - 12.0 < GATHER_SECS + WORK_SECS + 0.1,
@@ -285,6 +295,25 @@ mod tests {
             })
             .count();
         assert!(away > 0, "nobody went back to play");
+    }
+
+    #[test]
+    fn the_colony_is_at_work_from_when_it_has_gathered_until_it_is_built() {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let mut ground = hilltop::open(&cast, 0.0, &Arrangement::new());
+        let mut building = Building::begin(&mut ground, 9, 12.0);
+        assert_eq!(building.worked_for(12.0), None, "still gathering round");
+        let mut worked = Vec::new();
+        let mut now = 12.0;
+        while now < 40.0 {
+            now += 1.0 / 30.0;
+            ground.tick(&cast, now);
+            building.tick(&mut ground, now);
+            worked.extend(building.worked_for(now));
+        }
+        assert!(worked.windows(2).all(|pair| pair[1] > pair[0]));
+        let longest = worked.last().copied().unwrap_or_default();
+        assert!((longest - WORK_SECS).abs() < 0.1, "worked for {longest}");
     }
 
     #[test]

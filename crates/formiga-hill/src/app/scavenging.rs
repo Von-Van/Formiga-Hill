@@ -131,6 +131,9 @@ impl HillApp {
         ground.tick(cast, now);
         scavenge.tick(ground, now);
         for event in scavenge.take_events() {
+            if let Some(cue) = super::sound::scavenged(&event) {
+                self.sound.play(cue);
+            }
             if let Some(line) = heap_line(cast, event) {
                 self.notice = Some((line, now));
             }
@@ -183,6 +186,9 @@ impl HillApp {
         let name = |id: Id| cast.member(id).map_or("Someone", |m| m.name.as_str());
         let mut treasure_found: Option<&'static str> = None;
         for event in hunt.take_events() {
+            if let Some(cue) = super::sound::treasure_heard(&event) {
+                self.sound.play(cue);
+            }
             let route = hunt.route();
             let read = hunt.reads_faded();
             let way_name = |way: usize| {
@@ -349,6 +355,7 @@ impl HillApp {
             hunt.choose(ground, way, now);
         } else if let Some(spot) = hunt.spot_at(x, y) {
             hunt.dig(ground, spot, now);
+            self.sound.play(crate::audio::Cue::Rummage);
         }
     }
 

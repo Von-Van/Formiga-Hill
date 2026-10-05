@@ -4,6 +4,7 @@
 
 use super::HillApp;
 use super::departures::grown_since;
+use crate::audio::Cue;
 use crate::finds::{self, CATALOGUE, Kind, growing, plans};
 use crate::hilltop::{self, Arrangement, SPOTS, Standing};
 use crate::paint::{put, rgb, rgba};
@@ -48,6 +49,7 @@ impl HillApp {
             self.refresh_hilltop();
             if let Some(line) = grown_since(&self.grown) {
                 self.notice = Some((line, now));
+                self.sound.play(Cue::Grown);
             }
         }
     }
@@ -158,14 +160,13 @@ impl HillApp {
             return true;
         }
         let occupied = self.memories.colony().hilltop.contains_key(&spot);
-        match self.placing.take() {
-            Some(Placing::FromSatchel(id)) => {
-                self.memories.place(spot, &id);
+        let stood = match self.placing.take() {
+            Some(Placing::FromSatchel(id)) => self.memories.place(spot, &id),
+            Some(Placing::Lifted(standing)) => self.memories.replant(spot, &standing),
+            Some(Placing::FromSpot(from)) => {
+                self.memories.move_piece(from, spot);
+                from != spot
             }
-            Some(Placing::Lifted(standing)) => {
-                self.memories.replant(spot, &standing);
-            }
-            Some(Placing::FromSpot(from)) => self.memories.move_piece(from, spot),
             Some(Placing::Plan(plan)) => {
                 let now = self.now();
                 self.start_building(spot, plan, now);
@@ -176,6 +177,9 @@ impl HillApp {
                 return true;
             }
             None => return false,
+        };
+        if stood {
+            self.sound.play(Cue::Thunk);
         }
         self.refresh_hilltop();
         true

@@ -77,6 +77,9 @@ impl HillApp {
             name
         };
         for event in hunt.take_events() {
+            if let Some(cue) = super::sound::hunted(&event) {
+                self.sound.play(cue);
+            }
             let line = match event {
                 Event::Stalking { bug } => {
                     format!(
@@ -179,6 +182,7 @@ impl HillApp {
         let on_chosen = chosen.is_some_and(|at| crate::playground::distance(at, (x, y)) <= 9.0);
         if on_chosen && hunt.in_reach(ground) {
             hunt.swing(ground, now);
+            self.sound.play(crate::audio::Cue::Swish);
         } else {
             hunt.choose(ground, x, y, now);
         }
@@ -188,6 +192,7 @@ impl HillApp {
     pub(super) fn bug_hunt_swing(&mut self, now: f32) {
         if let Some((ground, hunt)) = &mut self.woods.hunt {
             hunt.swing(ground, now);
+            self.sound.play(crate::audio::Cue::Swish);
         }
     }
 

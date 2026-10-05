@@ -1,12 +1,16 @@
 //! The train's comings and goings, as a timeline: where the train is and where each traveller is
-//! at any moment. Pure, so the whole sequence can be checked without drawing a pixel.
+//! at any moment, and what is heard of it. Pure, so the whole sequence can be checked without
+//! drawing a pixel or playing a sound.
 //!
 //! Arriving, the train pulls in with everyone at a window, stops, lets them hop down one at a
 //! time, and steams away. Leaving is the same in reverse. With reduced motion there is no
 //! movement at all: a held view of the train at the platform with everyone aboard, then a cut.
+//!
+//! It whistles as it comes and again as it goes, chuffs once for each turn of its driving wheels,
+//! so the chuffs slow as it pulls in and quicken as it pulls out, and lets off steam as it stops.
 
 use super::SCENE_WIDTH;
-use super::train::{TRAIN_LENGTH, WINDOWS};
+use super::train::{DRIVING_WHEEL, TRAIN_LENGTH, WINDOWS};
 
 const PULL_IN: f32 = 3.2;
 const SETTLE: f32 = 0.7;
@@ -33,6 +37,24 @@ pub enum Journey {
     /// The colony is going home.
     Leaving { since: f32 },
 }
+
+/// Something the train is heard doing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Heard {
+    /// Its whistle, as it pulls in and again as it pulls out.
+    Whistle,
+    /// A puff of steam from the engine, as loud as the engine is near: 1 at the middle of the
+    /// platform, softer towards the ends and beyond them.
+    Chuff { near: f32 },
+    /// Steam let off as it comes to a stop.
+    Brakes,
+}
+
+/// When the whistle goes, as the train comes into hearing; when it lets off steam, a little
+/// before it stops; and when it whistles again, just before it pulls away.
+const WHISTLE_IN: f32 = 0.15;
+const BRAKES_BEFORE_STOP: f32 = 0.9;
+const WHISTLE_BEFORE_OFF: f32 = 0.35;
 
 /// Where one traveller is at a moment of the journey.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -66,6 +88,45 @@ impl Journey {
                 now - since >= duration(travelers, reduce_motion)
             }
         }
+    }
+
+    /// What is heard of the train after `from` and up to `now`, in order: everything once,
+    /// however the moments in between are sampled.
+    pub fn heard(self, from: f32, now: f32, travelers: usize, reduce_motion: bool) -> Vec<Heard> {
+        let (Self::Arriving { since } | Self::Leaving { since }) = self else {
+            return Vec::new();
+        };
+        let (from, to) = (from - since, now - since);
+        let during = |t: f32| from < t && t <= to;
+        if reduce_motion {
+            // A held view of the train at the platform: nothing rolls, but it whistles.
+            return if during(WHISTLE_IN) {
+                vec![Heard::Whistle]
+            } else {
+                Vec::new()
+            };
+        }
+        let off = PULL_IN + SETTLE + hops(travelers) + LINGER;
+        let mut heard = Vec::new();
+        if during(WHISTLE_IN) {
+            heard.push(Heard::Whistle);
+        }
+        if during(PULL_IN - BRAKES_BEFORE_STOP) {
+            heard.push(Heard::Brakes);
+        }
+        if during(off - WHISTLE_BEFORE_OFF) {
+            heard.push(Heard::Whistle);
+        }
+        // A chuff each time the driving wheels come round: one is plenty for a moment however
+        // many turns it spans, which only a long pause between frames could.
+        let turn = std::f32::consts::TAU * DRIVING_WHEEL;
+        let (before, after) = (rolled(from, off), rolled(to, off));
+        if (after / turn).floor() > (before / turn).floor() && to > 0.0 {
+            heard.push(Heard::Chuff {
+                near: nearness(START_X + after),
+            });
+        }
+        heard
     }
 
     pub fn stage(self, now: f32, travelers: usize, reduce_motion: bool) -> Stage {
@@ -107,6 +168,31 @@ fn hops(travelers: usize) -> f32 {
     travelers.saturating_sub(1) as f32 * HOP_GAP + HOP
 }
 
+/// How far the train has rolled `t` seconds into a journey on which it pulls out at `off`: easing
+/// in to the stop, standing, then gathering speed as it goes.
+fn rolled(t: f32, off: f32) -> f32 {
+    let pull_in = STOP_X - START_X;
+    if t <= 0.0 {
+        0.0
+    } else if t < PULL_IN {
+        let u = t / PULL_IN;
+        pull_in * (1.0 - (1.0 - u).powi(3))
+    } else if t < off {
+        pull_in
+    } else {
+        let u = ((t - off) / PULL_OUT).min(1.0);
+        pull_in + (END_X - STOP_X) * u * u
+    }
+}
+
+/// How near the engine sounds with the train's back end at `x`: loudest when it is at the middle
+/// of the platform, never quite silent, as a train is heard well before and after it is seen.
+fn nearness(x: f32) -> f32 {
+    let engine = x + TRAIN_LENGTH as f32 - 24.0;
+    let middle = SCENE_WIDTH as f32 / 2.0;
+    (1.0 - (engine - middle).abs() / SCENE_WIDTH as f32).clamp(0.25, 1.0)
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Direction {
     /// Getting off the train.
@@ -139,11 +225,9 @@ fn timeline(t: f32, travelers: usize, reduce_motion: bool, direction: Direction)
         };
     }
 
-    let pull_in_distance = STOP_X - START_X;
+    let off = PULL_IN + SETTLE + hops(travelers) + LINGER;
     if t < PULL_IN {
-        // Easing in to the stop.
-        let u = t / PULL_IN;
-        let travelled = pull_in_distance * (1.0 - (1.0 - u).powi(3));
+        let travelled = rolled(t, off);
         let place = |index| match direction {
             Direction::Off => aboard(index),
             Direction::On => ashore,
@@ -176,21 +260,18 @@ fn timeline(t: f32, travelers: usize, reduce_motion: bool, direction: Direction)
         })
         .collect::<Vec<_>>();
 
-    let leaving = hopping - hops(travelers) - LINGER;
-    if leaving < 0.0 {
+    if t < off {
         return Stage {
             train_x: Some(STOP_X),
-            rolled: pull_in_distance,
+            rolled: rolled(t, off),
             places,
         };
     }
-    if leaving < PULL_OUT {
-        // Gathering speed as it goes.
-        let u = leaving / PULL_OUT;
-        let travelled = (END_X - STOP_X) * u * u;
+    if t < off + PULL_OUT {
+        let travelled = rolled(t, off);
         return Stage {
-            train_x: Some(STOP_X + travelled),
-            rolled: pull_in_distance + travelled,
+            train_x: Some(START_X + travelled),
+            rolled: travelled,
             places,
         };
     }
@@ -310,6 +391,95 @@ mod tests {
         assert_eq!(held, journey.stage(1.2, EVERYONE, true));
         assert_eq!(held.train_x, Some(STOP_X));
         assert_eq!(journey.stage(HOLD, EVERYONE, true), at(Journey::Here, 0.0));
+    }
+
+    /// Everything heard over a whole journey, listened to every `step` seconds, and when.
+    fn listen(journey: Journey, step: f32, reduce_motion: bool) -> Vec<(f32, Heard)> {
+        let mut heard = Vec::new();
+        let mut t = 0.0;
+        while t < duration(EVERYONE, false) + 1.0 {
+            for sound in journey.heard(t, t + step, EVERYONE, reduce_motion) {
+                heard.push((t + step, sound));
+            }
+            t += step;
+        }
+        heard
+    }
+
+    #[test]
+    fn the_train_whistles_coming_and_going_chuffs_as_it_rolls_and_brakes_to_a_stop() {
+        for journey in [
+            Journey::Arriving { since: 0.0 },
+            Journey::Leaving { since: 0.0 },
+        ] {
+            let heard = listen(journey, 1.0 / 60.0, false);
+            let whistles: Vec<f32> = heard
+                .iter()
+                .filter(|(_, sound)| *sound == Heard::Whistle)
+                .map(|(t, _)| *t)
+                .collect();
+            assert_eq!(whistles.len(), 2, "{heard:?}");
+            assert!(whistles[0] < PULL_IN && whistles[1] > PULL_IN + SETTLE);
+            let brakes: Vec<f32> = heard
+                .iter()
+                .filter(|(_, sound)| *sound == Heard::Brakes)
+                .map(|(t, _)| *t)
+                .collect();
+            assert_eq!(brakes.len(), 1);
+            assert!(brakes[0] < PULL_IN, "the brakes go on before it stops");
+            let chuffs = heard
+                .iter()
+                .filter(|(_, sound)| matches!(sound, Heard::Chuff { .. }))
+                .count();
+            assert!(chuffs >= 10, "only {chuffs} chuffs");
+        }
+        assert!(Journey::Here.heard(0.0, 100.0, EVERYONE, false).is_empty());
+    }
+
+    #[test]
+    fn the_chuffs_slow_as_the_train_pulls_in_and_quicken_as_it_pulls_out() {
+        let heard = listen(Journey::Arriving { since: 0.0 }, 1.0 / 240.0, false);
+        let chuffs: Vec<f32> = heard
+            .iter()
+            .filter(|(_, sound)| matches!(sound, Heard::Chuff { .. }))
+            .map(|(t, _)| *t)
+            .collect();
+        let (coming, going): (Vec<f32>, Vec<f32>) = chuffs.iter().partition(|t| **t < PULL_IN);
+        let gaps = |times: &[f32]| -> Vec<f32> {
+            times.windows(2).map(|pair| pair[1] - pair[0]).collect()
+        };
+        assert!(gaps(&coming).windows(2).all(|pair| pair[1] > pair[0]));
+        assert!(gaps(&going).windows(2).all(|pair| pair[1] < pair[0]));
+        // Nothing rolls while it stands at the platform.
+        assert!(going[0] > PULL_IN + SETTLE + hops(EVERYONE) + LINGER);
+    }
+
+    #[test]
+    fn everything_is_heard_once_however_the_frames_fall() {
+        let journey = Journey::Leaving { since: 0.0 };
+        let count = |step: f32| {
+            let heard = listen(journey, step, false);
+            let chuffs = heard
+                .iter()
+                .filter(|(_, sound)| matches!(sound, Heard::Chuff { .. }))
+                .count();
+            (heard.len() - chuffs, chuffs)
+        };
+        assert_eq!(count(1.0 / 30.0), count(1.0 / 144.0));
+    }
+
+    #[test]
+    fn with_motion_reduced_the_train_stands_and_only_whistles() {
+        let heard = listen(Journey::Arriving { since: 0.0 }, 1.0 / 60.0, true);
+        let sounds: Vec<Heard> = heard.into_iter().map(|(_, sound)| sound).collect();
+        assert_eq!(sounds, [Heard::Whistle]);
+    }
+
+    #[test]
+    fn the_engine_is_heard_loudest_at_the_platform() {
+        assert!(nearness(STOP_X) > nearness(START_X));
+        assert!(nearness(STOP_X) > nearness(END_X));
+        assert!(nearness(END_X + 500.0) > 0.0);
     }
 
     #[test]

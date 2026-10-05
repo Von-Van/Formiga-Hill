@@ -57,6 +57,8 @@ side of it.
 - The same creatures, not lookalikes: draw travellers with `formiga-art` from the snapshot's
   appearance; never regenerate one.
 - Soft play, not maintenance: no neglect penalties, streaks, hunger debt, or login pressure.
+- Sound is optional and never needed to play, and every cue and piece of music is a placeholder
+  made in code (`audio/`) until real audio replaces it.
 - Reduced motion gets an authored alternative (a held pose, a cut), not merely a slower animation.
 - Areas are drawn with more fidelity and detail than Desktop's overlays: Formiga's pixel scale,
   but every material shaded with a ramp, light from the upper left, edges outlined in a darker
@@ -86,5 +88,7 @@ side of it.
   `--render-costumes` draw
   without a window (any with `--hour <0-24>` to see it at that hour); look at them, cropped and
   enlarged, after changing anything visual or any behaviour in `character.rs`.
+  `--render-sounds <folder>` writes every cue and a minute of every piece of music as WAVs:
+  check their levels after changing any sound.
 - Behaviour is never written for a particular creature: it is read from the snapshot (axes,
   kind, pace, habits, bonds, family) in `character.rs`, so every colony plays out differently.

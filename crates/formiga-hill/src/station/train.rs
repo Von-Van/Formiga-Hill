@@ -29,7 +29,7 @@ const WINDOW_SIZE: (i32, i32) = (14, 13);
 const WINDOW_TOP: i32 = 18;
 const WINDOW_XS: [i32; 3] = [8, 26, 44];
 /// The driving wheels' radius: a full turn of them is this much travel, times τ.
-const DRIVING_WHEEL: f32 = 7.0;
+pub const DRIVING_WHEEL: f32 = 7.0;
 /// How often the standing train puffs, from one of its two standing frames to the other.
 const PUFFS_PER_SECOND: f32 = 1.3;
 

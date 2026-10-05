@@ -87,6 +87,9 @@ impl HillApp {
         };
         expedition.tick(cast, input, now);
         for event in expedition.take_events() {
+            if let Some(cue) = super::sound::expedition_heard(&event) {
+                self.sound.play(cue);
+            }
             if let Some(line) = tell(expedition, cast, event) {
                 self.notice = Some((line, now));
             }
@@ -228,6 +231,9 @@ impl HillApp {
                     }
                 }
                 for event in expedition.take_events() {
+                    if let Some(cue) = super::sound::expedition_heard(&event) {
+                        self.sound.play(cue);
+                    }
                     if let Some(line) = tell(expedition, cast, event) {
                         self.notice = Some((line, now));
                     }
@@ -379,6 +385,9 @@ impl HillApp {
             expedition.head_home(now);
         }
         for event in expedition.take_events() {
+            if let Some(cue) = super::sound::expedition_heard(&event) {
+                self.sound.play(cue);
+            }
             if let Some(line) = tell(expedition, cast, event) {
                 self.notice = Some((line, now));
             }

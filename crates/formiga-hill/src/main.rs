@@ -2,6 +2,7 @@
 
 mod actor;
 mod app;
+mod audio;
 mod cast;
 mod character;
 mod clearing;
@@ -96,6 +97,8 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-costumes <PNG>  Draw everyone wearing every piece in the dress-up box, for review
   --render-story <PNG>     Draw a story in the Clubhouse --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
+  --render-sounds <FOLDER> Write every sound and a minute of every piece of music to WAV files in
+                           the folder, to listen to without a window
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
   --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
   --packages-folder        Say where to put story packages for Hill to find, and what is there
@@ -186,6 +189,8 @@ struct Args {
     sample_hilltop: bool,
     /// The hour to draw at, rather than midday.
     hour: Option<f32>,
+    /// Write every sound to WAV files in this folder, without opening a window.
+    sounds: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
@@ -225,6 +230,13 @@ fn main() -> Result<()> {
     }
     if !args.check.is_empty() {
         return check_packages(&args.check);
+    }
+    if let Some(folder) = &args.sounds {
+        for line in audio::render_sounds(folder)? {
+            println!("{line}");
+        }
+        println!("Wrote every sound to {}", folder.display());
+        return Ok(());
     }
     // A window hosts one colony at a time: see `hosting`. Drawing to a file needs no window.
     let hosting = if args.render.is_none() {
@@ -412,6 +424,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut show_folder = false;
     let mut sample_hilltop = false;
     let mut hour = None;
+    let mut sounds = None;
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
             bail!("choose one of --sample, {LAUNCH_ARGUMENT}, or --from-save");
@@ -501,6 +514,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             Some("--render-costumes") => {
                 render = Some((Area::Costumes, value("--render-costumes")?));
             }
+            Some("--render-sounds") => sounds = Some(value("--render-sounds")?),
             Some("--at") => {
                 let seconds = value("--at")?;
                 at = Some(
@@ -543,6 +557,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         show_folder,
         sample_hilltop,
         hour,
+        sounds,
     }))
 }
 
@@ -1698,6 +1713,14 @@ mod tests {
             Some((Area::TugOfWar, PathBuf::from("tug.png")))
         );
         assert_eq!(args.at, Some(8.0));
+    }
+
+    #[test]
+    fn the_sounds_can_be_written_out_to_listen_to() {
+        let args = parse(&["--render-sounds", "sounds"]).unwrap().unwrap();
+        assert_eq!(args.sounds, Some(PathBuf::from("sounds")));
+        assert!(args.render.is_none());
+        assert!(parse(&["--render-sounds"]).is_err());
     }
 
     #[test]
