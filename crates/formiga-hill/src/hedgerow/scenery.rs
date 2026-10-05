@@ -35,13 +35,17 @@ const OAK: Ramp = Ramp::new(0x1a3428, 0x264a34, 0x356240, 0x4c7e4c, 0x6c9c5c);
 const BEECH: Ramp = Ramp::new(0x22401f, 0x33582a, 0x4a7236, 0x648e42, 0x86ac58);
 const HOLLY: Ramp = Ramp::new(0x122a24, 0x1a3a30, 0x24503e, 0x34664c, 0x4e8060);
 const HAWTHORN: Ramp = Ramp::new(0x203c22, 0x30562c, 0x447038, 0x5c8c46, 0x7caa58);
+const BLACKTHORN: Ramp = Ramp::new(0x142a20, 0x1e3c2a, 0x2a5236, 0x3a6844, 0x528054);
+const MAPLE: Ramp = Ramp::new(0x2a4420, 0x3e602a, 0x567c34, 0x709840, 0x92b454);
 const HAZEL_LEAF: Ramp = Ramp::new(0x29441f, 0x3a5c2a, 0x4f7834, 0x6a9442, 0x8cb058);
 const SWARD: Ramp = Ramp::new(0x34502a, 0x4a6c34, 0x618a3e, 0x7ca64a, 0x9cc05e);
 const CAMPION: Ramp = Ramp::new(0x7a2448, 0xa8345e, 0xcc4a74, 0xe06a8e, 0xf096ae);
 const CLOUDS: Ramp = Ramp::new(0xc9d7e2, 0xdfe7ee, 0xf4f4f1, 0xfdfbf5, 0xffffff);
 // The hedgerow's own.
 const ELDER_LEAF: Ramp = Ramp::new(0x2c4a1e, 0x40662a, 0x568436, 0x70a044, 0x96c060);
-const ROSE_LEAF: Ramp = Ramp::new(0x203a20, 0x30542c, 0x427038, 0x5a8a46, 0x7aa65a);
+/// The dog rose's leaves: small, dark and close, quieter than the hawthorn's, so its hips and the
+/// honeysuckle through it show against them.
+const ROSE_LEAF: Ramp = Ramp::new(0x172c1c, 0x213c25, 0x2e5030, 0x3e663c, 0x527c48);
 const ROSE: Ramp = Ramp::new(0xa0506a, 0xd27a92, 0xec9eb2, 0xf8c4d0, 0xfde8ee);
 const APPLE_BARK: Ramp = Ramp::new(0x2a201c, 0x40322a, 0x58463a, 0x70604e, 0x8a7a64);
 const STRAWBERRY_LEAF: Ramp = Ramp::new(0x1e3a1c, 0x2e5428, 0x427034, 0x5a8c42, 0x7aaa56);
@@ -903,7 +907,8 @@ fn big_oak(scene: &mut Canvas) {
 /// spreading under a broad crown of fresh green, and the low branches the apples hang from,
 /// against the field beyond.
 fn crab_apple(scene: &mut Canvas) {
-    const LEAVES: Ramp = Ramp::new(0x23422a, 0x335e34, 0x4a7e40, 0x66a050, 0x8ec068);
+    // Fresh green, but not so bright where the sun catches it that an apple is lost against it.
+    const LEAVES: Ramp = Ramp::new(0x203e28, 0x305832, 0x44763e, 0x5c904c, 0x76a85c);
     // The trunk, leaning a little, its bark rough.
     for y in 50..116_i32 {
         let lean = ((116 - y) as f32 * 0.06) as i32;
@@ -982,10 +987,42 @@ fn crab_apple(scene: &mut Canvas) {
 // The hedge
 // ---------------------------------------------------------------------------------------------
 
-/// The hedge along the top of the bank: old hawthorn, its masses of small leaves heaped and lit
-/// from the upper left, dark between them, with the hedge's bare stems showing at its foot; cut
-/// low either side of the gate and under the crab apple. The shrubs that grow out of it are
-/// painted over it after.
+/// The shrubs an old hedge is laid from, mass by mass: hawthorn mostly, blackthorn darker and
+/// cooler among it, field maple paler and warmer, and here and there a holly, glossy and darkest of
+/// all.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Shrub {
+    Hawthorn,
+    Blackthorn,
+    Maple,
+    Holly,
+}
+
+impl Shrub {
+    /// The shrub the hedge's mass at `index` along `row` is.
+    fn at(index: i32, row: i32) -> Self {
+        match pick(index, row + 5, 575, 10) {
+            0 | 1 => Self::Blackthorn,
+            2 | 3 => Self::Maple,
+            4 if row == 0 => Self::Holly,
+            _ => Self::Hawthorn,
+        }
+    }
+
+    fn leaves(self) -> Ramp {
+        match self {
+            Self::Hawthorn => HAWTHORN,
+            Self::Blackthorn => BLACKTHORN,
+            Self::Maple => MAPLE,
+            Self::Holly => HOLLY,
+        }
+    }
+}
+
+/// The hedge along the top of the bank: an old mixed hedge, each mass of it a shrub of its own
+/// size and green, heaped and lit from the upper left and dark between, with the hedge's bare
+/// stems showing at its foot; cut low either side of the gate and under the crab apple. The
+/// shrubs that grow out of it are painted over it after.
 fn hedge(scene: &mut Canvas) {
     let in_gap = |x: i32| (GATE_POSTS.0 + 2..GATE_POSTS.1 + 1).contains(&x);
     // The dark inside of the hedge, so no sky shows between its masses.
@@ -997,7 +1034,9 @@ fn hedge(scene: &mut Canvas) {
             scene.set(x, y, mix(HAWTHORN.shadow, UNDERSTOREY, 0.5));
         }
     }
-    // Back masses, then front ones lower down, each a heap of leaves.
+    // Back masses, then front ones lower down, each a heap of leaves: its middle, its size and
+    // which shrub it is.
+    let mut masses: Vec<(Shrub, (i32, i32, i32, i32))> = Vec::new();
     for (row, (step, down, size)) in [(15, 7, (10, 9)), (19, 17, (13, 11))]
         .into_iter()
         .enumerate()
@@ -1005,19 +1044,40 @@ fn hedge(scene: &mut Canvas) {
         for (index, x) in (-6..WOODS + 10).step_by(step).enumerate() {
             let i = index as i32;
             let cx = x + pick(i, row as i32, 571, 5) - 2;
-            if in_gap(cx) || in_gap(cx - size.0 / 2) || in_gap(cx + size.0 / 2) {
+            let rx = size.0 - 2 + pick(i, 3, 571, 7);
+            let ry = size.1 - 1 + pick(i, 4, 571, 4);
+            if in_gap(cx) || in_gap(cx - rx / 2) || in_gap(cx + rx / 2) {
                 continue;
             }
             let cy = (hedge_top(cx) + down).min(hedge_foot(cx) - size.1 / 2);
-            let rx = size.0 + pick(i, 3, 571, 4);
-            let ry = size.1 + pick(i, 4, 571, 3);
+            let shrub = Shrub::at(i, row as i32);
             crown(
                 scene,
                 (cx, cy),
                 (rx, ry),
-                (HAWTHORN, 0.0),
+                (shrub.leaves(), 0.0),
                 572 + (row * 100 + index) as u32,
             );
+            masses.push((shrub, (cx, cy, rx, ry)));
+        }
+    }
+    // Which shrub shows at a point: the front-most mass over it.
+    let shrub_at = |x: i32, y: i32| {
+        masses
+            .iter()
+            .rev()
+            .find(|(_, (cx, cy, rx, ry))| {
+                let (u, v) = ((x - cx) as f32 / *rx as f32, (y - cy) as f32 / *ry as f32);
+                u * u + v * v <= 1.0
+            })
+            .map(|&(shrub, _)| shrub)
+    };
+    // A holly's leaves catch the light in glossy points.
+    for index in 0..60 {
+        let x = pick(index, 6, 576, WOODS);
+        let y = hedge_top(x) + 3 + pick(index, 7, 576, 18);
+        if !in_gap(x) && shrub_at(x, y) == Some(Shrub::Holly) {
+            put(scene, x, y, mix(HOLLY.shine, rgb(0xffffff), 0.45));
         }
     }
     // Its stems at the foot, in the shade under the leaves, and its shade on the bank.
@@ -1038,13 +1098,13 @@ fn hedge(scene: &mut Canvas) {
             put(scene, x, foot + dy, rgba(0x1c3020, (60 - dy * 15) as u8));
         }
     }
-    // A few haws, gone dark red, along the lit tops.
+    // A few haws on the hawthorn, gone dark red, along the lit tops.
     for index in 0..40 {
         let x = pick(index, 0, 574, WOODS);
-        if in_gap(x) || (54..124).contains(&x) {
+        let y = hedge_top(x) + 4 + pick(index, 1, 574, 10);
+        if in_gap(x) || (54..124).contains(&x) || shrub_at(x, y) != Some(Shrub::Hawthorn) {
             continue;
         }
-        let y = hedge_top(x) + 4 + pick(index, 1, 574, 10);
         put(scene, x, y, rgb(0x8a2a24));
         put(scene, x - 1, y - 1, rgb(0xc8564a));
     }
@@ -1453,24 +1513,42 @@ fn trefoil(scene: &mut Canvas, (x, y): (i32, i32), salt: i32) {
     }
 }
 
+/// Where the ring of lusher grass is, where the mushrooms come up: its middle and its size.
+const RING: ((i32, i32), (f32, f32)) = ((348, 183), (22.0, 10.0));
+
+/// How far out from the middle of the mushrooms' ring `(x, y)` is, 1 on the ring itself.
+fn ring_reach(x: i32, y: i32) -> f32 {
+    let ((cx, cy), (rx, ry)) = RING;
+    let (u, v) = ((x - cx) as f32 / rx, (y - cy) as f32 / ry);
+    (u * u + v * v).sqrt()
+}
+
 /// Under the trees on the right: wild garlic's broad leaves all over the shady bank, the floor of
 /// leaf litter and moss with the lane running off into the trees, and a ring of lusher grass where
-/// mushrooms come up.
+/// mushrooms come up, with soft short grass inside it.
 fn under_the_trees(scene: &mut Canvas) {
     let start = WOODS - 36;
-    // The floor below the lane on the right, going into the trees.
+    // The floor below the lane on the right, going into the trees: the verge's grass giving way in
+    // a soft, ragged edge to leaf litter in broad, quiet patches of two browns, and moss coming up
+    // towards the oak.
     for x in start..WIDTH {
         let into = ((x - start) as f32 / 36.0).clamp(0.0, 1.0);
         for y in lane_foot(x)..HEIGHT {
-            if patches(x, y, (3, 3), 630) > into * 1.3 {
+            let fringe = (noise(x, y, 641) % 100) as f32 / 100.0;
+            if patches(x, y, (7, 4), 630) * 0.75 + fringe * 0.25 > into * 1.1 {
                 continue;
             }
-            let grain = patches(x, y, (4, 3), 631);
-            let color = if grain > 0.62 {
-                tone(MOSS, 2 + i32::from(chance(x, y, 632, 80)))
+            let towards_oak = ((x - 352) as f32 / 40.0).max(0.0);
+            let color = if patches(x, y, (9, 5), 637) + towards_oak * 0.5 > 0.8 {
+                tone(MOSS, 2 + i32::from(chance(x, y, 632, 30)))
             } else {
-                let level = if grain > 0.4 { 3 } else { 2 };
-                tone(LITTER, level - i32::from(chance(x, y, 633, 50)))
+                let level = if patches(x, y, (11, 6), 631) > 0.5 {
+                    3
+                } else {
+                    2
+                };
+                let grain = i32::from(chance(x, y, 642, 14)) - i32::from(chance(x, y, 633, 16));
+                tone(LITTER, level + grain)
             };
             scene.set(x, y, color);
         }
@@ -1480,12 +1558,36 @@ fn under_the_trees(scene: &mut Canvas) {
             scene.set(x, y, mix(here, UNDERSTOREY, into * 0.55));
         }
     }
-    // The ring in the grass, darker and lusher, where the mushrooms come up.
+    // Here and there a fallen leaf on the litter, catching the light, clear of the ring.
+    for index in 0..40 {
+        let x = start + 14 + pick(index, 0, 638, WIDTH - start - 16);
+        let foot = lane_foot(x);
+        let y = foot + 3 + pick(index, 1, 638, (HEIGHT - foot - 4).max(1));
+        let on_litter = [scene.get(x, y), scene.get(x + 1, y + 1)]
+            .iter()
+            .all(|&here| (1..=4).any(|level| here == tone(LITTER, level)));
+        if ring_reach(x, y) < 1.35 || !on_litter {
+            continue;
+        }
+        put(scene, x, y, LITTER.shine);
+        put(scene, x + 1, y, LITTER.light);
+        put(scene, x + 1, y + 1, LITTER.shadow);
+    }
+    // The ring in the grass, lusher, where the mushrooms come up, and short soft grass inside it,
+    // quiet, so that whatever comes up there stands out against it.
     for y in 168..198 {
         for x in 320..380 {
-            let (u, v) = ((x - 348) as f32 / 22.0, (y - 183) as f32 / 10.0);
-            let reach = (u * u + v * v).sqrt();
-            if (reach - 1.0).abs() < 0.24 && !chance(x, y, 634, 30) {
+            let reach = ring_reach(x, y);
+            let (u, v) = (
+                (x - RING.0.0) as f32 / RING.1.0,
+                (y - RING.0.1) as f32 / RING.1.1,
+            );
+            if reach < 0.78 {
+                let lit = patches(x, y, (8, 4), 639) - (u + v) * 0.2;
+                let level = if lit > 0.5 { 2 } else { 1 };
+                let blade = i32::from(chance(x, y, 640, 14));
+                scene.set(x, y, tone(SWARD, level + blade));
+            } else if (reach - 1.0).abs() < 0.24 && !chance(x, y, 634, 30) {
                 let level = if v < 0.0 { 4 } else { 3 };
                 scene.set(x, y, tone(SWARD, level - i32::from(chance(x, y, 636, 90))));
             } else if (reach - 1.0).abs() < 0.32 && chance(x, y, 635, 120) {
@@ -1671,7 +1773,7 @@ fn dog_rose(scene: &mut Canvas) {
     }
     // Honeysuckle twining through, leaves in pairs along its stem.
     let twine = Ramp::new(0x4a3a2a, 0x5e4a34, 0x76603e, 0x8e7850, 0xa89066);
-    let leaves = Ramp::new(0x2a4a2a, 0x3a6636, 0x508446, 0x6ca05a, 0x90bc74);
+    let leaves = Ramp::new(0x223e24, 0x2e5430, 0x3e6c3c, 0x52844a, 0x6a9a5a);
     for &(from, bend, to) in &[
         ((90, 110), (110, 96), (96, 76)),
         ((98, 96), (116, 92), (106, 88)),

@@ -10,8 +10,11 @@
 //!
 //! Ripe is always the brightest, fullest and shiniest a thing gets, and over always dull, small
 //! and sagging, so the person can read a hedge at a glance and still have each plant's own look to
-//! learn. Everything is drawn a little larger than life, at the colony's scale, lit from the upper
-//! left and outlined in a darker shade of its own colour.
+//! learn. Unripe is a hard yellow-green, paler and yellower than the leaves it grows among, and
+//! over a dusty brown or grey, never as dark as the hedge's shade, so that something not ready, or
+//! past it, still stands out from the leaves at a glance. Everything is drawn a little larger than
+//! life, at the colony's scale, lit from the upper left and outlined in a darker shade of its own
+//! colour.
 
 use super::{Plant, Slot};
 use crate::paint::{Ramp, put, rgb, rgba};
@@ -44,11 +47,14 @@ const DEAD_LEAF: Ramp = Ramp::new(0x4a3a22, 0x6a5430, 0x8a6e40, 0xa88a56, 0xc4a8
 const STALK: Rgba = rgb(0x4a5a2a);
 const WOODY: Rgba = rgb(0x5a3a2a);
 
+/// Hard and unripe: a yellow-green, yellower and paler than any leaf on the hedge.
+const UNRIPE: Ramp = Ramp::new(0x485218, 0x788826, 0xa4b23c, 0xc8d468, 0xecf0b0);
+
 // Blackberries.
-const BERRY_GREEN: Ramp = Ramp::new(0x3e5a26, 0x5e8034, 0x84a84a, 0xa8c866, 0xd4e8a0);
+const BERRY_GREEN: Ramp = UNRIPE;
 const BERRY_RED: Ramp = Ramp::new(0x5a1420, 0x8a2230, 0xb83a3a, 0xd8604c, 0xf4a088);
 const BERRY_BLACK: Ramp = Ramp::new(0x0e0818, 0x22143a, 0x36204e, 0x54386e, 0xe4dcff);
-const BERRY_OVER: Ramp = Ramp::new(0x302a30, 0x463c46, 0x5a4e58, 0x6a5e68, 0x7a6e78);
+const BERRY_OVER: Ramp = Ramp::new(0x3a3038, 0x5a4c58, 0x766874, 0x8a7c88, 0x9a8e98);
 // Strawberries.
 const STRAW_WHITE: Ramp = Ramp::new(0x6a7a4a, 0xa8b888, 0xd0dcb0, 0xe8f0d0, 0xf8fcf0);
 const STRAW_BLUSH: Ramp = Ramp::new(0x8a3a3a, 0xc06a5a, 0xe09a80, 0xf0c0a8, 0xfce4d8);
@@ -56,27 +62,27 @@ const STRAW_RED: Ramp = Ramp::new(0x6a0e14, 0xa81c22, 0xd8302c, 0xf05a44, 0xffd0
 const STRAW_OVER: Ramp = Ramp::new(0x3a1a1a, 0x5a2a26, 0x74382e, 0x84483a, 0x946050);
 const SEED: Rgba = rgb(0xf0d060);
 // Rose hips.
-const HIP_GREEN: Ramp = Ramp::new(0x3a5424, 0x56762e, 0x76963c, 0x98b654, 0xc8e090);
+const HIP_GREEN: Ramp = UNRIPE;
 const HIP_ORANGE: Ramp = Ramp::new(0x7a3410, 0xb0561a, 0xe07a24, 0xf4a040, 0xffd8a0);
 const HIP_SCARLET: Ramp = Ramp::new(0x5a0a10, 0x9a121a, 0xd42020, 0xf04a34, 0xffe0d0);
-const HIP_OVER: Ramp = Ramp::new(0x2a0e12, 0x46161c, 0x5c2024, 0x6e2c2c, 0x7e3c38);
+const HIP_OVER: Ramp = Ramp::new(0x4a2a20, 0x7a4636, 0x9a6048, 0xb27c5e, 0xc89878);
 // Crab apples.
-const APPLE_GREEN: Ramp = Ramp::new(0x3a5a22, 0x5a8030, 0x7ea640, 0xa2c45a, 0xd0e894);
+const APPLE_GREEN: Ramp = Ramp::new(0x445618, 0x708c28, 0x9cb63e, 0xc2d666, 0xe8f2ae);
 const APPLE_YELLOW: Ramp = Ramp::new(0x6a6a1a, 0x9a9a26, 0xc4c03a, 0xe0dc5e, 0xf8f4a8);
 const APPLE_GOLD: Ramp = Ramp::new(0x7a5212, 0xb88a1e, 0xe8c034, 0xf8dc60, 0xfffcd8);
 const BLUSH: Ramp = Ramp::new(0x6a1414, 0xa02420, 0xd03c2c, 0xe86440, 0xf89070);
-const APPLE_OVER: Ramp = Ramp::new(0x3a2414, 0x5a3a1e, 0x7a5228, 0x8a6234, 0x9a7444);
+const APPLE_OVER: Ramp = Ramp::new(0x3e2614, 0x64421e, 0x86602c, 0x9a7438, 0xaa8448);
 // Hazelnuts.
 const NUT_PALE: Ramp = Ramp::new(0x6a7044, 0x98a066, 0xc0c48a, 0xd8dcaa, 0xf0f0d4);
 const NUT_TAN: Ramp = Ramp::new(0x6a4a24, 0x9a6e36, 0xbc9050, 0xd4ae6c, 0xecd4a0);
 const NUT_BROWN: Ramp = Ramp::new(0x3a1e0e, 0x6a3a18, 0x965424, 0xb87436, 0xf4d8b0);
-const NUT_OVER: Ramp = Ramp::new(0x2a1c14, 0x3e2a1c, 0x503826, 0x5e4430, 0x6e543c);
-const HUSK: Ramp = Ramp::new(0x34501e, 0x4e7228, 0x6a9236, 0x88b04a, 0xb0d070);
+const NUT_OVER: Ramp = Ramp::new(0x3a2a1c, 0x5a4430, 0x725a40, 0x846a4c, 0x947a5a);
+const HUSK: Ramp = Ramp::new(0x465818, 0x748e2a, 0xa0b840, 0xc4d868, 0xe8f2ae);
 const HUSK_DRY: Ramp = Ramp::new(0x5a4220, 0x82602c, 0xa8823e, 0xc4a258, 0xdcc488);
 // Elder.
-const ELDER_BUD: Ramp = Ramp::new(0x4a6630, 0x6a8a3e, 0x8aaa52, 0xaac86c, 0xd0e4a0);
+const ELDER_BUD: Ramp = Ramp::new(0x4e5626, 0x7e8a3c, 0xb2bc6a, 0xd6dc98, 0xf2f2d0);
 const ELDER_CREAM: Ramp = Ramp::new(0x8a8460, 0xc8c098, 0xece4c0, 0xf8f4dc, 0xffffff);
-const ELDER_OVER: Ramp = Ramp::new(0x5a4a30, 0x7a6640, 0x968052, 0xaa9466, 0xbea87a);
+const ELDER_OVER: Ramp = Ramp::new(0x4e3e28, 0x7a6640, 0x968052, 0xaa9466, 0xbea87a);
 // Thyme.
 const THYME: Ramp = Ramp::new(0x24381e, 0x34502a, 0x486a36, 0x5e8444, 0x7aa05a);
 const THYME_BUD: Ramp = Ramp::new(0x7a5068, 0xa87a90, 0xcca0b4, 0xe4c4d0, 0xf8e8f0);
@@ -98,10 +104,10 @@ const CHANT_PALE: Ramp = Ramp::new(0x8a7a3a, 0xbcaa5a, 0xdcca7a, 0xece09a, 0xf8f
 const CHANT_GOLD: Ramp = Ramp::new(0x7a4a08, 0xc07a10, 0xf0a818, 0xffc840, 0xfff4b0);
 const CHANT_OVER: Ramp = Ramp::new(0x4a2a10, 0x6e4018, 0x8a5422, 0x9e6430, 0xb07a44);
 // Honeysuckle.
-const SUCKLE_BUD: Ramp = Ramp::new(0x5a6a3a, 0x7e9050, 0xa0b06a, 0xc0cc8a, 0xe0e8b8);
+const SUCKLE_BUD: Ramp = Ramp::new(0x4e5a26, 0x82923a, 0xb0c058, 0xd4e08a, 0xf2f6c8);
 const SUCKLE_PINK: Ramp = Ramp::new(0x7a3a4a, 0xb05a6a, 0xd88094, 0xeca8b8, 0xfcd8e0);
 const SUCKLE_CREAM: Ramp = Ramp::new(0x9a7a3a, 0xd8b85a, 0xf4dc84, 0xfcecb0, 0xfffcf0);
-const SUCKLE_OVER: Ramp = Ramp::new(0x5a3a2a, 0x7a5236, 0x946a46, 0xa88058, 0xbc966c);
+const SUCKLE_OVER: Ramp = Ramp::new(0x4a3022, 0x7a5236, 0x946a46, 0xa88058, 0xbc966c);
 // Clover.
 const CLOVER: Ramp = Ramp::new(0x1e4a22, 0x2e6a2e, 0x429040, 0x5eb050, 0xa0e080);
 const CLOVER_DULL: Ramp = Ramp::new(0x2a4424, 0x3a5a30, 0x4e7240, 0x648a50, 0x7ca064);
@@ -548,9 +554,9 @@ fn wild_garlic(s: &mut Canvas, stage: Stage) {
         s,
         (0, 4),
         &[
-            ".............",
-            ".d.........d.",
-            "dGd.......dGd",
+            "......k......",
+            ".d....k....d.",
+            "dGd...k...dGd",
             "dGgd..k..dgGd",
             ".dggd.k.dggd.",
             "..dggdkdggd..",
@@ -563,9 +569,9 @@ fn wild_garlic(s: &mut Canvas, stage: Stage) {
         Stage::Unripe => &[
             "......E......",
             ".....ELE.....",
-            ".....EOE.....",
-            "......k......",
-            "......k......",
+            "....ELHOE....",
+            "....EOOSE....",
+            ".....ESE.....",
         ],
         Stage::Turning => &[
             "......#......",
@@ -592,9 +598,9 @@ fn wild_garlic(s: &mut Canvas, stage: Stage) {
     paint(s, (0, 0), head, &inks);
 }
 
-/// A head of elderflower held up on its stalk from the bush: a little plate of tight green buds,
-/// then cream buds, then open into a froth of cream florets with gold eyes; over, browning, with
-/// its petals dropping.
+/// A head of elderflower held up on its stalk from the bush: a little dome of tight green buds,
+/// then cream buds, then open into a froth of cream florets with gold eyes; over, browning and
+/// sagging, with its petals dropping.
 fn elderflower(s: &mut Canvas, stage: Stage) {
     let ramp = match stage {
         Stage::Unripe => ELDER_BUD,
@@ -606,10 +612,10 @@ fn elderflower(s: &mut Canvas, stage: Stage) {
     let head: &[&str] = match stage {
         Stage::Unripe => &[
             ".............",
-            ".............",
-            "....l.o.l....",
-            "..l.lolol.l..",
-            "..sosososos..",
+            ".....#.#.....",
+            "....#lll#....",
+            "...#lolol#...",
+            "..#sosososs#.",
         ],
         Stage::Turning => &[
             ".............",
@@ -627,10 +633,10 @@ fn elderflower(s: &mut Canvas, stage: Stage) {
         ],
         Stage::Over => &[
             ".............",
-            "....o...o....",
-            "..s.o#o.s.o..",
-            ".s#s.s#s.s...",
-            "..#...s...#..",
+            ".............",
+            "...#ososo#...",
+            "..#s#oso#s#..",
+            ".#s#.#s#.#s#.",
         ],
     };
     paint(s, (0, 1), head, &inks);
@@ -657,7 +663,7 @@ fn elderflower(s: &mut Canvas, stage: Stage) {
 /// blush on its sunny side; over, brown and bruised.
 fn crab_apple(s: &mut Canvas, stage: Stage) {
     let (ramp, size, shiny) = match stage {
-        Stage::Unripe => (APPLE_GREEN, 0.78, false),
+        Stage::Unripe => (APPLE_GREEN, 0.84, false),
         Stage::Turning => (APPLE_YELLOW, 0.92, false),
         Stage::Ripe => (APPLE_GOLD, 1.0, true),
         Stage::Over => (APPLE_OVER, 0.86, false),
@@ -710,9 +716,9 @@ fn rose_hip(s: &mut Canvas, stage: Stage) {
         &inks,
     );
     // The one behind, a little to the right and darker.
-    fruit(s, (8.6, 6.4), (1.9 * size, 2.8 * size), darker(ramp), false);
-    fruit(s, (5.6, 6.6), (2.4 * size, 3.5 * size), ramp, shiny);
-    let foot = (6.6 + 3.5 * size).round() as i32;
+    fruit(s, (8.6, 6.4), (2.1 * size, 3.0 * size), darker(ramp), false);
+    fruit(s, (5.6, 6.6), (2.7 * size, 3.8 * size), ramp, shiny);
+    let foot = (6.6 + 3.8 * size).round() as i32;
     paint(s, (4, foot - 1), &["c.c", ".c."], &inks);
     if stage == Stage::Over {
         put(s, 5, 6, HIP_OVER.edge);
@@ -752,9 +758,9 @@ fn thyme(s: &mut Canvas, stage: Stage) {
         Stage::Turning => &[
             ".............",
             ".............",
-            "....o........",
-            "......o..o...",
-            "..o..........",
+            "....l..o.....",
+            "..o..l...l...",
+            ".l...o.l..o..",
         ],
         Stage::Ripe => &[
             ".............",
@@ -820,9 +826,9 @@ fn chanterelle(s: &mut Canvas, stage: Stage) {
     paint(s, (0, 12 - lines.len() as i32), lines, &inks);
 }
 
-/// A whorl of honeysuckle at the end of its twining stem, a pair of leaves under it: slim green
-/// buds, then long pink buds, then the trumpets open, cream and gold from pink throats, their lips
-/// curled back; over, browned and drooping.
+/// A whorl of honeysuckle at the end of its twining stem, a pair of leaves under it: a tight crown
+/// of green buds, then long pink buds, then the trumpets open, cream and gold from pink throats,
+/// their lips curled back; over, browned and drooping.
 fn honeysuckle(s: &mut Canvas, stage: Stage) {
     let ramp = match stage {
         Stage::Unripe => SUCKLE_BUD,
@@ -837,10 +843,10 @@ fn honeysuckle(s: &mut Canvas, stage: Stage) {
             ".............",
             ".............",
             ".............",
-            ".....l.l.....",
-            "....l.o.o....",
-            "....o.o.o....",
-            ".....sos.....",
+            "....#.#.#....",
+            "...#l#l#o#...",
+            "...#lolos#...",
+            "....#oss#....",
         ],
         Stage::Turning => &[
             ".............",
@@ -863,11 +869,11 @@ fn honeysuckle(s: &mut Canvas, stage: Stage) {
         Stage::Over => &[
             ".............",
             ".............",
-            "....s...s....",
-            "...o..o..o...",
-            "..s..o.o..s..",
-            "....oosoo....",
-            ".....sss.....",
+            ".............",
+            "....#s#s#....",
+            "...#ososo#...",
+            "..#o#sos#o#..",
+            "..#s#.#.#s#..",
         ],
     };
     paint(s, (0, 0), whorl, &inks);
