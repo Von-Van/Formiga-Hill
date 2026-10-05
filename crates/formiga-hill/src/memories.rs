@@ -90,6 +90,9 @@ pub struct ColonyMemories {
     /// The most rings each traveller has rung in one turn at hoopla, by its Desktop id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub most_rings: BTreeMap<String, u32>,
+    /// How many tugs-of-war each traveller has been on the winning side of, by its Desktop id.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub tug_wins: BTreeMap<String, u32>,
 }
 
 fn is_zero(count: &u32) -> bool {
@@ -299,6 +302,17 @@ impl Memories {
         keep_souvenir(colony, crate::story::souvenirs::HOOPLA_TEDDY);
         self.keep();
         more
+    }
+
+    /// Remembers a tug-of-war pulled to the end: a win for each of `winners`, by its Desktop id,
+    /// and the knot of rope the first time.
+    pub fn tugged(&mut self, winners: &[u64]) {
+        let colony = self.colony_mut();
+        for id in winners {
+            *colony.tug_wins.entry(id.to_string()).or_default() += 1;
+        }
+        keep_souvenir(colony, crate::story::souvenirs::TUG_ROPE);
+        self.keep();
     }
 
     /// Remembers an outing to the Woods: who went, and what came home in the basket, which goes
@@ -715,13 +729,24 @@ mod tests {
     }
 
     #[test]
-    fn a_book_kept_before_hoopla_reads_with_no_hoopla_record() {
+    fn the_tug_of_war_counts_each_winners_wins_and_gives_one_knot_of_rope() {
+        let mut memories = Memories::open(None, "c");
+        memories.tugged(&[7, 9]);
+        memories.tugged(&[7, 11]);
+        assert_eq!(memories.colony().tug_wins["7"], 2);
+        assert_eq!(memories.colony().tug_wins["9"], 1);
+        assert_eq!(memories.colony().tug_wins["11"], 1);
+        assert_eq!(memories.colony().souvenirs, vec!["tug_rope".to_owned()]);
+    }
+
+    #[test]
+    fn a_book_kept_before_hoopla_and_the_tug_of_war_reads_with_neither_record() {
         let book: Book = serde_json::from_str(
             r#"{"version": 2, "colonies": {"c": {"visits": 3, "quickest_racers": {"7": 12.5}}}}"#,
         )
         .unwrap();
         let colony = &book.colonies["c"];
-        assert!(colony.most_rings.is_empty());
+        assert!(colony.most_rings.is_empty() && colony.tug_wins.is_empty());
         assert_eq!(colony.quickest_racers["7"], 12.5);
     }
 

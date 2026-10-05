@@ -1,7 +1,7 @@
 //! The Fairground, down the lane from the green: free play among the stalls, and games the colony
 //! plays among themselves while the person watches. (Games the person plays, for finds to take
 //! home, belong to the Woods.) The person chooses a game and, at most, who plays it: hide-and-seek,
-//! the sack race, the high striker, or hoopla.
+//! the sack race, the high striker, hoopla, or the tug-of-war, whose sides the person may pick.
 
 pub mod gear;
 mod hide_and_seek;
@@ -10,6 +10,7 @@ pub mod hoopla;
 pub mod prizes;
 pub mod sack_race;
 mod scenery;
+pub mod tug_of_war;
 
 use crate::cast::{Cast, Id};
 use crate::daylight::Nightlights;
@@ -20,6 +21,7 @@ use hoopla::Hoopla;
 use sack_race::SackRace;
 use scenery::GROUND;
 use std::sync::LazyLock;
+use tug_of_war::{Side, TugOfWar};
 
 pub use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 pub use hide_and_seek::{Event, HideAndSeek, Phase};
@@ -216,6 +218,7 @@ pub fn open(cast: &Cast, now: f32) -> (Playground, Games) {
         sack_race: SackRace::new(),
         high_striker: HighStriker::new(),
         hoopla: Hoopla::new(),
+        tug_of_war: TugOfWar::new(),
     };
     games.set_out(&mut ground, now);
     (ground, games)
@@ -229,6 +232,7 @@ pub enum Game {
     SackRace,
     HighStriker,
     Hoopla,
+    TugOfWar,
 }
 
 /// How the person says who plays a game.
@@ -239,14 +243,18 @@ pub enum Players {
     It,
     /// Any number are picked, at least `least`; nobody picked is everyone.
     Some { least: usize },
+    /// The person puts each on a side, or leaves it out; nobody put anywhere is everyone, sorted
+    /// into sides by the colony itself.
+    Sides,
 }
 
 impl Game {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 5] = [
         Self::HideAndSeek,
         Self::SackRace,
         Self::HighStriker,
         Self::Hoopla,
+        Self::TugOfWar,
     ];
 
     pub fn name(self) -> &'static str {
@@ -255,6 +263,7 @@ impl Game {
             Self::SackRace => "The sack race",
             Self::HighStriker => "The high striker",
             Self::Hoopla => "Hoopla",
+            Self::TugOfWar => "The tug-of-war",
         }
     }
 
@@ -263,6 +272,7 @@ impl Game {
             Self::HideAndSeek => Players::It,
             Self::SackRace => Players::Some { least: 2 },
             Self::HighStriker | Self::Hoopla => Players::Some { least: 1 },
+            Self::TugOfWar => Players::Sides,
         }
     }
 
@@ -273,14 +283,17 @@ impl Game {
             Self::SackRace => crate::story::souvenirs::RACE_ROSETTE,
             Self::HighStriker => crate::story::souvenirs::STRIKER_BELL,
             Self::Hoopla => crate::story::souvenirs::HOOPLA_TEDDY,
+            Self::TugOfWar => crate::story::souvenirs::TUG_ROPE,
         }
     }
 }
 
-/// Who the person has picked to play each game, if anyone in particular.
+/// Who the person has picked to play each game, if anyone in particular, and the sides it has
+/// put each on for the tug-of-war.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Picks {
     picked: Vec<(Game, Vec<Id>)>,
+    sides: Vec<(Id, Side)>,
 }
 
 impl Picks {
@@ -318,13 +331,52 @@ impl Picks {
         self.entry(game).clear();
     }
 
-    /// Whether enough are picked to play: nobody, or at least as many as the game needs.
+    /// Whether enough are picked to play: nobody, or at least as many as the game needs; for the
+    /// tug-of-war, nobody put on a side, or someone on each.
     pub fn enough(&self, game: Game) -> bool {
         let picked = self.of(game).len();
         match game.players() {
             Players::It => true,
             Players::Some { least } => picked == 0 || picked >= least,
+            Players::Sides => {
+                let (left, right) = self.sides();
+                (left.is_empty() && right.is_empty()) || (!left.is_empty() && !right.is_empty())
+            }
         }
+    }
+
+    /// The side `id` has been put on for the tug-of-war, if any.
+    pub fn side(&self, id: Id) -> Option<Side> {
+        self.sides
+            .iter()
+            .find(|(picked, _)| *picked == id)
+            .map(|(_, side)| *side)
+    }
+
+    /// Puts `id` on a side for the tug-of-war, or leaves it out.
+    pub fn put(&mut self, id: Id, side: Option<Side>) {
+        self.sides.retain(|(picked, _)| *picked != id);
+        if let Some(side) = side {
+            self.sides.push((id, side));
+        }
+    }
+
+    /// The sides the person has picked for the tug-of-war, in the order it picked them: both
+    /// empty if it has left the colony to sort itself.
+    pub fn sides(&self) -> (Vec<Id>, Vec<Id>) {
+        let on = |wanted: Side| {
+            self.sides
+                .iter()
+                .filter(|(_, side)| *side == wanted)
+                .map(|(id, _)| *id)
+                .collect()
+        };
+        (on(Side::Left), on(Side::Right))
+    }
+
+    /// Back to the colony sorting itself into sides.
+    pub fn unsort(&mut self) {
+        self.sides.clear();
     }
 
     /// Takes a pick of "it" once a game has started with it: next time, it is whoever's turn.
@@ -341,6 +393,7 @@ pub struct Games {
     pub sack_race: SackRace,
     pub high_striker: HighStriker,
     pub hoopla: Hoopla,
+    pub tug_of_war: TugOfWar,
 }
 
 impl Games {
@@ -354,6 +407,8 @@ impl Games {
             Some(Game::HighStriker)
         } else if self.hoopla.phase() != hoopla::Phase::Ready {
             Some(Game::Hoopla)
+        } else if self.tug_of_war.phase() != tug_of_war::Phase::Ready {
+            Some(Game::TugOfWar)
         } else {
             None
         }
@@ -378,7 +433,24 @@ impl Games {
             Game::SackRace => self.sack_race.start(ground, cast, picked, now),
             Game::HighStriker => self.high_striker.start(ground, picked, now),
             Game::Hoopla => self.hoopla.start(ground, cast, picked, now),
+            Game::TugOfWar => self.tug_of_war.start(ground, cast, picked, None, now),
         }
+    }
+
+    /// Starts the tug-of-war with the sides the person picked, or, if it picked none, everyone as
+    /// the colony sorts itself.
+    pub fn start_tug(
+        &mut self,
+        ground: &mut Playground,
+        cast: &Cast,
+        (left, right): (Vec<Id>, Vec<Id>),
+        now: f32,
+    ) {
+        if self.playing().is_some() {
+            return;
+        }
+        let sides = (!left.is_empty() && !right.is_empty()).then_some((left, right));
+        self.tug_of_war.start(ground, cast, &[], sides, now);
     }
 
     /// Plays whichever game is on, and sets out its gear.
@@ -387,16 +459,19 @@ impl Games {
         self.sack_race.tick(ground, now);
         self.high_striker.tick(ground, now);
         self.hoopla.tick(ground, now);
+        self.tug_of_war.tick(ground, now);
         self.set_out(ground, now);
     }
 
     /// The games' gear, where it is: the striker's bell, puck and mallet and the hoopla's pegs,
-    /// prizes and rings always, and the race's chalk line, posts and ribbon while a race is on; and
-    /// whatever has been won at hoopla, carried by whoever won it.
+    /// prizes and rings always, the race's chalk line, posts and ribbon while a race is on, and the
+    /// tug-of-war's rope and hay while a bout is; and whatever has been won at hoopla, carried by
+    /// whoever won it.
     fn set_out(&self, ground: &mut Playground, now: f32) {
         let mut gear = self.high_striker.gear(ground, now);
         gear.extend(self.sack_race.gear(now));
         gear.extend(self.hoopla.gear(ground, now));
+        gear.extend(self.tug_of_war.gear(ground, now));
         ground.set_fliers(gear);
         ground.set_fixtures(vec![self.hoopla.counter(now)]);
         ground.carry(self.hoopla.carried());
@@ -409,6 +484,7 @@ impl Games {
             Some(Game::SackRace) => self.sack_race.stop(ground, now),
             Some(Game::HighStriker) => self.high_striker.stop(ground, now),
             Some(Game::Hoopla) => self.hoopla.stop(ground, now),
+            Some(Game::TugOfWar) => self.tug_of_war.stop(ground, now),
             None => {}
         }
     }
@@ -442,7 +518,8 @@ impl Games {
                 .map(|id| (id, "throwing"))
                 .into_iter()
                 .collect(),
-            None => Vec::new(),
+            // Everyone is in the thick of it: nobody in particular to follow.
+            Some(Game::TugOfWar) | None => Vec::new(),
         }
     }
 }
@@ -569,6 +646,52 @@ mod tests {
         assert_eq!(picks.of(Game::SackRace), [9], "picked again is unpicked");
         picks.clear(Game::SackRace);
         assert!(picks.of(Game::SackRace).is_empty());
+    }
+
+    #[test]
+    fn the_person_can_put_each_on_a_side_of_the_rope_and_it_takes_someone_on_each() {
+        let mut picks = Picks::default();
+        assert!(
+            picks.enough(Game::TugOfWar),
+            "nobody picked: the colony sorts itself"
+        );
+        picks.put(7, Some(Side::Left));
+        assert!(!picks.enough(Game::TugOfWar), "nobody to pull against");
+        picks.put(9, Some(Side::Right));
+        picks.put(11, Some(Side::Right));
+        assert!(picks.enough(Game::TugOfWar));
+        assert_eq!(picks.sides(), (vec![7], vec![9, 11]));
+        assert_eq!(picks.side(9), Some(Side::Right));
+        picks.put(9, Some(Side::Left));
+        picks.put(11, None);
+        assert_eq!(picks.sides(), (vec![7, 9], Vec::new()));
+        assert!(!picks.enough(Game::TugOfWar));
+        // The sides are the tug-of-war's own: nobody is picked for any other game by them.
+        assert!(Game::ALL.iter().all(|game| picks.of(*game).is_empty()));
+        picks.unsort();
+        assert_eq!(picks.sides(), (Vec::new(), Vec::new()));
+        assert!(picks.enough(Game::TugOfWar));
+    }
+
+    #[test]
+    fn the_tug_of_war_is_pulled_with_the_persons_own_sides() {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let (mut ground, mut games) = open(&cast, 0.0);
+        let ids: Vec<Id> = cast.ids().collect();
+        let sides = (vec![ids[1]], vec![ids[3], ids[4]]);
+        games.start_tug(&mut ground, &cast, sides, 0.0);
+        assert_eq!(games.playing(), Some(Game::TugOfWar));
+        let (mut left, mut right) = games.tug_of_war.sides();
+        left.sort_unstable();
+        right.sort_unstable();
+        let mut wanted = vec![ids[3], ids[4]];
+        wanted.sort_unstable();
+        assert_eq!((left, right), (vec![ids[1]], wanted));
+        games.stop(&mut ground, 1.0);
+        // With no sides picked, everyone, as the colony sorts itself.
+        games.start_tug(&mut ground, &cast, (Vec::new(), Vec::new()), 1.0);
+        let (left, right) = games.tug_of_war.sides();
+        assert_eq!(left.len() + right.len(), cast.members.len());
     }
 
     #[test]

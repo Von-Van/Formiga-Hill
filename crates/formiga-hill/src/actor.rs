@@ -206,6 +206,12 @@ impl Actor {
         self.height
     }
 
+    /// Whether it is lying on its side.
+    #[cfg(test)]
+    pub fn tipped(&self) -> bool {
+        self.tipped
+    }
+
     /// Where the middle of its face is drawn, in scene pixels, as it stands at rest.
     #[cfg(test)]
     pub fn face_at(&self) -> (i32, i32) {

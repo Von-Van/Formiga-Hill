@@ -818,6 +818,205 @@ pub fn hoop_flying(at: Option<((i32, i32), f32)>, hoop: Hoop, trail: &[(i32, i32
     )
 }
 
+// ---------------------------------------------------------------------------------------------
+// The tug-of-war
+// ---------------------------------------------------------------------------------------------
+
+/// Hemp for the rope, its strands twisted so they catch the light by turns; hay for tumbling
+/// into, greener and duller than straw.
+const HEMP: Ramp = Ramp::new(0x6a5030, 0x8a6c40, 0xb8955a, 0xd4b47a, 0xe8d2a0);
+const HAY: Ramp = Ramp::new(0x6a5c26, 0x96883c, 0xbcac54, 0xd4c670, 0xeae09c);
+
+/// Hay strewn either side of the line at `(x, y)`, `spread` along the rope each way: a loose,
+/// low bed of it under the rope, deepest and heaped highest on the line and thinning out towards
+/// its ends, its top lit and its straws streaked, ragged at its edges with wisps sticking out.
+/// Flat on the ground, under everyone.
+pub fn hay((x, y): (i32, i32), spread: i32) -> Prop {
+    let area = (x - spread - 6, y - 10, spread * 2 + 13, 24);
+    piece(f32::MIN, area, |canvas, (left, top)| {
+        let at = |px: i32, py: i32| (px - left, py - top);
+        // How far above and below the row the bed reaches at `dx` from the line: deep in the
+        // middle, thin at the ends, ragged all along.
+        let reach = |dx: i32| -> (i32, i32) {
+            let out = (dx.abs() as f32 / spread.max(1) as f32).min(1.0);
+            let ragged = (noise(x + dx, y, 955) % 3) as i32;
+            let heap = (5.0 * (1.0 - out * out)).round() as i32;
+            (
+                2 + heap + ragged / 2,
+                5 + (2.0 * (1.0 - out)).round() as i32 - ragged / 2,
+            )
+        };
+        for dx in -spread..=spread {
+            let (above, below) = reach(dx);
+            for dy in -above..=below {
+                let streak = noise((x + dx).div_euclid(2), y + dy, 957) % 8;
+                let lit = dy - (-above);
+                let tone = if lit == 0 {
+                    if streak < 4 { HAY.light } else { HAY.shine }
+                } else if dy >= below - 1 {
+                    if streak < 5 { HAY.shadow } else { HAY.base }
+                } else if lit <= 2 {
+                    if streak < 2 { HAY.base } else { HAY.light }
+                } else {
+                    match streak {
+                        0 => HAY.shadow,
+                        1..=4 => HAY.base,
+                        _ => HAY.light,
+                    }
+                };
+                let (px, py) = at(x + dx, y + dy);
+                put(canvas, px, py, tone);
+            }
+            // Its edge in its own darkest tone where it lies on the sawdust, and a crumb of shade.
+            let (px, py) = at(x + dx, y + below + 1);
+            put(canvas, px, py, mix(HAY.edge, HAY.shadow, 0.4));
+            put(canvas, px, py + 1, rgba(0x2e2024, 46));
+        }
+        // Straws sticking out of it, and a few strayed further.
+        for index in 0..spread * 2 {
+            let along = (noise(index, 0, 953) % (spread as u32 * 2 + 9)) as i32 - spread - 4;
+            let (above, below) = reach(along.clamp(-spread, spread));
+            let wy = if index % 2 == 0 {
+                y - above - 1
+            } else {
+                y + below + 2
+            };
+            let long = 2 + (noise(index, 3, 953) % 3) as i32;
+            let lean = (noise(index, 4, 953) % 3) as i32 - 1;
+            let (px, py) = at(x + along, wy);
+            line(canvas, (px, py), (px + long, py + lean), HAY.base);
+            put(canvas, px, py, HAY.light);
+        }
+    })
+}
+
+/// The rope, held: through the paws of everyone on it, `paws`, front ones nearest the line, taut
+/// between them, its ends trailing to the ground beyond the last on each side; the ribbon tied on
+/// at `ribbon`, hanging from it. Dropped (`lying`), it lies along row `ground` between `ends`, its
+/// ribbon in the sawdust beside it. Drawn over everyone holding it, or under everyone, dropped.
+pub fn rope(
+    paws: &[((i32, i32), super::tug_of_war::Side)],
+    ribbon: i32,
+    ground: i32,
+    lying: bool,
+    ends: (i32, i32),
+) -> Prop {
+    use super::tug_of_war::Side;
+    let area = (ends.0 - 6, ground - 48, ends.1 - ends.0 + 13, 58);
+    let base = if lying { f32::MIN } else { ground as f32 + 5.5 };
+    piece(base, area, |canvas, (left, top)| {
+        let at = |(x, y): (i32, i32)| (x - left, y - top);
+        // The rope's line, as points walked straight between.
+        let mut points: Vec<(i32, i32)> = Vec::new();
+        if lying {
+            let reach = 54;
+            for step in -reach..=reach {
+                let wave = ((step as f32 * 0.21).sin() * 1.2).round() as i32;
+                points.push((ribbon + step, ground + 2 + wave));
+            }
+        } else {
+            let mut left_side: Vec<(i32, i32)> = paws
+                .iter()
+                .filter(|(_, side)| *side == Side::Left)
+                .map(|(paw, _)| *paw)
+                .collect();
+            let mut right_side: Vec<(i32, i32)> = paws
+                .iter()
+                .filter(|(_, side)| *side == Side::Right)
+                .map(|(paw, _)| *paw)
+                .collect();
+            left_side.sort_by_key(|paw| paw.0);
+            right_side.sort_by_key(|paw| paw.0);
+            // Trailing to the ground beyond the last on the left, and on to its end there.
+            if let Some(&(x, _)) = left_side.first() {
+                points.push((x - 16, ground + 1));
+                points.push((x - 9, ground - 2));
+            }
+            points.extend(&left_side);
+            // Across the middle, sagging a little to the ribbon.
+            if let (Some(&from), Some(&to)) = (left_side.last(), right_side.first()) {
+                let lowest = from.1.max(to.1) + 1;
+                points.push((ribbon, lowest));
+            }
+            points.extend(&right_side);
+            if let Some(&(x, _)) = right_side.last() {
+                points.push((x + 9, ground - 2));
+                points.push((x + 16, ground + 1));
+            }
+        }
+        // Two pixels thick: the strands catching the light by turns along its top, its underside
+        // in shade.
+        let mut along = 0;
+        for pair in points.windows(2) {
+            let (a, b) = (at(pair[0]), at(pair[1]));
+            let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs()).max(1);
+            for step in 0..steps {
+                let t = step as f32 / steps as f32;
+                let x = a.0 + ((b.0 - a.0) as f32 * t).round() as i32;
+                let y = a.1 + ((b.1 - a.1) as f32 * t).round() as i32;
+                let strand = along % 3;
+                put(
+                    canvas,
+                    x,
+                    y,
+                    match strand {
+                        0 => HEMP.light,
+                        1 => HEMP.shine,
+                        _ => HEMP.base,
+                    },
+                );
+                put(
+                    canvas,
+                    x,
+                    y + 1,
+                    if strand == 2 { HEMP.edge } else { HEMP.shadow },
+                );
+                along += 1;
+            }
+        }
+        // The ribbon tied round it at the middle: a knot, and its two tails hanging, or lying
+        // flat beside it, dropped.
+        let knot = points
+            .iter()
+            .min_by_key(|(x, _)| (x - ribbon).abs())
+            .copied()
+            .unwrap_or((ribbon, ground));
+        let (kx, ky) = at(knot);
+        let satin = SATIN;
+        put(canvas, kx - 1, ky, satin.light);
+        put(canvas, kx, ky, satin.base);
+        put(canvas, kx - 1, ky + 1, satin.base);
+        put(canvas, kx, ky + 1, satin.edge);
+        let tails: [(i32, i32); 2] = if lying {
+            [(-3, 2), (3, 2)]
+        } else {
+            [(-2, 6), (2, 5)]
+        };
+        for (dx, long) in tails {
+            for step in 1..=long {
+                let x = kx
+                    + if lying {
+                        dx * step / 3
+                    } else {
+                        dx * step / long.max(1)
+                    };
+                let y = ky + 1 + if lying { 1 } else { step };
+                put(
+                    canvas,
+                    x,
+                    y,
+                    if step == long {
+                        satin.edge
+                    } else {
+                        satin.light
+                    },
+                );
+                put(canvas, x + 1, y, satin.shadow);
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

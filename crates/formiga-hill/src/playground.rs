@@ -639,6 +639,12 @@ impl Playground {
             .map(|index| self.actors[index].facing_right)
     }
 
+    /// Whether a traveller is lying on its side.
+    #[cfg(test)]
+    pub fn tipped(&self, id: Id) -> Option<bool> {
+        self.index_of(id).map(|index| self.actors[index].tipped())
+    }
+
     /// Where the middle of a traveller's face is drawn, as it stands at rest.
     #[cfg(test)]
     pub fn face(&self, id: Id) -> Option<(i32, i32)> {
