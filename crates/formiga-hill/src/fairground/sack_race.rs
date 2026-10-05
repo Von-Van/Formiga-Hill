@@ -1375,6 +1375,23 @@ mod tests {
     }
 
     #[test]
+    fn a_hop_is_counted_once_however_often_it_is_looked_at() {
+        let cast = sample();
+        let (mut ground, mut race) = ready(&cast);
+        race.start(&mut ground, &cast, &[], 6.0);
+        let racer = &mut race.racers[0];
+        racer.next_hop(6.0, 5.0);
+        let before = racer.landings;
+        let mut now = 6.0;
+        // Looked at every tick, long after it has come down.
+        while now < 12.0 {
+            now += TICK;
+            racer.hop(now);
+        }
+        assert_eq!(racer.landings, before + 1);
+    }
+
+    #[test]
     fn everyone_lines_up_hops_home_and_gets_a_time() {
         let cast = sample();
         let run = race_between(&cast, &[]);
