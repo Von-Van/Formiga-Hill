@@ -331,16 +331,18 @@ impl Picks {
         self.entry(game).clear();
     }
 
-    /// Whether enough are picked to play: nobody, or at least as many as the game needs; for the
-    /// tug-of-war, nobody put on a side, or someone on each.
-    pub fn enough(&self, game: Game) -> bool {
+    /// Whether enough are picked to play, with `travellers` here: at least as many as the game
+    /// needs, or nobody, if there are that many here to play; for the tug-of-war, someone on each
+    /// side, or nobody, if there are two here to sort into sides.
+    pub fn enough(&self, game: Game, travellers: usize) -> bool {
         let picked = self.of(game).len();
         match game.players() {
             Players::It => true,
-            Players::Some { least } => picked == 0 || picked >= least,
+            Players::Some { least } => picked >= least || (picked == 0 && travellers >= least),
             Players::Sides => {
                 let (left, right) = self.sides();
-                (left.is_empty() && right.is_empty()) || (!left.is_empty() && !right.is_empty())
+                (!left.is_empty() && !right.is_empty())
+                    || (left.is_empty() && right.is_empty() && travellers >= 2)
             }
         }
     }
@@ -628,15 +630,18 @@ mod tests {
     fn each_game_keeps_its_own_choice_of_who_plays() {
         let mut picks = Picks::default();
         for game in Game::ALL {
-            assert!(picks.of(game).is_empty() && picks.enough(game), "{game:?}");
+            assert!(
+                picks.of(game).is_empty() && picks.enough(game, 6),
+                "{game:?}"
+            );
         }
         picks.toggle(Game::SackRace, 7);
-        assert!(!picks.enough(Game::SackRace), "a race needs two or more");
+        assert!(!picks.enough(Game::SackRace, 6), "a race needs two or more");
         picks.toggle(Game::SackRace, 9);
-        assert!(picks.enough(Game::SackRace));
+        assert!(picks.enough(Game::SackRace, 6));
         picks.toggle(Game::HighStriker, 7);
         assert!(
-            picks.enough(Game::HighStriker),
+            picks.enough(Game::HighStriker, 6),
             "one can have a go on its own"
         );
         assert_eq!(picks.of(Game::SackRace), [7, 9]);
@@ -652,25 +657,30 @@ mod tests {
     fn the_person_can_put_each_on_a_side_of_the_rope_and_it_takes_someone_on_each() {
         let mut picks = Picks::default();
         assert!(
-            picks.enough(Game::TugOfWar),
+            picks.enough(Game::TugOfWar, 6),
             "nobody picked: the colony sorts itself"
         );
         picks.put(7, Some(Side::Left));
-        assert!(!picks.enough(Game::TugOfWar), "nobody to pull against");
+        assert!(!picks.enough(Game::TugOfWar, 6), "nobody to pull against");
         picks.put(9, Some(Side::Right));
         picks.put(11, Some(Side::Right));
-        assert!(picks.enough(Game::TugOfWar));
+        assert!(picks.enough(Game::TugOfWar, 6));
         assert_eq!(picks.sides(), (vec![7], vec![9, 11]));
         assert_eq!(picks.side(9), Some(Side::Right));
         picks.put(9, Some(Side::Left));
         picks.put(11, None);
         assert_eq!(picks.sides(), (vec![7, 9], Vec::new()));
-        assert!(!picks.enough(Game::TugOfWar));
+        assert!(!picks.enough(Game::TugOfWar, 6));
         // The sides are the tug-of-war's own: nobody is picked for any other game by them.
         assert!(Game::ALL.iter().all(|game| picks.of(*game).is_empty()));
         picks.unsort();
         assert_eq!(picks.sides(), (Vec::new(), Vec::new()));
-        assert!(picks.enough(Game::TugOfWar));
+        assert!(picks.enough(Game::TugOfWar, 6));
+        assert!(
+            !picks.enough(Game::TugOfWar, 1),
+            "one traveller has nobody to pull against"
+        );
+        assert!(!picks.enough(Game::SackRace, 1), "nor anyone to race");
     }
 
     #[test]

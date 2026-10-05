@@ -216,6 +216,12 @@ fn cheerful(character: &Character) -> bool {
     character.kind == TemperamentKind::Sweetheart || character.axes.affection >= 0.8
 }
 
+/// Up to this many families and loners, every way of sorting them is tried; past it, the colony
+/// settles on a good way rather than the best, so a big colony is never kept waiting.
+const EVERY_WAY_UP_TO: usize = 12;
+/// How many times round it tries moving and swapping groups, at most.
+const TRIES: usize = 24;
+
 /// The colony sorting itself into two sides: a parent with its little ones always together, as
 /// even in number as can be, and of all the ways that leaves, the one that best keeps friends
 /// together, puts those who don't get on on opposite sides, and evens out the strength. The side
@@ -239,66 +245,123 @@ pub fn sort(cast: &Cast, pullers: &[(Id, Character)]) -> (Vec<Id>, Vec<Id>) {
     }
     let strengths: Vec<f32> = pullers.iter().map(|(_, c)| strength(c)).collect();
     let count = pullers.len();
-    let mut best: Option<(f32, u32)> = None;
-    let mut fewest_apart = usize::MAX;
-    // Which side each group goes on, the first group always on the left.
-    let ways = 1u32 << groups.len().saturating_sub(1);
-    let side_of = |mask: u32, member: usize| -> Side {
-        let group = groups.iter().position(|g| g.contains(&member)).unwrap_or(0);
-        if group > 0 && mask & (1 << (group - 1)) != 0 {
-            Side::Right
-        } else {
-            Side::Left
+    let group_of: Vec<usize> = (0..count)
+        .map(|m| groups.iter().position(|g| g.contains(&m)).unwrap_or(0))
+        .collect();
+    // What each pair is worth together, and apart.
+    let mut pairs = Vec::new();
+    for a in 0..count {
+        for b in a + 1..count {
+            let (ida, idb) = (pullers[a].0, pullers[b].0);
+            if cast.at_odds(ida, idb) {
+                pairs.push((a, b, -1.0, 1.0));
+            } else if let Some(bond) = cast.bond(ida, idb)
+                && bond.warmth >= Band::Medium
+                && bond.friction < bond.warmth
+            {
+                let together = if bond.warmth >= Band::High { 0.5 } else { 0.25 };
+                pairs.push((a, b, together, 0.0));
+            }
         }
-    };
-    for mask in 0..ways {
-        let lefts = (0..count)
-            .filter(|&m| side_of(mask, m) == Side::Left)
-            .count();
-        if lefts == 0 || lefts == count {
-            continue;
-        }
-        fewest_apart = fewest_apart.min(lefts.abs_diff(count - lefts));
     }
-    for mask in 0..ways {
-        let lefts = (0..count)
-            .filter(|&m| side_of(mask, m) == Side::Left)
-            .count();
-        if lefts == 0 || lefts == count || lefts.abs_diff(count - lefts) > fewest_apart {
-            continue;
-        }
-        let mut score = 0.0;
+    // How a way of sorting the groups goes: how uneven the sides are in number, and how well it
+    // keeps friends together, rivals apart and the strength even.
+    let judge = |sides: &[Side]| -> (usize, f32) {
+        let side = |m: usize| sides[group_of[m]];
+        let lefts = (0..count).filter(|&m| side(m) == Side::Left).count();
         let (mut left, mut right) = (0.0, 0.0);
         for (m, pull) in strengths.iter().enumerate() {
-            match side_of(mask, m) {
+            match side(m) {
                 Side::Left => left += pull,
                 Side::Right => right += pull,
             }
         }
-        score -= 3.0 * (left - right).abs() / (left + right).max(0.01);
-        for a in 0..count {
-            for b in a + 1..count {
-                let (ida, idb) = (pullers[a].0, pullers[b].0);
-                let together = side_of(mask, a) == side_of(mask, b);
-                if cast.at_odds(ida, idb) {
-                    score += if together { -1.0 } else { 1.0 };
-                } else if let Some(bond) = cast.bond(ida, idb)
-                    && bond.warmth >= Band::Medium
-                    && bond.friction < bond.warmth
-                    && together
-                {
-                    score += if bond.warmth >= Band::High { 0.5 } else { 0.25 };
-                }
+        let mut score = -3.0 * (left - right).abs() / (left + right).max(0.01);
+        for &(a, b, together, apart) in &pairs {
+            score += if side(a) == side(b) { together } else { apart };
+        }
+        let uneven = if lefts == 0 || lefts == count {
+            usize::MAX
+        } else {
+            lefts.abs_diff(count - lefts)
+        };
+        (uneven, score)
+    };
+    let better = |(uneven, score): (usize, f32), (best_uneven, best_score): (usize, f32)| {
+        uneven < best_uneven || (uneven == best_uneven && score > best_score + 1e-4)
+    };
+    let sides = if groups.len() <= EVERY_WAY_UP_TO {
+        // Few enough groups to try every way, the first group always on the left.
+        let mut best: Option<(Vec<Side>, (usize, f32))> = None;
+        for mask in 0..1u32 << groups.len().saturating_sub(1) {
+            let sides: Vec<Side> = (0..groups.len())
+                .map(|group| {
+                    if group > 0 && mask & (1 << (group - 1)) != 0 {
+                        Side::Right
+                    } else {
+                        Side::Left
+                    }
+                })
+                .collect();
+            let judged = judge(&sides);
+            if best.as_ref().is_none_or(|(_, top)| better(judged, *top)) {
+                best = Some((sides, judged));
             }
         }
-        if best.is_none_or(|(top, _)| score > top + 1e-4) {
-            best = Some((score, mask));
+        best.map_or_else(|| vec![Side::Left; groups.len()], |(sides, _)| sides)
+    } else {
+        // Too many to try every way: the biggest families first, each to the side with fewer so
+        // far; then a group moved, or two swapped, while that does better.
+        let mut by_size: Vec<usize> = (0..groups.len()).collect();
+        by_size.sort_by_key(|&group| std::cmp::Reverse(groups[group].len()));
+        let mut sides = vec![Side::Left; groups.len()];
+        let (mut lefts, mut rights) = (0, 0);
+        for group in by_size {
+            if lefts <= rights {
+                lefts += groups[group].len();
+            } else {
+                sides[group] = Side::Right;
+                rights += groups[group].len();
+            }
         }
-    }
-    let mask = best.map_or(0, |(_, mask)| mask);
+        let flip = |side: Side| match side {
+            Side::Left => Side::Right,
+            Side::Right => Side::Left,
+        };
+        let mut judged = judge(&sides);
+        for _ in 0..TRIES {
+            let mut improved = false;
+            for a in 0..groups.len() {
+                for b in a..groups.len() {
+                    if a != b && sides[a] == sides[b] {
+                        continue;
+                    }
+                    let mut tried = sides.clone();
+                    tried[a] = flip(tried[a]);
+                    if a != b {
+                        tried[b] = flip(tried[b]);
+                    }
+                    let tried_judged = judge(&tried);
+                    if better(tried_judged, judged) {
+                        sides = tried;
+                        judged = tried_judged;
+                        improved = true;
+                    }
+                }
+            }
+            if !improved {
+                break;
+            }
+        }
+        // The side with the first of them in it is the left.
+        if sides.first() == Some(&Side::Right) {
+            sides = sides.into_iter().map(flip).collect();
+        }
+        sides
+    };
     let (mut left, mut right) = (Vec::new(), Vec::new());
     for (m, (id, _)) in pullers.iter().enumerate() {
-        match side_of(mask, m) {
+        match sides[group_of[m]] {
             Side::Left => left.push(*id),
             Side::Right => right.push(*id),
         }
@@ -1678,5 +1741,44 @@ mod tests {
         }
         let after: Vec<_> = ground.ids().iter().map(|id| ground.position(*id)).collect();
         assert_ne!(before, after, "nobody moved off");
+    }
+
+    /// `count` travellers who are none of them family, friends or rivals: as many families and
+    /// loners as there are travellers.
+    fn loners(cast: &Cast, count: usize) -> Vec<(Id, Character)> {
+        (0..count)
+            .map(|index| {
+                let mut character = Character::of(&cast.members[index % cast.members.len()]);
+                character.parent = None;
+                (10_000 + index as Id, character)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_big_colony_sorts_itself_evenly_and_quickly() {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        for count in [EVERY_WAY_UP_TO + 1, 33, 40] {
+            let pullers = loners(&cast, count);
+            let started = std::time::Instant::now();
+            let (left, right) = sort(&cast, &pullers);
+            assert_eq!(left.len() + right.len(), count);
+            assert!(
+                left.len().abs_diff(right.len()) <= 1,
+                "{count}: {} against {}",
+                left.len(),
+                right.len()
+            );
+            assert_eq!(
+                left.first(),
+                Some(&pullers[0].0),
+                "the first is on the left"
+            );
+            assert!(
+                started.elapsed().as_secs_f32() < 2.0,
+                "{count} took {:?} to sort",
+                started.elapsed()
+            );
+        }
     }
 }

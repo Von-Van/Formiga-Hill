@@ -523,11 +523,15 @@ impl HillApp {
                             ui.selectable_value(&mut self.game, game, game.name());
                         }
                     });
-                let enough = self.picks.enough(self.game);
+                let travellers = cast.members.len();
+                let enough = self.picks.enough(self.game, travellers);
                 let watch = ui.add_enabled(enough, egui::Button::new("Watch"));
-                start = watch
-                    .on_disabled_hover_text("Pick two or more to race, or nobody for everyone.")
-                    .clicked();
+                let why = match self.game.players() {
+                    _ if travellers < 2 => "It takes two or more travellers to play this.",
+                    Players::Sides => "Put someone on each side, or nobody for them to sort.",
+                    _ => "Pick two or more to race, or nobody for everyone.",
+                };
+                start = watch.on_disabled_hover_text(why).clicked();
                 let game = self.game;
                 match game.players() {
                     Players::It => {
