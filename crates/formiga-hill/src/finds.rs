@@ -8,9 +8,12 @@
 //! of outings without anything new, the Woods makes sure something new is out there somewhere: a
 //! colony that only ever brings the same companion still finds everything in the end.
 
+pub mod afar;
 pub mod art;
 pub mod growing;
 pub mod plans;
+
+pub use afar::{AFAR, is_from_afar};
 
 use crate::character::Character;
 use crate::dice::Dice;
@@ -611,6 +614,7 @@ pub fn find(id: &str) -> Option<&'static Find> {
         .iter()
         .chain(FORAGED.iter())
         .chain(RELICS.iter())
+        .chain(AFAR.iter())
         .find(|find| find.id == id)
 }
 

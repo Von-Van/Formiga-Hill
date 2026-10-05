@@ -1116,7 +1116,7 @@ fn sample_arrangement() -> hilltop::Arrangement {
 fn finds_sheet() -> Canvas {
     const CELL: (i32, i32) = (56, 70);
     let columns = 7;
-    // A row for each kind, a row for the relics, and the hedgerow's finds after.
+    // A row for each kind, a row for the relics, the hedgerow's finds, and the finds from afar.
     let rows: Vec<Vec<&finds::Find>> = finds::Kind::ALL
         .into_iter()
         .map(|kind| {
@@ -1131,6 +1131,7 @@ fn finds_sheet() -> Canvas {
                 .chunks(columns as usize)
                 .map(|row| row.iter().collect()),
         )
+        .chain(std::iter::once(finds::AFAR.iter().collect()))
         .collect();
     let mut sheet = Canvas::new(
         (CELL.0 * columns) as u32,
