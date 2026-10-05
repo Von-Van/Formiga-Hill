@@ -80,7 +80,7 @@ side of it.
   `--render-sack-race`, `--render-high-striker`, `--render-hoopla`, `--render-tug-of-war`,
   `--render-woods`, `--render-fishing`,
   `--render-bug-hunt`, `--render-meadow`, `--render-hedgerow`, `--render-hilltop`,
-  `--render-building` (each with
+  `--render-building`, `--render-expedition`, `--render-falls` (each with
   `--at <seconds>`), `--render-finds`, `--render-growing`, `--render-plans`, `--render-produce`, `--render-fish`,
   `--render-bugs`, `--render-sovereign`, `--render-reactions` and `--render-costumes` draw
   without a window (any with `--hour <0-24>` to see it at that hour); look at them, cropped and

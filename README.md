@@ -93,6 +93,13 @@ changes how it goes and what turns up, but never rules anything out.
   cap. Pick it ripe, and choose what is worth a place in a small basket. The rarest are ripe only
   briefly, and late. A food-inspector knows ripe at a glance, a little one reaches the tucked-in
   places, a bold one climbs for the high branches, and a sweetheart leaves some for the birds.
+- **Expeditions.** A whole day out on the Woods' map with up to three companions, on one day's
+  light. Choose the way at each fork; every path spends some of the light. Stop on the way for a
+  short go at rummaging, fishing, bug catching or foraging, or for a picnic on the fallen log, and
+  put everything in one small basket. An explorer, a little one, a close pair, a bold one or a
+  reader of old signs each opens a way of their own. Past the signpost, the Far Falls bring down
+  things found nowhere else, each a landmark for the Hilltop. Head home when you like, or at dusk,
+  with the whole basket; the journal keeps a page of the day.
 
 And somewhere in the Woods there is a secret, played completely straight. How to find it isn't
 written here.
@@ -111,7 +118,7 @@ written here.
 - **The journal.** It records every find, who found it first, and hints of the rest, with what is
   growing and every plan.
 - **Changing the Woods.** What stands on the Hilltop changes the Woods: a lantern lends light, a
-  telescope brings rare signs out sooner.
+  telescope brings rare signs out sooner and spies the Far Falls from the start of an expedition.
 - **On the skyline.** It shows on the skylines of the station, the green and the Fairground, and
   through the Clubhouse window.
 
@@ -137,7 +144,7 @@ written here.
 
 ### Coming next
 
-- **The Woods:** scavenging and treasure routes, and longer expeditions that combine activities.
+- **The Woods:** scavenging and treasure routes at the old track.
 
 ## Getting there
 
@@ -206,6 +213,8 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | `--render-meadow` | The meadow |
 | `--render-hedgerow` | A foray along the hedgerow, `--at` seconds in |
 | `--render-produce` | Everything the hedgerow grows, at every stage of ripeness |
+| `--render-expedition` | An expedition, `--at` seconds in: the map, each stop on the way, the picnic |
+| `--render-falls` | Wading at the Far Falls, `--at` seconds in |
 | `--render-hilltop` | The Hilltop; `--sample-hilltop` fills it |
 | `--render-building` | The colony building on the Hilltop, `--at` seconds in |
 | `--render-story` | A story, `--at` seconds in |
@@ -238,6 +247,8 @@ crates/formiga-hill/src/
   fishing/           the pool, its fish, and angling
   meadow/            the meadow, its bugs, and catching them
   hedgerow/          the hedgerow, what ripens there, and foraging
+  expedition/        a day out on the Woods' map: its ways, each stop, the picnic, the basket
+  falls/             the Far Falls, and wading for what comes down them
   hilltop/           the Hilltop, and the Hilltop seen from elsewhere
   clearing/          the secret
   finds/             everything the Woods turns up, and how each looks
