@@ -132,10 +132,11 @@ and a telescope brings rare signs out sooner.
 
 ## Getting there
 
-1. Download Hill from [formigaworld.com](https://www.formigaworld.com), which hands out the files
-   from this repository's Releases page. On macOS 14 or later there is a universal app, as a disk
-   image or a zip. On Windows 10 or 11 there is a per-user installer, or a portable zip. Both put
-   Hill where Formiga Desktop looks for it. (To build it yourself, see
+1. Download Hill from [formigaworld.com](https://www.formigaworld.com), which links to the files on
+   this repository's Releases page. On macOS 14 or later there is a universal app, as a disk image
+   or a zip. On Windows 10 or 11 there is a per-user installer, which puts Hill where Formiga
+   Desktop looks for it, or a portable zip, which runs without installing but which Desktop does
+   not look for. (To build it yourself, see
    [docs/DEVELOPING.md](docs/DEVELOPING.md).)
 2. In Formiga Desktop (0.66.4 or later), choose "Go to Formiga Hill…" from the tray.
 3. Desktop's train carries the colony off the desktop, and Hill opens at the station.
