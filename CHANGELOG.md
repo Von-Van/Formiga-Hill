@@ -4,6 +4,17 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## Unreleased
+
+### With Formiga Desktop
+
+- Hill is now built on Formiga Desktop 0.67.0 and speaks travel version 4. Desktop 0.67.0 adopts
+  the Fairground's four souvenirs (the rosette, the little brass bell, the teddy and the knot of
+  rope), so all eleven go home to its Journal. Hill 0.1.0 already sends those four to Desktop
+  0.67.0; with Desktop 0.66.6 they stay at the Hill.
+- The display case draws every souvenir with Desktop's own pictures, so each looks the same in both
+  apps. Hill's own copies of the four Fairground pictures are gone.
+
 ## 0.1.0 (2026-10-06)
 
 This is the first release of Formiga Hill. Hill receives a colony from Formiga Desktop by train,

@@ -51,7 +51,8 @@ one by one. Hovering over a companion shows who it is: temperament, traits, habi
 closest friend. The notice board pins up whatever is worth telling, such as what each companion
 would like to do, stories not yet told, and finds still waiting for a place. A display case in the
 station house holds the souvenirs the colony has kept. "Take the train home" ends the visit, and
-every kept souvenir goes home with the colony to the Journal in Formiga Desktop (0.66.6 and later).
+every kept souvenir goes home with the colony to the Journal in Formiga Desktop (0.66.6 and later,
+or 0.67.0 and later for the Fairground's four newest).
 
 **The Village Green.** A lawn with an old oak and its swing, a well, a picnic blanket and a toy
 chest. The colony wanders, naps in the shade, visits friends and keeps apart from rivals, while
