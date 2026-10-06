@@ -113,7 +113,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --place <PLACE>          With --snap: open at the station, green, clubhouse, fairground, woods
                            or hilltop rather than the station
   --card <CARD>            With --snap: open the notices, departures, board, shelf, dress-up,
-                           journal, plans, album or sound card
+                           journal, plans, album or sound card, at its own place if none is given
   --story                  With --snap in the Clubhouse: begin the first story on the shelves
 ";
 
@@ -426,7 +426,11 @@ fn main() -> Result<()> {
             }))
         }),
     )
-    .map_err(|error| anyhow::anyhow!("the Hill window could not open: {error}"))
+    .map_err(|error| anyhow::anyhow!("the Hill window could not open: {error}"))?;
+    if let Some(why) = app::snap_failed() {
+        bail!("{why}");
+    }
+    Ok(())
 }
 
 fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> {
@@ -587,6 +591,28 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     }
     if snap.is_some() && render.is_some() {
         bail!("choose --snap or a --render option, not both");
+    }
+    // A card is pictured where it can be open: at its own place if none is named, and a place
+    // it is never open at is refused rather than pictured without it.
+    if let Some(card) = &card {
+        let places = app::snap_card_places(card);
+        match place.as_deref() {
+            _ if places.is_empty() => {}
+            None => place = Some(places[0].to_owned()),
+            Some(named) if !places.contains(&named) => {
+                bail!(
+                    "the {card} card is only open at the {}",
+                    places.join(" or the ")
+                )
+            }
+            Some(_) => {}
+        }
+    }
+    if story && place.as_deref() != Some("clubhouse") {
+        bail!("--story only goes with --place clubhouse");
+    }
+    if story && card.as_deref() == Some("board") {
+        bail!("the board is put away while a story is told");
     }
     let snap = snap.map(|path| app::Snap {
         path,
@@ -1814,6 +1840,40 @@ mod tests {
         assert!(parse(&["--snap", "a.png", "--card", "menu"]).is_err());
         assert!(parse(&["--place", "green"]).is_err(), "only with --snap");
         assert!(parse(&["--snap", "a.png", "--render-green", "b.png"]).is_err());
+    }
+
+    #[test]
+    fn a_card_is_pictured_where_it_can_be_open_and_nowhere_else() {
+        let place = |args: &[&str]| parse(args).unwrap().unwrap().snap.unwrap().place;
+        let board = place(&["--snap", "a.png", "--card", "board"]);
+        assert_eq!(
+            board.as_deref(),
+            Some("clubhouse"),
+            "its own place if none is named"
+        );
+        let journal = place(&["--snap", "a.png", "--card", "journal", "--place", "hilltop"]);
+        assert_eq!(journal.as_deref(), Some("hilltop"));
+        let album = place(&["--snap", "a.png", "--card", "album", "--place", "woods"]);
+        assert_eq!(
+            album.as_deref(),
+            Some("woods"),
+            "the album is open anywhere"
+        );
+        assert!(parse(&["--snap", "a.png", "--card", "plans", "--place", "green"]).is_err());
+        assert!(
+            parse(&["--snap", "a.png", "--story"]).is_err(),
+            "a story is in the Clubhouse"
+        );
+        let both = [
+            "--snap",
+            "a.png",
+            "--place",
+            "clubhouse",
+            "--story",
+            "--card",
+            "board",
+        ];
+        assert!(parse(&both).is_err(), "the board is away during a story");
     }
 
     #[test]

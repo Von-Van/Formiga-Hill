@@ -128,6 +128,28 @@ pub const SNAP_CARDS: [&str; 9] = [
     "sound",
 ];
 
+/// Where a card can be open, for `Snap`: the places it belongs to, the first being where a
+/// picture of it opens when no place is named. Empty for a card that is open anywhere.
+pub fn snap_card_places(card: &str) -> &'static [&'static str] {
+    match card {
+        "notices" | "departures" => &["station"],
+        "board" | "shelf" => &["clubhouse"],
+        "dress-up" => &["green"],
+        "plans" => &["hilltop"],
+        "journal" => &["woods", "hilltop"],
+        _ => &[],
+    }
+}
+
+/// Why the review picture couldn't be saved, if it couldn't: the window closes either way, and
+/// `main` reads this once it has, so a review that saved nothing fails rather than passing.
+static SNAP_FAILED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Why the review picture asked for wasn't saved, once the window has closed.
+pub fn snap_failed() -> Option<&'static str> {
+    SNAP_FAILED.get().map(String::as_str)
+}
+
 pub struct HillApp {
     /// A review picture to take, whether the window has been set up for it yet, and whether
     /// the picture has been asked for.
@@ -399,7 +421,12 @@ impl HillApp {
             }
             match crate::write_png(&snap.path, &canvas, 1) {
                 Ok(()) => println!("Pictured the window to {}", snap.path.display()),
-                Err(error) => eprintln!("formiga-hill: {error:#}"),
+                Err(error) => {
+                    let _ = SNAP_FAILED.set(format!(
+                        "the picture of the window couldn't be saved to {}: {error:#}",
+                        snap.path.display()
+                    ));
+                }
             }
             self.snap = None;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);

@@ -75,7 +75,8 @@ Any of the pictures takes `--hour <0-24>` to see it at that hour.
 The window itself, with its buttons, cards and speech, is pictured with `--snap <png>`: it opens,
 waits `--at` seconds (3 if not given), saves what it shows and closes, letting in nothing the keys
 or pointer do. `--place` opens it somewhere other than the station, `--card` opens one of its
-cards, and `--story` begins the first story in the Clubhouse. Give it a scratch
+cards (at the place it belongs to, if none is named), and `--story` begins the first story in the
+Clubhouse. If the picture can't be saved, it says why and fails. Give it a scratch
 `FORMIGA_HILL_DATA_DIR` so a review never touches the colony's memories.
 
 ```sh
