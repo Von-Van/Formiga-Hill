@@ -1,7 +1,11 @@
 Formiga Hill
 
-Install Formiga Hill and Formiga Desktop finds it by itself: choose "Go to Formiga Hill…" from
-Formiga's menu and the colony takes the train.
+Once Formiga Hill is installed with its installer, Formiga Desktop will find it on its own. To
+send the colony on a visit, choose "Go to Formiga Hill…" from Formiga's menu and they will take
+the train. (This portable copy runs without installing, but Desktop does not look for it, so the
+installer is the easier way to go.)
 
-Formiga Hill never changes your colony. Whatever happens at the Hill, everyone comes home
-exactly as they left.
+The download is not signed yet, so Windows SmartScreen may ask before it runs the first time.
+
+Formiga Hill never changes your colony. Whatever happens at the Hill, everyone comes home exactly
+as they left.

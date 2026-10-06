@@ -3,8 +3,13 @@
 /.DS_Store
 *.log
 /*.png
-# Local [patch] overrides pointing at a Desktop checkout; see README.md.
+# Local [patch] overrides pointing at a Desktop checkout; see docs/DEVELOPING.md.
 /.cargo/config.toml
 
 # Worktrees Claude Code makes for parallel work
 .claude/worktrees/
+
+# Internal notes, kept locally rather than in the repository
+/CLAUDE.md
+/docs/DESIGN.md
+/docs/TRAVEL.md

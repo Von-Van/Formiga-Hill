@@ -1,16 +1,28 @@
 # Writing a story for Formiga Hill
 
-A story is a short scene, or a few, that the colony plays out in the Clubhouse at the Hill: a
-snug room with a fire, where the person picks a story from the notice board. You write it as plain
-TOML files in a folder. There is no code to write, nothing to compile, and nothing your package
-can do except tell Hill who should do what, where, and what they say.
+A story is a short scene, or a few, that the colony plays out in the Clubhouse at the Hill, a
+snug room with a fire where the person picks a story from the notice board. Stories are written as
+plain TOML files in a folder. There is no code to write and nothing to compile, and a package can
+do nothing except tell Hill who should do what, where, and what they say. That limit is
+deliberate: it keeps community stories safe to share and lets Hill check every one before it is
+played.
+
+The main difference from writing an ordinary script is that a story never knows who will be in
+it. Each colony is different, so instead of naming characters, a story describes the kind of
+companion each role needs, such as the most curious one or a close friend of the lead, and Hill
+casts the roles from whoever happens to be visiting. The same story can therefore play out quite
+differently from one colony to the next, and part of the fun is writing with that in mind.
 
 Hill's own stories, *The First Picnic*, *The Last Bun* and *The Book with No Ending*, are written
-exactly this way. Each is a complete working example in
-[`crates/formiga-hill/content`](../crates/formiga-hill/content); *The Last Bun* shows a mystery
-whose suspects are cast from the colony's own habits, temperaments and friendships.
+exactly this way, and each is a complete working example in
+[`crates/formiga-hill/content`](../crates/formiga-hill/content). *The Last Bun* is probably the
+best place to start, since it shows a mystery whose suspects are cast from the colony's own
+habits, temperaments and friendships.
 
 ## Trying a story
+
+The quickest way to work on a story is to check it, play it, and look at a moment of it, all
+from the command line:
 
 ```sh
 formiga-hill --check-package my-story.formiga-hill        # does it load? what is wrong?
@@ -93,6 +105,9 @@ places, and is played in the Clubhouse. Each place on the green is read as its c
 both.
 
 ## A story file
+
+A story file has three parts: the story itself, the roles it needs, and its scenes, each of which
+is a list of small steps called beats. A short example looks like this:
 
 ```toml
 [story]
@@ -213,7 +228,9 @@ Put `!` in front of any condition to mean its opposite: `!flag:shared`.
 
 ## Localisation
 
-Every word lives in `localization/<locale>.toml`, never in the story file. A line is plain text,
+Every word lives in `localization/<locale>.toml`, never in the story file. Keeping the words
+apart makes a story easier to translate, and it also lets a line change depending on who says it.
+A line is plain text,
 or a table with a `text` and a version for any temperament that would say it differently. Tables
 without `text` are namespaces: `[found]` then `look = "…"` is the line `found.look`.
 
@@ -241,6 +258,7 @@ A story can give only Hill's own souvenirs, by id, and can't invent new ones. Th
 give are `picnic_ribbon`, `pressed_daisy`, `well_penny`, `oak_acorn`, `swing_feather` and
 `chest_marble`. Some others, such as the Fairground's ticket, are only ever won at Hill's own
 games.
+
 Hill remembers which stories each colony has finished and what it has kept, and nothing is ever
 lost by staying away. When the colony goes home, every souvenir it has kept goes home with it to
 Formiga Desktop's Journal (from Desktop 0.66.6), whichever story or game gave it.
@@ -248,5 +266,7 @@ Formiga Desktop's Journal (from Desktop 0.66.6), whichever story or game gave it
 ## What packages can't do
 
 Packages can't run code, read or write files, reach the network, start programs, change anything
-in Formiga Desktop, rewrite a companion's temperament, or make up history for it. A package that
-fails to load is reported and left out. It never stops Hill from opening.
+in Formiga Desktop, rewrite a companion's temperament, or make up history for it. These limits are
+what make it reasonable to install a story from someone you don't know: the worst a package can
+do is tell a story badly. A package that fails to load is reported and left out, and it never
+stops Hill from opening.

@@ -1,155 +1,121 @@
 # Formiga Hill
 
-Formiga Desktop is where the creatures live around you. Formiga Hill is somewhere you send them on
-purpose, to spend time together.
+Formiga Hill is a small desktop app for spending time with a Formiga colony somewhere other than
+the desktop. In [Formiga Desktop](https://github.com/Von-Van/Formiga-Desktop), the creatures live
+around the edges of the screen while you work. Hill is somewhere you send them on purpose. The
+colony arrives by train, and Hill gives the same creatures a storybook village to spend time in
+together: a green for free play, a clubhouse for stories, a fairground, the Woods, and a hilltop
+that the colony slowly makes its own.
 
-Hill is a separate desktop app. It receives a colony from
-[Formiga Desktop](https://github.com/Von-Van/Formiga-Desktop) by train, draws each companion
-exactly as Desktop does, and gives them a small storybook place to be in:
+Hill is a separate app rather than a new part of Desktop, and that decision shapes most of what
+follows. Desktop stays the home of the colony and the only place its records are kept. Hill
+borrows the colony for a visit, draws each companion exactly as Desktop does, and sends everyone
+home unchanged. Whatever happens at the Hill, even a crash, the colony goes back exactly as it
+came.
 
-- free play;
-- short stories by the fire;
-- games the colony plays while you watch;
-- outings into the Woods that you play yourself;
-- a Hilltop the colony fills with what it finds there.
+## The idea
 
-Desktop stays the home of the colony. Hill owns only the destination, and the colony always goes
-home exactly as it came.
+Desktop is good at quiet company, but a desktop overlay has some natural limits. The creatures
+share the screen with everything else, so there is not much room for them to do things together,
+and anything they do has to stay out of the way. Hill began as a way to explore what the same
+colony might do with a place of its own. The question was less about adding features and more
+about whether the personalities Desktop already tracks could carry a whole set of activities
+without anything being written for one particular creature.
 
-Further reading:
+So far that seems to hold up. Everything a companion does at the Hill is read from what Desktop
+sends: its temperament, habits, pace, family and friendships. A curious one peeks under things
+first, an impulsive one jumps the start of a race, and a parent helps its little one ring the bell.
+Two colonies will probably never play out quite alike, and a story or a game only has to be
+written once rather than once for every creature.
 
-- [docs/DESIGN.md](docs/DESIGN.md): what Hill is for, and the Woods → Hilltop loop at its heart.
-- [docs/TRAVEL.md](docs/TRAVEL.md): how Hill keeps its side of Desktop's travel contract.
-- [docs/PACKAGES.md](docs/PACKAGES.md): writing a story for Hill, no code needed.
+A few other ideas guide the design:
+
+- **Soft play.** There is nothing to keep up and nothing lost by staying away. There are no streaks,
+  no hunger, and no reminders of how long it has been. Things that grow on the Hilltop simply wait.
+- **Who plays decides where a game goes.** Some activities are watched and some are played. At the
+  Fairground the colony plays and you watch. In the Woods you play, with a companion or two, and
+  what you find there builds the Hilltop. Keeping the two apart lets watching stay relaxing and
+  lets playing actually matter.
+- **The same creatures, not lookalikes.** Hill draws each traveller from the appearance Desktop
+  sends, using Desktop's own art code. It never makes up a new one.
+- **Open to other people's stories.** Anyone can write a story for the Clubhouse as a small folder
+  of text files, with no code involved ([docs/PACKAGES.md](docs/PACKAGES.md)).
 
 ## A visit
 
-Everything a companion does at the Hill is read from what Desktop sent: its temperament, habits,
-pace, family and friendships. So two colonies never play out alike, and nothing is written for
-any one creature. It is soft play: nothing to keep up, nothing lost by staying away, and no
-reminders of time away.
+A visit starts at the station and moves between places from the departures board. What follows is
+a short tour; the detail is in the app itself.
 
-**The station.**
-- The train pulls in with everyone at a window, and they hop down onto the platform one by one.
-  Hover over a companion to see who it is: temperament, traits, habits, family and closest friend.
-- The display case in the station house holds the souvenirs the colony has kept.
-- The notice board by the door pins up whatever is worth telling: what each companion would like
-  to do, stories not yet told, finds waiting for a place, records, and the souvenirs going home.
-- The departures board under the canopy lists every place, what's on there and who's keen, with a
-  Go for each.
-- "Take the train home" ends the visit. Every souvenir the colony has kept goes home with it to the
-  Journal in Formiga Desktop (0.66.6 and later).
+**The station.** The train pulls in with everyone at a window, and they hop down onto the platform
+one by one. Hovering over a companion shows who it is: temperament, traits, habits, family and
+closest friend. The notice board pins up whatever is worth telling, such as what each companion
+would like to do, stories not yet told, and finds still waiting for a place. A display case in the
+station house holds the souvenirs the colony has kept. "Take the train home" ends the visit, and
+every kept souvenir goes home with the colony to the Journal in Formiga Desktop (0.66.6 and later).
 
-**The Village Green.** The lawn, the old oak and its swing, the well, the picnic blanket and the
-toy chest, with the colony wandering, napping in the shade, visiting friends, minis trailing
-parents and rivals keeping apart.
-- **Tools.** Pat, offer a snack, throw a toy, or groom with the brush. Each companion answers in
-  its own way, and warms to you over the visit.
-- **The dress-up box.** It lends a hat, a daisy chain or a scarf for the visit only. Desktop's own
-  accessories are never touched.
+**The Village Green.** A lawn with an old oak and its swing, a well, a picnic blanket and a toy
+chest. The colony wanders, naps in the shade, visits friends and keeps apart from rivals, while
+the little ones trail their parents. You can pat, offer a snack, throw a toy or groom with the
+brush, and each companion answers in its own way and warms to you over the visit. A dress-up box
+lends hats, daisy chains and scarves for the visit only; Desktop's own accessories are never
+touched.
 
-**The Clubhouse.** Stories are played out by the fire, each picked from its notice board.
-- Hill's own stories:
-  - *The First Picnic*;
-  - *The Book with No Ending*;
-  - *The Last Bun*, a small mystery in which whoever likes a mystery takes the case.
-- Anyone can write a story as a package ([PACKAGES.md](docs/PACKAGES.md)) and drop it in the
-  packages folder.
+**The Clubhouse.** Stories are played out by the fire, each chosen from the Clubhouse's notice
+board. Hill comes with three: *The First Picnic*, *The Book with No Ending*, and *The Last Bun*, a
+small mystery in which whoever likes a mystery takes the case. Casting is the interesting part. A
+story describes the kind of companion each role needs (the most curious, a close friend of the
+lead, a little one if there is one), and Hill fills the roles from whoever happens to be visiting.
 
-**The Fairground.** Down the lane from the green: a big top, a carousel, a hoopla stall and a high
-striker, with its bulbs lit after dark, and clear sawdust in front for racing and pulling. The
-colony plays its games among themselves while you watch; you choose the game and, at most, who
-plays. Each game keeps a souvenir the first time it is seen through, and its records go up on the
-station's boards.
-- **Hide-and-seek.** Where each hides, how each gives itself away, and how "it" searches all come
-  from temperament. A parent never finds its little one until last.
-- **The sack race.** Hop length and rhythm come from pace, energy and size. An impulsive one may
-  jump the start; a lazybones sits down for a breather; a show-off waves to the crowd short of the
-  line and is overtaken; an affectionate one helps a fallen friend up.
-- **The high striker.** The puck climbs by strength times timing: a patient one times it
-  steadily, an impulsive one swings early, and a little one's parent helps hold the mallet so
-  together they can ring the bell. Whoever is waiting queues in a curving line before the big top.
-- **Hoopla.** Three rings each at the pegs and prizes along the counter, every one arcing over to
-  ring a prize, bounce off a peg, or fall short. A patient one measures each throw, an impulsive
-  one throws fast, a show-off throws its last behind its back, and a little one stands at the
-  nearer line. Whatever is won is carried about for the rest of the visit, unless an affectionate
-  winner gives it to its closest friend.
-- **The tug-of-war.** Two sides across a chalk line, with hay to tumble into. The colony sorts
-  itself, friends together and rivals apart, or you pick the sides. A close pair pulls in rhythm,
-  two who don't get on pull out of step, a lazybones lets the rope go slack, a show-off waves, a
-  parent pulls harder beside its little one, and an affectionate one cheers its side on. The
-  losers tumble into the hay, and everyone laughs it off.
+**The Fairground.** A big top, a carousel, a hoopla stall and a high striker, with five games the
+colony plays among themselves while you watch: hide-and-seek, the sack race, the high striker,
+hoopla and tug-of-war. You choose the game and, at most, who plays. How each game goes comes from
+the players rather than from chance alone. In the sack race, for example, a lazybones may sit down
+for a breather, and a show-off may wave to the crowd just short of the line and be overtaken. In
+tug-of-war the colony sorts itself into sides, friends together and rivals apart, and two who don't
+get on pull out of step. Each game keeps a souvenir the first time it is seen through, and its
+records go up on the station's boards.
 
-**The Woods.** Here you play, with a companion or two, for finds to take home. Who comes along
-changes how it goes and what turns up, but never rules anything out.
+**The Woods.** This is where you play, with a companion or two, for finds to take home. Who comes
+along changes how an outing goes and what turns up, but it never rules anything out: every find
+can be found by any single companion.
+
 - **Rummaging in the glade.** Read the signs at twelve spots, then catch the moment on a turning
   ring before the light goes.
 - **Fishing at the pool.** Eight kinds of fish, each with its own haunt and its own way of biting.
-  The Old One comes up only at dusk.
-- **Bug catching in the meadow.** Eleven bugs. Creep up and keep still, then swing when each one's
-  own way leaves it open.
-- **Foraging along the hedgerow.** Everything ripens and goes over through the outing on its own
-  plant's rhythm, read by its look: blackberries go red, then glossy black; a mushroom opens its
-  cap. Pick it ripe, and choose what is worth a place in a small basket. The rarest are ripe only
-  briefly, and late. A food-inspector knows ripe at a glance, a little one reaches the tucked-in
-  places, a bold one climbs for the high branches, and a sweetheart leaves some for the birds.
-- **Scavenging along the old track.** A woodcutter's hut with its roof fallen in, a broken cart and
-  a tumbledown wall, with the Hilltop small on the skyline. Lift things off each heap in the right
-  order: a heap shifts as it is moved, and anything fragile it jolts cracks into something lesser,
-  though nothing already in the basket is ever touched. Heavy things need someone strong, or two
-  together. A little one squeezes into the gaps, a patient one lifts without shifting anything, a
-  curious one peeks underneath first, an impulsive one yanks, and a food-inspector knows what is
-  in every sack and tin.
-- **Treasure maps.** Torn maps turn up in the heaps, and now and then rolled up in a hollow in the
-  glade, and are kept until followed. Each sketches its own route in landmarks and turns
-  ("Between the old gatepost and the split oak", "Over the stream"), ending some paces from the
-  old milestone. A scholar reads the faded words, an explorer has a hunch, a suspicious one doubts
-  aloud, and a curious one spots a landmark far down a way. A wrong turn costs light and leads to
-  a heap; the right way ends at a dig, with a chest.
-- **Expeditions.** A whole day out on the Woods' map with up to three companions, on one day's
-  light. Choose the way at each fork; every path spends some of the light. Stop on the way for a
-  short go at rummaging, fishing, bug catching or foraging, a heap or two on the old track, or a
-  picnic on the fallen log, and put everything in one small basket. An explorer, a little one, a
-  close pair, a bold one or a reader of old signs each opens a way of their own. Past the
-  signpost, the Far Falls bring down things found nowhere else, each a landmark for the Hilltop.
-  Head home when you like, or at dusk, with the whole basket and any torn map found on the way;
-  the journal keeps a page of the day.
+- **Bug catching in the meadow.** Eleven bugs. Creep up, keep still, and swing when one leaves
+  itself open.
+- **Foraging along the hedgerow.** Everything ripens and goes over during the outing, read by its
+  look, and only so much fits in the basket.
+- **Scavenging along the old track.** Lift things off each heap in the right order, since a heap
+  shifts as it is moved and anything fragile it jolts can crack.
+- **Treasure maps.** Torn maps turn up now and then, each sketching a route in landmarks and turns
+  that ends at a buried chest.
+- **Expeditions.** A whole day out on the Woods' map with up to three companions. Every path
+  spends some of the day's light, and the stops along the way offer a short go at the other
+  activities, a heap or two on the old track, or a picnic. Past the signpost, the Far Falls bring
+  down things found nowhere else.
 
-And somewhere in the Woods there is a secret, played completely straight. How to find it isn't
-written here.
+There is also a secret somewhere in the Woods, played completely straight. How to find it is left
+out of this page on purpose.
 
-**The Hilltop.** The colony's own place, empty at first.
-- **Arranging.** Any find can stand on any of its eighteen spots, wherever you like, and the colony
-  goes to visit what stands there.
-- **Growing.** Bluebells, an oak, a berry bush and five more grow once planted, and so do the
-  hedgerow's seeds and cuttings, into a strawberry bed, a hazel, a crab apple, a wild rose and a
-  cushion of thyme. They start as a sprout in turned earth and grow a stage with every visit, and
-  the colony tends them, each in its own way. Nothing wilts while the colony is away.
-- **Building.** A plan comes to mind with the first find that goes into it: twelve of them, from
-  a grand cairn and a tea party to the great telescope, a woodshed and the bandstand. Build
-  one from the satchel, and the colony gathers round to lend a hand before it appears in a puff of
-  dust. Taking it apart gives every find back.
-- **The journal.** It records every find, who found it first, and hints of the rest, with what is
-  growing and every plan.
-- **Changing the Woods.** What stands on the Hilltop changes the Woods: a lantern lends light, a
-  telescope brings rare signs out sooner and spies the Far Falls from the start of an expedition.
-- **On the skyline.** It shows on the skylines of the station, the green and the Fairground, and
-  through the Clubhouse window.
+**The Hilltop.** The colony's own place, which starts out empty. Any find can stand on any of its
+eighteen spots, and the colony goes to visit whatever stands there. Seeds and cuttings grow a stage
+with every visit, and the colony tends them, each in its own way. Finds also bring plans to mind
+for grander things, twelve in all, from a tea party to the great telescope, and the colony gathers
+round to help build them. A plan can always be taken apart again, which gives every find back. The
+journal records every find and who found it first, and the Hilltop itself shows on the skyline
+from the other places. What stands there also changes the Woods a little: a lantern lends light,
+and a telescope brings rare signs out sooner.
 
 **Everywhere.**
+
 - The Hill's light follows your computer's clock, so a late visit finds it under the stars, with
   lamps, lit windows and fireflies. Nothing in play depends on the hour.
-- Each place has its own soft music, slower and quieter once the lamps are lit, crossfading as you
-  go from one to the next; and what happens has a sound: the train, a pat or a snack, the games,
-  a find in the Woods, a splash at the pool, the colony building on the Hilltop. All of it is
-  placeholder audio made in code for now. The
-  speaker in every bar opens the Sound window, with levels for everything, the music and the
-  sounds, and a mute (M). Sound is never needed to play, and the Hill plays on quietly where there
-  is nothing to play it on.
-- The camera (C) frames part of any scene and keeps the photo in the colony's album. "Save a
-  copy…" writes one wherever you choose.
-- Desktop's reduced motion, theme and text size carry over. Reduced motion gets held poses and cuts
-  rather than slowed-down animation.
+- Each place has its own soft music, quieter once the lamps are lit, and most things that happen
+  have a sound. All of it is placeholder audio made in code for now. Sound is never needed to play.
+- The camera (C) frames part of any scene and keeps the photo in the colony's album.
+- Desktop's reduced motion, theme and text size carry over. With reduced motion, Hill uses held
+  poses and cuts rather than simply slowing the animation down.
 
 ### Controls
 
@@ -165,161 +131,49 @@ written here.
 
 ## Getting there
 
-1. Install Hill.
-   - On macOS, `scripts/package-macos.sh` builds a universal `Formiga Hill.app` with the bundle id
-     and travel version Desktop looks for.
-   - On Windows, `scripts/package-windows.ps1` builds a per-user installer that writes the registry
-     values Desktop reads.
+1. Download Hill from the repository's Releases page. On macOS 14 or later there is a universal
+   app, as a disk image or a zip. On Windows 10 or 11 there is a per-user installer, or a portable
+   zip. Both put Hill where Formiga Desktop looks for it. (To build it yourself, see
+   [docs/DEVELOPING.md](docs/DEVELOPING.md).)
 2. In Formiga Desktop (0.66.4 or later), choose "Go to Formiga Hill…" from the tray.
 3. Desktop's train carries the colony off the desktop, and Hill opens at the station.
 
-Hill hosts one colony at a time. A trip that arrives while a Hill window is open is politely
-refused, so Desktop can try again later.
+The downloads are not signed yet. On macOS, open the app the first time with Control-click → Open;
+on Windows, SmartScreen may ask before it runs.
 
-If Hill closes unexpectedly, or is force-quit, Desktop brings the colony home exactly as it left.
+Hill hosts one colony at a time. A trip that arrives while a Hill window is already open is
+politely refused, so Desktop can try again later. If Hill closes unexpectedly, or is force-quit,
+Desktop brings the colony home exactly as it left.
 
 ### What Hill keeps
 
-Hill keeps its own records in its data folder:
+Hill keeps a few records of its own, and only its own. It never reads or writes Desktop's files,
+and it knows each colony only by a one-way id that Desktop sends with the trip, so it never learns
+more about a colony than the trip itself told it. The records live in Hill's data folder:
+
 - macOS: `~/Library/Application Support/com.Formiga.Formiga-Hill`
 - Windows: `%APPDATA%\Formiga\Formiga Hill\data`
 - or wherever `FORMIGA_HILL_DATA_DIR` says.
 
 | File | What it holds |
 | --- | --- |
-| `memories.json` | Each colony's stories finished, souvenirs kept, finds, journal, Hilltop and records. Kept by the one-way colony id Desktop sends, so Hill never learns more about a colony than a trip told it |
+| `memories.json` | Each colony's finished stories, kept souvenirs, finds, journal, Hilltop and records |
 | `photos/` | Each colony's album |
 | `packages/` | Community story packages |
 | `packages.json` | Which of them are set aside |
-| `settings.json` | How loud the music and the sounds are, and whether they are muted: one setting for the Hill, not one per colony |
+| `settings.json` | Music and sound levels, and whether they are muted, for the Hill as a whole |
 | `hosting.lock` | Held while a window is open |
 
-Hill never reads or writes Desktop's own files.
+## Where things stand
 
-## Developing
+Version 0.1.0 is the first release, and a fair amount is still open. The music and sounds are
+placeholders. Hill's own text is in English only. Community packages can add stories, but not yet
+anything else, such as new games or places, and it is not yet clear what the right shape for those
+would be. The Fairground's four souvenirs also stay at the Hill for now, until a Desktop release
+learns to show them in its Journal. The [changelog](CHANGELOG.md) keeps track of what changes from
+one version to the next.
 
-Rust installs itself from `rust-toolchain.toml` (1.97.1, as Desktop pins). Hill runs on macOS 14+
-and Windows 10/11, like Desktop.
+## Further reading
 
-```sh
-cargo run -p formiga-hill                                  # Desktop's sample colony
-cargo run -p formiga-hill -- --from-save ~/path/to/colony.json
-cargo run -p formiga-hill -- --formiga-travel <trip directory>
-```
-
-- **A real trip.** Run Desktop with `FORMIGA_HILL_PATH` pointing at Hill's binary.
-- **`--from-save`.** Reads a Desktop save, never writes to it, and projects it exactly as Desktop
-  does for a trip. It reads any save the pinned `formiga-core` understands.
-- **Packages.** `--check-package <folder>` checks a story package, `--package <folder>` loads one
-  for this run, and `--packages-folder` prints where the packages folder is.
-
-### Renders
-
-Every place and review sheet can be drawn to a PNG without a window, for checking the art and
-behaviour. Look at them, cropped and enlarged, after changing anything visual.
-
-```sh
-cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
-```
-
-| Option | Draws |
-| --- | --- |
-| `--render-station` | The station; `--at` seconds into the arrival, or settled |
-| `--render-green`, `--render-clubhouse`, `--render-fairground` | The place, `--at` seconds into free play |
-| `--render-hide-and-seek`, `--render-sack-race`, `--render-high-striker`, `--render-hoopla`, `--render-tug-of-war` | A game at the Fairground, `--at` seconds in |
-| `--render-woods`, `--render-fishing`, `--render-bug-hunt` | A Woods outing, `--at` seconds in |
-| `--render-meadow` | The meadow |
-| `--render-hedgerow` | A foray along the hedgerow, `--at` seconds in |
-| `--render-produce` | Everything the hedgerow grows, at every stage of ripeness |
-| `--render-expedition` | An expedition, `--at` seconds in: the map, each stop on the way, the picnic |
-| `--render-falls` | Wading at the Far Falls, `--at` seconds in |
-| `--render-track` | A scavenge along the old track, `--at` seconds in |
-| `--render-treasure` | A treasure hunt off the old track, `--at` seconds in |
-| `--render-landmarks` | Every landmark a map can name, near and far, and the dig |
-| `--render-hilltop` | The Hilltop; `--sample-hilltop` fills it |
-| `--render-building` | The colony building on the Hilltop, `--at` seconds in |
-| `--render-story` | A story, `--at` seconds in |
-| `--render-sovereign` | The secret, `--at` seconds in |
-| `--render-finds`, `--render-fish`, `--render-bugs` | Sheets of every find, fish and bug |
-| `--render-growing`, `--render-plans` | Every growing thing at every stage, and every plan |
-| `--render-reactions` | Every traveller answering a pat, a snack and a toy |
-| `--render-costumes` | Every traveller in every costume piece |
-| `--render-sounds <folder>` | Not a picture: every sound, and a minute of each piece of music by day and by night, as WAV files to listen to |
-
-Any of the pictures takes `--hour <0-24>` to see it at that hour.
-
-### Layout
-
-```text
-crates/formiga-hill/src/
-  main.rs            arguments, the window, and the renders
-  app.rs, app/       the window: one module per place's controls and windows
-  trip.rs            Hill's side of the trip: acknowledgement, recall, receipt
-  hosting.rs         one colony at a time
-  cast.rs            the travellers, ready to draw, and how they get on
-  character.rs       who each traveller is, turned into what it does
-  playground.rs      free play anywhere: each traveller choosing what to do next
-  actor.rs           a traveller performing: steps, beats, cached frames, what it wears
-  cues.rs            hearts, notes and other signs over a creature's head
-  station/           the station, the train, and its comings and goings
-  green/             the Village Green
-  clubhouse/         the Clubhouse and its fire
-  fairground/        the Fairground and its games
-  woods/             the glade, and rummaging there
-  fishing/           the pool, its fish, and angling
-  meadow/            the meadow, its bugs, and catching them
-  hedgerow/          the hedgerow, what ripens there, and foraging
-  expedition/        a day out on the Woods' map: its ways, each stop, the picnic, the basket
-  falls/             the Far Falls, and wading for what comes down them
-  track/             the old track, its heaps and scavenging, and treasure maps
-  hilltop/           the Hilltop, and the Hilltop seen from elsewhere
-  clearing/          the secret
-  finds/             everything the Woods turns up, and how each looks
-  costume/           the dress-up box
-  story/             story packages: loading, casting, the script, the director
-  memories.rs        what Hill remembers of each colony
-  photos.rs          the album
-  daylight.rs        the hour's light, and what glows after dark
-  audio.rs, audio/   the music and the sounds, all made in code: the synthesiser, every cue, the
-                     pieces and their band, the mixer, and the one place a speaker is opened
-  paint.rs, kit.rs, materials.rs, font.rs
-                     painting tools, building pieces, the palette, lettering
-  icon.rs            the app icon: the Hill, in pixels
-content/             Hill's own story packages, in the community format
-packaging/, scripts/ the macOS app and the Windows installer
-docs/
-```
-
-The design's `formiga-hill-runtime` and `formiga-hill-ui` crates will split out of
-`formiga-hill` when there is enough of each to split.
-
-### Formiga Desktop's crates
-
-`formiga-core`, `formiga-art` and `formiga-travel` all come from Formiga Desktop, from one source
-so their types agree. That source is a release tag on GitHub, now `v0.66.6` (travel version 3).
-To move to a newer release, change the tag on all three in the root `Cargo.toml` together.
-
-The train and the souvenirs are drawn by `formiga-art`, so they look the same in both apps.
-
-To build Hill against unreleased changes in a local Desktop checkout without touching the
-committed manifest, create `.cargo/config.toml` (git ignores it):
-
-```toml
-[patch."https://github.com/Von-Van/Formiga-Desktop"]
-formiga-core = { path = "../Formiga Desktop/crates/formiga-core" }
-formiga-art = { path = "../Formiga Desktop/crates/formiga-art" }
-formiga-travel = { path = "../Formiga Desktop/crates/formiga-travel" }
-```
-
-Patch all three or none, so their types agree, and point the paths at whichever Desktop checkout
-or worktree has the changes. Delete the file again before committing a change that depends on it.
-
-### Checks
-
-The same gate CI runs on macOS and Windows:
-
-```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-```
+- [docs/PACKAGES.md](docs/PACKAGES.md): writing a story for Hill, no code needed.
+- [docs/DEVELOPING.md](docs/DEVELOPING.md): building, testing and finding your way around the code.
