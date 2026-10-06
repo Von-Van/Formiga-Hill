@@ -261,7 +261,8 @@ games.
 
 Hill remembers which stories each colony has finished and what it has kept, and nothing is ever
 lost by staying away. When the colony goes home, every souvenir it has kept goes home with it to
-Formiga Desktop's Journal (from Desktop 0.66.6), whichever story or game gave it.
+Formiga Desktop's Journal, whichever story or game gave it: from Desktop 0.66.6, or from 0.67.0 for
+the Fairground's four newest.
 
 ## What packages can't do
 

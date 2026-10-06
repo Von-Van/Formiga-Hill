@@ -2,8 +2,6 @@
 //! these by id and Hill's catalogue says what it is; a package can never invent a reward, and
 //! nothing here reaches Desktop unless Desktop one day lists it among what it accepts.
 
-pub mod art;
-
 /// Who can give a souvenir.
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Giver {
@@ -90,6 +88,19 @@ pub fn name(id: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Desktop draws every souvenir, the same in both apps, and keeps each one that comes home:
+    /// so a new one is agreed with Desktop's session before Hill gives it, or the display case
+    /// would have nothing to show for it.
+    #[test]
+    fn every_souvenir_hill_gives_is_one_desktop_draws() {
+        for id in ids() {
+            assert!(
+                formiga_core::Souvenir::from_id(id).is_some(),
+                "Desktop doesn't know {id}: ask Desktop's session to adopt it first"
+            );
+        }
+    }
 
     /// Packages are written against this list and colonies keep what they were given, so nothing
     /// a story could once give ever leaves it.
