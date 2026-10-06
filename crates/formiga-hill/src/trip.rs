@@ -129,7 +129,13 @@ impl Trip {
     /// take: the visit, and every souvenir the colony has `kept` at the Hill that this Desktop
     /// can keep. Every one kept, not just this visit's, so one whose trip ended without a
     /// receipt still comes home next time; Desktop keeps each once and ignores a repeat.
+    ///
+    /// Nothing is written once Desktop has recalled the colony: the stage looks for a recall
+    /// only now and then, so closing the window just after one must not answer it.
     pub fn come_home(&self, kept: &[String]) -> Result<()> {
+        if self.recalled() {
+            return Ok(());
+        }
         let left_at_utc = OffsetDateTime::now_utc();
         let mut effects = Vec::new();
         if self.records_visits {
@@ -300,6 +306,17 @@ mod tests {
         let (trip, _) = arrive(&dir, false).unwrap();
         std::fs::write(dir.join(RECALL_FILE), b"{}").unwrap();
         assert!(trip.recalled());
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn a_recall_just_before_closing_gets_no_receipt() {
+        let snapshot = formiga_travel::sample::snapshot();
+        let dir = left_by_desktop(&snapshot);
+        let (trip, _) = arrive(&dir, false).unwrap();
+        std::fs::write(dir.join(RECALL_FILE), b"{}").unwrap();
+        trip.come_home(&[]).unwrap();
+        assert!(!dir.join(RECEIPT_FILE).exists());
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 
