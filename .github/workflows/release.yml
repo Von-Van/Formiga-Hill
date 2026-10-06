@@ -93,7 +93,8 @@ jobs:
           # The checkout keeps only the commit, so fetch the tag itself to read its message.
           git fetch --quiet --force origin "refs/tags/$TAG:refs/tags/$TAG"
           draft=()
-          if git tag -l --format='%(contents)' "$TAG" | grep -qx 'Formiga-Release: draft'; then
+          # A lightweight tag has no message of its own, and %(contents) would read its commit's.
+          if [ "$(git cat-file -t "$TAG")" = tag ] && git tag -l --format='%(contents)' "$TAG" | grep -qx 'Formiga-Release: draft'; then
             draft=(--draft)
           fi
           gh release create "$TAG" dist/* --title "Formiga Hill $version" --notes-file notes.md --verify-tag "${draft[@]}"
