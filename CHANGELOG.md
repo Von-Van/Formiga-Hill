@@ -4,7 +4,7 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
-## 0.1.0 (unreleased)
+## 0.1.0 (2026-10-06)
 
 This is the first release of Formiga Hill. Hill receives a colony from Formiga Desktop by train,
 draws each companion exactly as Desktop does, and gives the same creatures a storybook place to
