@@ -3,7 +3,9 @@ name: release
 # A tag such as v0.1.0 builds the universal macOS app and the Windows installer, and publishes
 # them as that version's release, with its notes from CHANGELOG.md. Run by hand, it builds the
 # same files and keeps them as the run's artifacts without publishing anything, so the packaging
-# can be checked before tagging.
+# can be checked before tagging. A tag whose message carries the line "Formiga-Release: draft"
+# publishes a draft instead, seen only by the repository's owners until it is published by hand
+# or by the joint release, so every app of a joint release can be tried before any goes out.
 on:
   push:
     tags: ["v*"]
@@ -81,11 +83,18 @@ jobs:
           fi
           # This version's notes are its section of the changelog.
           awk -v want="## $version" '
-            /^## / { if (found) exit; if (index($0, want) == 1) { found = 1; next } }
+            /^## / { if (found) exit; if ($0 == want || index($0, want " ") == 1) { found = 1; next } }
             found { print }
           ' CHANGELOG.md > notes.md
           if [ ! -s notes.md ]; then
             echo "CHANGELOG.md has no section for $version" >&2
             exit 1
           fi
-          gh release create "$TAG" dist/* --title "Formiga Hill $version" --notes-file notes.md --verify-tag
+          # The checkout keeps only the commit, so fetch the tag itself to read its message.
+          git fetch --quiet --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          draft=()
+          # A lightweight tag has no message of its own, and %(contents) would read its commit's.
+          if [ "$(git cat-file -t "$TAG")" = tag ] && git tag -l --format='%(contents)' "$TAG" | grep -qx 'Formiga-Release: draft'; then
+            draft=(--draft)
+          fi
+          gh release create "$TAG" dist/* --title "Formiga Hill $version" --notes-file notes.md --verify-tag "${draft[@]}"
