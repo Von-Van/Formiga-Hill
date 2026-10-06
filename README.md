@@ -132,9 +132,11 @@ and a telescope brings rare signs out sooner.
 
 ## Getting there
 
-1. Download Hill from the repository's Releases page. On macOS 14 or later there is a universal
-   app, as a disk image or a zip. On Windows 10 or 11 there is a per-user installer, or a portable
-   zip. Both put Hill where Formiga Desktop looks for it. (To build it yourself, see
+1. Download Hill from [formigaworld.com](https://www.formigaworld.com), which links to the files on
+   this repository's Releases page. On macOS 14 or later there is a universal app, as a disk image
+   or a zip. On Windows 10 or 11 there is a per-user installer, which puts Hill where Formiga
+   Desktop looks for it, or a portable zip, which runs without installing but which Desktop does
+   not look for. (To build it yourself, see
    [docs/DEVELOPING.md](docs/DEVELOPING.md).)
 2. In Formiga Desktop (0.66.4 or later), choose "Go to Formiga Hill…" from the tray.
 3. Desktop's train carries the colony off the desktop, and Hill opens at the station.
@@ -167,12 +169,10 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 
 ## Where things stand
 
-Version 0.1.0 is the first release, and a fair amount is still open. The music and sounds are
+Version 0.1.1 is current, and a fair amount is still open. The music and sounds are
 placeholders. Hill's own text is in English only. Community packages can add stories, but not yet
 anything else, such as new games or places, and it is not yet clear what the right shape for those
-would be. The Fairground's four souvenirs also stay at the Hill for now, until a Desktop release
-learns to show them in its Journal. The [changelog](CHANGELOG.md) keeps track of what changes from
-one version to the next.
+would be. The [changelog](CHANGELOG.md) keeps track of what changes from one version to the next.
 
 ## Further reading
 
