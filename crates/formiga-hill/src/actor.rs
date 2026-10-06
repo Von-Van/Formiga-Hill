@@ -10,7 +10,7 @@ use crate::fairground::prizes::{self, CARRIED_ABOVE, Prize};
 use crate::paint::{blit, ellipse, rgba};
 use formiga_art::{
     AccessoryArt, AnimationSpec, BodyClip, Canvas, CreatureRenderer, ExpressionKind, EyelidPose,
-    FRAME_SIZE, FaceRenderState, GazeDirection,
+    FRAME_SIZE, FaceRenderState, GazeDirection, PlaybackMode,
 };
 use formiga_core::{ActionKind, AppearanceGenome};
 use std::collections::{HashMap, VecDeque};
@@ -777,7 +777,22 @@ fn frame_of(clip: BodyClip, elapsed: f32, still: bool) -> u8 {
     if still {
         0
     } else {
-        AnimationSpec::for_clip(clip).frame_at(elapsed)
+        frame_in(AnimationSpec::for_clip(clip), elapsed)
+    }
+}
+
+/// The frame of `spec` shown `elapsed` seconds in. `AnimationSpec::frame_at` counts frames in a
+/// byte, so a loop played from the start of the visit would stop dead once 255 frames had gone
+/// by: an idle, at three a second, froze after under a minute and a half. A loop is wound back
+/// to its start each time round first, so it plays on however long it has been going.
+pub fn frame_in(spec: AnimationSpec, elapsed: f32) -> u8 {
+    let elapsed = elapsed.max(0.0);
+    match spec.playback {
+        PlaybackMode::Loop => {
+            let round = f32::from(spec.frames) / f32::from(spec.fps.max(1));
+            spec.frame_at(elapsed % round)
+        }
+        PlaybackMode::Hold => spec.frame_at(elapsed),
     }
 }
 
@@ -789,6 +804,28 @@ mod tests {
     fn actor() -> Actor {
         let cast = crate::cast::Cast::new(formiga_travel::sample::snapshot()).unwrap();
         Actor::new(&cast.members[0], (100.0, 180.0), true, false)
+    }
+
+    #[test]
+    fn an_idle_plays_on_however_long_it_has_been_going() {
+        let actor = actor();
+        for start in [0.0, 90.0, 600.0, 3600.0] {
+            let frames: std::collections::HashSet<u8> = (0..24)
+                .map(|tick| actor.pose(start + tick as f32 / 8.0).frame)
+                .collect();
+            assert!(frames.len() > 2, "{start} seconds in it shows {frames:?}");
+        }
+    }
+
+    #[test]
+    fn a_loop_keeps_its_timing_and_a_held_clip_stays_held() {
+        let idle = AnimationSpec::for_action(ActionKind::Idle);
+        for tenth in 0..40 {
+            let elapsed = tenth as f32 / 10.0;
+            assert_eq!(frame_in(idle, elapsed), idle.frame_at(elapsed));
+        }
+        let held = AnimationSpec::for_action(ActionKind::PresentDiscovery);
+        assert_eq!(frame_in(held, 1000.0), held.frames - 1);
     }
 
     #[test]

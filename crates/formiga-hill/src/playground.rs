@@ -27,6 +27,8 @@ const TRUST_STEP: f32 = 0.15;
 const MAX_TRUST: f32 = 0.6;
 /// How close two companions stand when one goes to see the other.
 const BESIDE: f32 = 26.0;
+/// How far in front of someone another must stand not to be drawn over them.
+const CROWDED_DEPTH: f32 = 12.0;
 /// How much stroking, in pixels of brush across a companion, grooms it till it shines.
 const GROOMING: f32 = 260.0;
 /// How long after the last stroke a companion being groomed gets on with its day.
@@ -489,6 +491,7 @@ impl Playground {
                 self.plan(index, cast, now);
             }
         }
+        self.step_aside(now);
         self.look_at_the_pointer();
         // Whoever was being groomed and hasn't been stroked for a moment gets on with its day;
         // how far it got is kept, so brushing again carries on.
@@ -782,9 +785,10 @@ impl Playground {
             let beats = self.actors[index]
                 .character
                 .enjoy(attraction.use_, &mut self.dice);
+            let stand = self.layout.nearest(attraction.stand.0, attraction.stand.1);
             let steps = [
                 Step::Walk {
-                    to: self.layout.nearest(attraction.stand.0, attraction.stand.1),
+                    to: self.make_room(index, stand),
                 },
                 Step::FaceX(attraction.facing_x),
             ]
@@ -815,7 +819,7 @@ impl Playground {
             }],
             Idea::Visit(other) | Idea::PlayWith(other) | Idea::FollowParent(other) => vec![
                 Step::Walk {
-                    to: self.beside(index, other),
+                    to: self.make_room(index, self.beside(index, other)),
                 },
                 Step::Face(other),
             ],
@@ -840,6 +844,62 @@ impl Playground {
                 .into_iter()
                 .chain(joined.into_iter().map(Step::Beat));
             self.actors[partner].begin(now, steps);
+        }
+    }
+
+    /// Whether `index` standing at `spot` would be drawn over `other`, where it stands or where
+    /// it is headed: closer than about half their widths side to side, and not far enough in
+    /// front or behind to be clear of each other.
+    fn crowds(&self, index: usize, spot: (f32, f32), other: usize) -> bool {
+        let (me, them) = (&self.actors[index], &self.actors[other]);
+        let there = them.destination();
+        (spot.0 - there.0).abs() < (me.width() + them.width()) / 4.0 + 4.0
+            && (spot.1 - there.1).abs() < CROWDED_DEPTH
+    }
+
+    /// `to`, or the nearest ground beside it nobody else stands on or is headed for, so no two
+    /// stand over each other: at a find on the Hilltop, a third goes and stands beside the two
+    /// already looking.
+    fn make_room(&self, index: usize, to: (f32, f32)) -> (f32, f32) {
+        let clear = |spot: (f32, f32)| {
+            (0..self.actors.len())
+                .filter(|other| *other != index)
+                .all(|other| !self.crowds(index, spot, other))
+        };
+        if clear(to) {
+            return to;
+        }
+        let step = self.actors[index].width() * 0.75 + 4.0;
+        (1..=4)
+            .flat_map(|ring| [1.0, -1.0].map(|side| side * step * ring as f32))
+            .map(|offset| self.beside_point(to, offset))
+            .find(|spot| clear(*spot))
+            .unwrap_or(to)
+    }
+
+    /// Anyone free who has ended up standing over someone else, because a story or a game sent
+    /// that one there, or they arrived together, steps aside. Of two free ones, the later in the
+    /// colony moves, so they don't both.
+    fn step_aside(&mut self, now: f32) {
+        for index in 0..self.actors.len() {
+            let me = &self.actors[index];
+            if me.walking() || !me.is_free() || self.reserved.contains(&me.id) {
+                continue;
+            }
+            let crowded = (0..self.actors.len()).any(|other| {
+                let them = &self.actors[other];
+                other != index
+                    && !them.walking()
+                    && (other < index || !them.is_free() || self.reserved.contains(&them.id))
+                    && self.crowds(index, me.pos, other)
+            });
+            if !crowded {
+                continue;
+            }
+            let to = self.make_room(index, me.pos);
+            if to != me.pos {
+                self.actors[index].begin(now, [Step::Walk { to }]);
+            }
         }
     }
 
@@ -991,6 +1051,53 @@ mod tests {
                 .iter()
                 .any(|(dx, dy)| (playground.layout.walkable)(x + dx, y + dy))
         })
+    }
+
+    #[test]
+    fn nobody_stands_over_anyone_else_at_a_find_a_friend_or_anywhere() {
+        let cast = sample();
+        // Finds spread over the summit, and a picnic table and a bandstand to gather round.
+        let arrangement: crate::hilltop::Arrangement = [
+            (0, "weathervane"),
+            (2, "brass_lens"),
+            (4, "sun_coin"),
+            (13, "wooden_duck"),
+            (1, "bandstand"),
+            (8, "picnic_table"),
+        ]
+        .into_iter()
+        .map(|(spot, id)| (spot, crate::hilltop::Standing::from(id)))
+        .collect();
+        let mut hilltop = crate::hilltop::open(&cast, 0.0, &arrangement);
+        hilltop.set_attractions(crate::hilltop::attractions(&arrangement));
+        let (fairground, _) = crate::fairground::open(&cast, 0.0);
+        for (name, mut ground) in [
+            ("the Hilltop", hilltop),
+            ("the green", green::open(&cast, 0.0)),
+            ("the Fairground", fairground),
+        ] {
+            let ids = ground.ids();
+            let mut now = 0.0;
+            for tick in 1..=30 * 180 {
+                now += 1.0 / 30.0;
+                ground.tick(&cast, now);
+                if tick % 15 != 0 || now < 15.0 {
+                    continue;
+                }
+                for (index, a) in ids.iter().enumerate() {
+                    for b in &ids[index + 1..] {
+                        if ground.walking(*a) || ground.walking(*b) {
+                            continue;
+                        }
+                        let (at, bt) = (ground.position(*a).unwrap(), ground.position(*b).unwrap());
+                        assert!(
+                            (at.0 - bt.0).abs() >= 12.0 || (at.1 - bt.1).abs() >= CROWDED_DEPTH,
+                            "in {name}, {now:.1} seconds in, two stand at {at:?} and {bt:?}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
