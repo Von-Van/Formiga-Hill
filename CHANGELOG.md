@@ -4,6 +4,34 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.67.3 (2026-10-06)
+
+Hill's version now matches Formiga Desktop's, so the apps released together carry one number. Hill
+is built on Formiga Desktop 0.67.3 and still speaks travel version 4, so it takes the same trips
+as before.
+
+### On the scene
+
+- Hill's controls sit on the scene itself, on paper and in Formiga's own pixel lettering, instead
+  of in a grey bar underneath. Buttons line the bottom edge: what can be done here on the left, and
+  Go to, sound, the album and the camera on the right.
+- The notice boards, the journal, the album, the dress-up box and the sound levels open as cards
+  over the scene's top-right corner, one at a time, instead of separate windows. Choices such as
+  where to go, which game to play, or who is It open as menus from a paper button.
+- In the Clubhouse, each line of a story appears in a speech box over whoever says it, with their
+  name on a tab, and narration is a caption at the top.
+- The lettering stays crisp at any window size and at Desktop's text scale, and the paper looks
+  the same in light and dark.
+
+### Movement
+
+- Idle companions keep moving however long a visit lasts. Before, after about a minute and a half
+  of standing about, every idle companion froze on one frame, which showed most at the station.
+- The station is drawn smoothly, so its idles and chimney smoke no longer step unevenly.
+- In free play nobody stands on top of anyone else. A companion headed for a spot that is taken
+  stands beside it, and one that ends up over someone steps aside. In the meadow, the helper on a
+  bug hunt waits beside the one with the net instead of in its way.
+
 ## 0.1.1 (2026-10-06)
 
 ### With Formiga Desktop
