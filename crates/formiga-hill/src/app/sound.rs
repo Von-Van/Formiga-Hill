@@ -71,6 +71,17 @@ pub(super) fn treasure_heard(event: &crate::track::treasure::Event) -> Option<Cu
     }
 }
 
+/// What the person is heard doing at an expedition's stop: the same as on that place's own outing.
+pub(super) fn acted(act: crate::expedition::legs::Act) -> Cue {
+    use crate::expedition::legs::Act;
+    match act {
+        Act::Rummaged => Cue::Rummage,
+        Act::Cast => Cue::Cast,
+        Act::Swung => Cue::Swish,
+        Act::Foraged => Cue::Forage,
+    }
+}
+
 /// What an expedition is heard doing: each leg as that place's own outing is, the far place found,
 /// and whatever comes down the falls.
 pub(super) fn expedition_heard(event: &crate::expedition::Event) -> Option<Cue> {
@@ -82,6 +93,7 @@ pub(super) fn expedition_heard(event: &crate::expedition::Event) -> Option<Cue> 
         Event::Leg(LegEvent::Fish(event)) => angled(event),
         Event::Leg(LegEvent::Bugs(event)) => hunted(event),
         Event::Leg(LegEvent::Forage(event)) => foraged(event),
+        Event::Leg(LegEvent::Scavenge(event)) => scavenged(event),
         Event::Leg(LegEvent::Falls(crate::falls::wading::Event::Caught { .. })) => Some(Cue::Find),
         _ => None,
     }
@@ -394,6 +406,11 @@ mod tests {
             expedition_heard(&Day::Leg(LegEvent::Rummage(got))),
             Some(Cue::Find),
             "a leg sounds as its place's outing does"
+        );
+        assert_eq!(
+            expedition_heard(&Day::Leg(LegEvent::Scavenge(lifted))),
+            Some(Cue::Rummage),
+            "and so does a heap or two on the old track"
         );
     }
 

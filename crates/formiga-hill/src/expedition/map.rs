@@ -25,6 +25,7 @@ pub enum Stop {
     Fish,
     Bugs,
     Forage,
+    Scavenge,
     /// A picnic on the fallen log.
     Rest,
     /// Only a fork in the way, where the old signpost stands.
@@ -132,9 +133,10 @@ pub const LOG: usize = 4;
 pub const SIGNPOST: usize = 5;
 pub const POOL: usize = 6;
 pub const FAR_FALLS: usize = 7;
+pub const OLD_TRACK: usize = 8;
 
 /// The places, the edge of the Woods first. The map is painted round these.
-pub const PLACES: [Place; 8] = [
+pub const PLACES: [Place; 9] = [
     Place {
         id: "edge",
         name: "the edge of the Woods",
@@ -199,10 +201,18 @@ pub const PLACES: [Place; 8] = [
         depth: 4,
         hidden: true,
     },
+    Place {
+        id: "old_track",
+        name: "the old track",
+        stop: Stop::Scavenge,
+        at: (236.0, 172.0),
+        depth: 3,
+        hidden: false,
+    },
 ];
 
 /// The paths, the open ones first. The map is painted along these.
-pub const PATHS: [Path; 15] = [
+pub const PATHS: [Path; 17] = [
     Path {
         ends: (EDGE, HEDGEROW),
         length: 6.0,
@@ -264,6 +274,19 @@ pub const PATHS: [Path; 15] = [
         way: Way::Open,
         // The long way round, winding up under the crag.
         bends: &[(232.0, 78.0), (260.0, 62.0), (292.0, 62.0)],
+    },
+    Path {
+        ends: (GLADE, OLD_TRACK),
+        length: 7.0,
+        way: Way::Open,
+        // On from the glade, where the old cart track starts.
+        bends: &[(198.0, 170.0)],
+    },
+    Path {
+        ends: (OLD_TRACK, POOL),
+        length: 6.0,
+        way: Way::Open,
+        bends: &[(262.0, 175.0)],
     },
     Path {
         ends: (HEDGEROW, POOL),
@@ -486,6 +509,36 @@ mod tests {
             PLACES.len(),
             "somewhere is only reached by a shortcut"
         );
+    }
+
+    #[test]
+    fn the_old_track_is_on_the_map_and_anyone_on_their_own_gets_there() {
+        let (cast, everyone) = sample();
+        let track = &PLACES[OLD_TRACK];
+        assert_eq!(track.stop, Stop::Scavenge);
+        assert!(track.stop.played());
+        assert!(!track.hidden, "the old track is no secret");
+        assert!(track.depth > PLACES[GLADE].depth, "it is further in");
+        // On from the glade by an open path, and on to the pool by another.
+        for (from, to) in [(GLADE, OLD_TRACK), (OLD_TRACK, POOL)] {
+            assert!(
+                PATHS
+                    .iter()
+                    .any(|path| path.way == Way::Open && path.from(from) == Some(to)),
+                "no open path from {} to {}",
+                PLACES[from].name,
+                PLACES[to].name
+            );
+        }
+        for one in &everyone {
+            let company = Company::of(std::slice::from_ref(one), close(&cast));
+            assert!(
+                reachable(&company, false).contains(&OLD_TRACK),
+                "{:?} on their own can't get to the old track",
+                one.1.kind
+            );
+        }
+        assert!(nearest(&Company::default(), false)[OLD_TRACK].is_some());
     }
 
     #[test]

@@ -10,7 +10,7 @@ use crate::expedition::{self, BASKET, Droughts, Ending, Event, Expedition, Known
 use crate::finds::{self, AFAR, Tier};
 use crate::memories::{ColonyMemories, Homecoming};
 use crate::playground::distance;
-use crate::{falls, fishing, hedgerow, meadow, woods};
+use crate::{falls, fishing, hedgerow, meadow, track, woods};
 use eframe::egui;
 use formiga_art::Canvas;
 use std::collections::BTreeSet;
@@ -28,10 +28,12 @@ impl HillApp {
                 fish: colony.fish_drought,
                 bugs: colony.bug_drought,
                 forage: colony.forage_drought,
+                scavenge: colony.scavenge_drought,
                 far: colony.far_drought,
             },
             hilltop: self.hilltop_standing(),
             far_places: colony.far_places.clone(),
+            maps_held: colony.maps.len(),
         }
     }
 
@@ -100,7 +102,7 @@ impl HillApp {
     }
 
     /// Brings the expedition home: everything in the basket into the journal and the satchel,
-    /// fish and bugs into the journal, and the day's page.
+    /// fish and bugs into the journal, any torn maps kept for another day, and the day's page.
     pub(super) fn finish_expedition(&mut self, now: f32) {
         let Some(mut expedition) = self.woods.expedition.take() else {
             return;
@@ -146,6 +148,7 @@ impl HillApp {
             found: &found,
             fish: expedition.fish(),
             bugs: expedition.bugs(),
+            maps: expedition.maps(),
         };
         let new = self.memories.back_from_the_expedition(&home);
         let count = found.len();
@@ -165,6 +168,11 @@ impl HillApp {
         let caught = expedition.fish().len() + expedition.bugs().len();
         if caught > 0 {
             line.push_str(&format!(" {caught} caught and let go on the way."));
+        }
+        match expedition.maps().len() {
+            0 => {}
+            1 => line.push_str(" And a torn map, to follow another day."),
+            count => line.push_str(&format!(" And {count} torn maps, to follow another day.")),
         }
         if furthest.depth > was {
             line.push_str(&format!(" The furthest yet: {}!", furthest.name));
@@ -213,8 +221,8 @@ impl HillApp {
         };
         match expedition.phase() {
             Phase::Stopped => {
-                if let Some(leg) = expedition.leg_mut() {
-                    leg.click(pointer, now);
+                if let Some(act) = expedition.leg_mut().and_then(|leg| leg.click(pointer, now)) {
+                    self.sound.play(super::sound::acted(act));
                 }
             }
             Phase::Choosing | Phase::MakingRoom => {
@@ -247,8 +255,9 @@ impl HillApp {
     pub(super) fn expedition_strike(&mut self, now: f32) {
         if let Some(expedition) = &mut self.woods.expedition
             && let Some(leg) = expedition.leg_mut()
+            && let Some(act) = leg.strike(now)
         {
-            leg.strike(now);
+            self.sound.play(super::sound::acted(act));
         }
     }
 
@@ -314,7 +323,7 @@ impl HillApp {
 
     pub(super) fn expedition_bar(&mut self, ui: &mut egui::Ui, now: f32) {
         let cast = &self.arrival.cast;
-        let Some(expedition) = &self.woods.expedition else {
+        let Some(expedition) = &mut self.woods.expedition else {
             return;
         };
         ui.add(
@@ -346,7 +355,10 @@ impl HillApp {
                 ui.label(format!("On the way to {name}\u{2026}"));
             }
             Phase::Stopped => {
-                if let Some(leg) = expedition.leg() {
+                if let Some(leg) = expedition.leg_mut() {
+                    if let Play::Scavenge { scavenge, .. } = &mut leg.play {
+                        super::scavenging::hands_bar(ui, cast, scavenge);
+                    }
                     let hint = leg_hint(&leg.play, &leg.ground, reduce_motion);
                     if !hint.is_empty() {
                         ui.label(egui::RichText::new(hint).strong());
@@ -402,6 +414,7 @@ fn verb(stop: Stop) -> &'static str {
         Stop::Fish => "fish here",
         Stop::Bugs => "catch a bug here",
         Stop::Forage => "forage here",
+        Stop::Scavenge => "scavenge here",
         Stop::Rest => "rest on the log",
         Stop::Falls => "wade in at the falls",
         Stop::Edge | Stop::Fork => "",
@@ -461,6 +474,19 @@ fn leg_hint(
                 "Full! Click a basket slot to put something back."
             }
             hedgerow::foraging::Phase::At { .. } => "Pick what's ripe, then move on.",
+            _ => "",
+        },
+        Play::Scavenge { scavenge, heaps } => match scavenge.phase() {
+            track::scavenging::Phase::Choosing | track::scavenging::Phase::Going { .. } => {
+                "Click a heap to go to it: a heap or two, then on."
+            }
+            track::scavenging::Phase::At { .. } if scavenge.basket().len() >= BASKET => {
+                "Full! Click a basket slot to put something back."
+            }
+            track::scavenging::Phase::At { .. } if heaps.len() >= expedition::legs::HEAPS => {
+                "Click something in the heap, then move on."
+            }
+            track::scavenging::Phase::At { .. } => "Click something in the heap.",
             _ => "",
         },
         Play::Rest { .. } => "A rest on the fallen log.",
@@ -541,6 +567,10 @@ fn leg_hover(expedition: &Expedition, (x, y): (f32, f32)) -> Option<(String, (f3
             let place = &hedgerow::PATCHES[patch];
             (foray.at().is_none())
                 .then(|| (place.name.to_owned(), (place.stand.0, place.stand.1 - 40.0)))
+        }
+        Play::Scavenge { scavenge, heaps } => {
+            let may_go = heaps.len() < expedition::legs::HEAPS;
+            super::scavenging::heap_hover(scavenge, Some((x, y)), may_go)
         }
         Play::Rest { .. } => None,
         Play::Falls { .. } => {
@@ -625,11 +655,15 @@ fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Opti
                 "{} leads along the hedgerow. One patch, then on.",
                 name(leader)
             ),
+            Stop::Scavenge => format!(
+                "{} leads the way up the old track. A heap or two, then on.",
+                name(leader)
+            ),
             Stop::Rest => "Everyone sits along the fallen log.".to_owned(),
             Stop::Falls => format!("{} wades in at the foot of the falls.", name(leader)),
             Stop::Edge | Stop::Fork => return None,
         },
-        Event::Leg(event) => return tell_leg(expedition, &name, event),
+        Event::Leg(event) => return tell_leg(expedition, cast, &name, event),
         Event::Ended {
             place: here,
             found,
@@ -662,6 +696,7 @@ fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Opti
 /// What to tell the person of something at a stop, as the activity there tells it.
 fn tell_leg(
     expedition: &Expedition,
+    cast: &crate::cast::Cast,
     name: &dyn Fn(Id) -> String,
     event: LegEvent,
 ) -> Option<String> {
@@ -826,6 +861,18 @@ fn tell_leg(
                 Event::Dusk => "The light is going along the hedgerow\u{2026}".to_owned(),
                 Event::Leaving(Ending::Dusk) => "The light's gone.".to_owned(),
                 Event::Leaving(Ending::Chose) => "On from the hedgerow.".to_owned(),
+            }
+        }
+        LegEvent::Scavenge(event) => {
+            use track::scavenging::{Ending, Event};
+            match event {
+                Event::BasketFull => {
+                    "The basket's full. Put something back to make room, or move on.".to_owned()
+                }
+                Event::Leaving(Ending::Dusk) => "The light's gone.".to_owned(),
+                Event::Leaving(Ending::Chose) => "On from the old track.".to_owned(),
+                // Anything else as the old track's own outings tell it.
+                event => return super::scavenging::heap_line(cast, event),
             }
         }
         LegEvent::Rest(event) => {

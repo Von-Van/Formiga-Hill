@@ -8,7 +8,8 @@
 //! are lost in mist. Every place and path is painted where `map` puts it.
 
 use super::map::{
-    EDGE, FAR_FALLS, GLADE, HEDGEROW, LOG, MEADOW, Opener, PATHS, PLACES, POOL, SIGNPOST, Way,
+    EDGE, FAR_FALLS, GLADE, HEDGEROW, LOG, MEADOW, OLD_TRACK, Opener, PATHS, PLACES, POOL,
+    SIGNPOST, Way,
 };
 use crate::font::{GLYPH_WIDTH, draw_text};
 use crate::paint::{
@@ -109,6 +110,7 @@ pub fn map(shown: &Shown) -> Canvas {
     log(&mut scene);
     signpost(&mut scene);
     pool(&mut scene);
+    old_track(&mut scene);
     if shown.places[FAR_FALLS] {
         falls(&mut scene);
     } else {
@@ -932,6 +934,204 @@ fn pool(scene: &mut Canvas) {
     }
 }
 
+/// The old track: an overgrown cart track running off between the trees, worn into two ruts with
+/// grass down the middle, the woodcutter's tumbledown hut beside it with its roof fallen in, the
+/// old milestone, a run of tumbled wall, and the broken cart that never got any further.
+fn old_track(scene: &mut Canvas) {
+    let (x, y) = (PLACES[OLD_TRACK].at.0 as i32, PLACES[OLD_TRACK].at.1 as i32);
+    // Its own open ground, in a wash.
+    for py in y - 38..y - 2 {
+        for px in x - 28..x + 30 {
+            let (u, v) = ((px - x - 1) as f32 / 29.0, (py - (y - 20)) as f32 / 17.0);
+            if u * u + v * v < 1.0 {
+                wash(scene, px, py, rgb(0xd8cca0), 0.45);
+            }
+        }
+    }
+    // The track, from where the party stands away up between the trees, narrowing as it goes:
+    // worn earth, a rut down each side of it, grass along the middle, and lost in the grass at
+    // its far end.
+    let (fx, fy) = (x as f32, y as f32);
+    let way = [
+        (fx - 8.0, fy - 5.0),
+        (fx + 1.0, fy - 15.0),
+        (fx + 12.0, fy - 25.0),
+        (fx + 26.0, fy - 35.0),
+    ];
+    let total: f32 = way.windows(2).map(|pair| distance(pair[0], pair[1])).sum();
+    let nearest = |at: (f32, f32)| {
+        let (mut best, mut along, mut walked) = (f32::MAX, 0.0, 0.0);
+        for pair in way.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let length = (dx * dx + dy * dy).sqrt();
+            let t = (((at.0 - a.0) * dx + (at.1 - a.1) * dy) / (length * length)).clamp(0.0, 1.0);
+            let off = distance(at, (a.0 + dx * t, a.1 + dy * t));
+            if off < best {
+                best = off;
+                along = (walked + t * length) / total;
+            }
+            walked += length;
+        }
+        (best, along)
+    };
+    for py in y - 40..y {
+        for px in x - 16..x + 32 {
+            let (off, along) = nearest((px as f32 + 0.5, py as f32 + 0.5));
+            let half = 5.2 - 2.8 * along;
+            if off > half {
+                continue;
+            }
+            let r = off / half;
+            let color = if r > 0.86 {
+                // The verge, grassing over.
+                if chance(px, py, 2122, 90) {
+                    TREE.light
+                } else {
+                    LANE.base
+                }
+            } else if (0.42..0.7).contains(&r) {
+                LANE.shadow
+            } else if r < 0.24 {
+                if chance(px, py, 2120, 110) {
+                    TREE.light
+                } else {
+                    TREE.base
+                }
+            } else if chance(px, py, 2121, 40) {
+                LANE.base
+            } else {
+                LANE.light
+            };
+            let fade = ((1.0 - along) / 0.22).clamp(0.0, 1.0);
+            let pixel = scene.get(px, py);
+            scene.set(px, py, mix(pixel, color, fade));
+        }
+    }
+    // The woodcutter's hut, on the left: plank walls, a dark doorway, and its shingled roof sagging
+    // with a hole fallen in it, the rafters showing; lit from the upper left.
+    stamp_rows(
+        scene,
+        (x - 27, y - 34),
+        &[
+            ".....ee.......",
+            "....ellee.....",
+            "...ellbb.e....",
+            "..ellbb.r.e...",
+            ".ellbbb...se..",
+            "eeeeeeeeeeeeee",
+            ".ellbsbsbsbse.",
+            ".elbkkbsbsbse.",
+            ".elbkkbsblbse.",
+            ".elbkkbsbsbse.",
+            ".eeeeeeeeeeee.",
+        ],
+        &[
+            ('e', WOOD.edge),
+            ('s', WOOD.shadow),
+            ('b', WOOD.base),
+            ('l', WOOD.light),
+            ('r', WOOD.shadow),
+            ('k', rgb(0x2a1a10)),
+        ],
+    );
+    for (dx, dy, color) in [(5, 1, TREE.light), (4, 2, TREE.base), (6, 1, TREE.base)] {
+        put(scene, x - 27 + dx, y - 34 + dy, color);
+    }
+    // The old milestone by the track, lichen on its rounded top.
+    stamp_rows(
+        scene,
+        (x - 11, y - 19),
+        &[".ee.", "elge", "elbe", "elbe", "eese"],
+        &[
+            ('e', ROCK.edge),
+            ('s', ROCK.shadow),
+            ('b', ROCK.base),
+            ('l', ROCK.light),
+            ('g', rgb(0xc4c87a)),
+        ],
+    );
+    // A run of dry-stone wall along the right of the track: stones lit on top with dark joints,
+    // and a stretch fallen in, its stones lying where they came down.
+    let wall = traced(&[(fx + 9.0, fy - 4.0), (fx + 26.0, fy - 17.0)]);
+    for (index, &(sx, sy)) in wall.iter().enumerate() {
+        if (9..14).contains(&index) {
+            continue;
+        }
+        let (sx, sy) = (sx as i32, sy as i32);
+        put(scene, sx, sy - 2, ROCK.edge);
+        put(scene, sx, sy - 1, ROCK.light);
+        let joint = index % 3 == 0;
+        put(scene, sx, sy, if joint { ROCK.edge } else { ROCK.base });
+        put(scene, sx, sy + 1, ROCK.edge);
+    }
+    for (dx, dy) in [(16, -11), (19, -12), (18, -8)] {
+        put(scene, x + dx, y + dy, ROCK.light);
+        put(scene, x + dx + 1, y + dy, ROCK.base);
+        put(scene, x + dx, y + dy + 1, ROCK.edge);
+        put(scene, x + dx + 1, y + dy + 1, ROCK.edge);
+    }
+    // The broken cart, stuck on the track: its plank bed, a spoked wheel still on, and the shafts
+    // down in the grass where the other wheel came off.
+    let (bx, by) = (x + 11, y - 38);
+    for px in bx..bx + 12 {
+        let end = px == bx || px == bx + 11;
+        put(scene, px, by, WOOD.edge);
+        put(scene, px, by + 1, if end { WOOD.edge } else { WOOD.light });
+        let joint = (px - bx) % 4 == 3;
+        put(
+            scene,
+            px,
+            by + 2,
+            if end || joint { WOOD.edge } else { WOOD.base },
+        );
+        put(scene, px, by + 3, if end { WOOD.edge } else { WOOD.shadow });
+        put(scene, px, by + 4, WOOD.edge);
+    }
+    line(scene, (bx, by + 3), (bx - 6, by + 8), WOOD.shadow);
+    line(scene, (bx + 1, by + 4), (bx - 5, by + 9), WOOD.edge);
+    let (wx, wy) = (bx + 7, by + 6);
+    for spoke in 0..4 {
+        let angle = spoke as f32 * TAU / 8.0;
+        let (dx, dy) = (angle.cos() * 3.0, angle.sin() * 3.0);
+        line(
+            scene,
+            (
+                (wx as f32 - dx).round() as i32,
+                (wy as f32 - dy).round() as i32,
+            ),
+            (
+                (wx as f32 + dx).round() as i32,
+                (wy as f32 + dy).round() as i32,
+            ),
+            WOOD.shadow,
+        );
+    }
+    for step in 0..40 {
+        let angle = step as f32 / 40.0 * TAU;
+        let (rx, ry) = (
+            (wx as f32 + angle.cos() * 4.0).round() as i32,
+            (wy as f32 + angle.sin() * 4.0).round() as i32,
+        );
+        // The rim, lit along its upper left.
+        let lit = angle.cos() + angle.sin() < -0.6;
+        put(scene, rx, ry, if lit { WOOD.light } else { WOOD.edge });
+    }
+    put(scene, wx, wy, WOOD.light);
+}
+
+/// Paints rows of letters with their top-left at `at`, each letter a colour from `inks`; a
+/// letter not among them is left as it was.
+fn stamp_rows(scene: &mut Canvas, (x, y): (i32, i32), rows: &[&str], inks: &[(char, Rgba)]) {
+    for (dy, row) in rows.iter().enumerate() {
+        for (dx, letter) in row.chars().enumerate() {
+            if let Some(&(_, color)) = inks.iter().find(|(name, _)| *name == letter) {
+                put(scene, x + dx as i32, y + dy as i32, color);
+            }
+        }
+    }
+}
+
 /// The Far Falls, once in sight: the crag with the falls coming down it under the little arch,
 /// the plunge pool at its foot, and spray.
 fn falls(scene: &mut Canvas) {
@@ -1106,6 +1306,7 @@ fn names(scene: &mut Canvas, shown: &Shown) {
         (LOG, "FALLEN LOG", 0),
         (SIGNPOST, "SIGNPOST", 0),
         (POOL, "POOL", 0),
+        (OLD_TRACK, "OLD TRACK", 0),
         (FAR_FALLS, "FAR FALLS", -6),
     ] {
         if !shown.places[index] {

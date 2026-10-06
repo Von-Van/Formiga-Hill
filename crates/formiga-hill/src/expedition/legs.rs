@@ -1,9 +1,9 @@
 //! A leg of an expedition: a short go at a stop's own activity, on the expedition's one light and
 //! with its one basket. Each is the activity itself, started partway through the expedition's
 //! day with what is in the basket (see each one's `partway`), cut short: a few searches in the
-//! glade, a cast or two at the pool, one bug in the meadow, one patch of the hedgerow, what the
-//! Far Falls bring down, a rest on the log. It hands back the light left and the basket as it
-//! now is, and anything caught and let go.
+//! glade, a cast or two at the pool, one bug in the meadow, one patch of the hedgerow, a heap or
+//! two on the old track, what the Far Falls bring down, a rest on the log. It hands back the light
+//! left and the basket as it now is, anything caught and let go, and any torn map found.
 //!
 //! Whoever is best at what is done at a stop leads there, read from who each is, with the next
 //! best beside it (and anyone who opens something there first); anyone else in the party comes
@@ -23,23 +23,46 @@ use crate::hedgerow::{self, foraging::Foray};
 use crate::hilltop::Arrangement;
 use crate::meadow::{self, catching::Hunt};
 use crate::playground::{Playground, distance};
+use crate::track::{self, crew, scavenging::Scavenge};
 use crate::woods::rummage::{self, Rummage};
 use crate::woods::{self, Influence};
 use formiga_art::Canvas;
 use formiga_core::Habit;
 
-/// How many spots a leg in the glade searches, and how many casts a leg at the pool makes.
+/// How many spots a leg in the glade searches, how many casts a leg at the pool makes, and how
+/// many of the old track's heaps a leg there works.
 pub const SEARCHES: u32 = 3;
 pub const CASTS: u32 = 2;
+pub const HEAPS: usize = 2;
 
 /// What is going on at a stop.
 pub enum Play {
-    Rummage { rummage: Rummage, searched: u32 },
-    Fish { angling: Angling, casts: u32 },
-    Bugs { hunt: Hunt, caught: bool },
-    Forage { foray: Foray },
-    Rest { picnic: Picnic },
-    Falls { wading: Wading },
+    Rummage {
+        rummage: Rummage,
+        searched: u32,
+    },
+    Fish {
+        angling: Angling,
+        casts: u32,
+    },
+    Bugs {
+        hunt: Hunt,
+        caught: bool,
+    },
+    Forage {
+        foray: Foray,
+    },
+    Scavenge {
+        scavenge: Scavenge,
+        /// The heaps gone to so far: a heap or two a stop.
+        heaps: Vec<usize>,
+    },
+    Rest {
+        picnic: Picnic,
+    },
+    Falls {
+        wading: Wading,
+    },
 }
 
 /// Something that happened in a leg, as the activity tells it.
@@ -49,8 +72,22 @@ pub enum LegEvent {
     Fish(fishing::angling::Event),
     Bugs(meadow::catching::Event),
     Forage(hedgerow::foraging::Event),
+    Scavenge(track::scavenging::Event),
     Rest(picnic::Event),
     Falls(falls::wading::Event),
+}
+
+/// What the person did at a stop, so the window hears it as it would on that place's own outing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Act {
+    /// Chose a spot in the glade.
+    Rummaged,
+    /// Cast a line at the pool.
+    Cast,
+    /// Swung the net in the meadow.
+    Swung,
+    /// Went to a patch of the hedgerow.
+    Foraged,
 }
 
 /// Something caught and let go: what kind, how big, and who caught it.
@@ -82,6 +119,8 @@ pub struct Start<'a> {
     pub basket: Vec<&'static str>,
     pub influence: &'a Influence,
     pub droughts: super::Droughts,
+    /// Torn maps the colony holds already: the fewer, the likelier another turns up.
+    pub maps_held: usize,
     pub found: &'a dyn Fn(&str) -> bool,
     pub fish: &'a dyn Fn(&str) -> bool,
     pub bugs: &'a dyn Fn(&str) -> bool,
@@ -176,6 +215,26 @@ impl Leg {
                     Foray::new(&mut ground, outset, start.found, now).partway(light, full, basket);
                 (ground, Play::Forage { foray })
             }
+            Stop::Scavenge => {
+                let mut ground = track::open(cast, start.everyone, now, start.hilltop);
+                let outset = track::scavenging::Outset {
+                    party: players,
+                    drought: start.droughts.scavenge,
+                    close_pair: start.close_pair,
+                    influence,
+                    maps_held: start.maps_held,
+                    seed,
+                };
+                let scavenge = Scavenge::new(&mut ground, outset, start.found, now)
+                    .partway(light, full, basket);
+                (
+                    ground,
+                    Play::Scavenge {
+                        scavenge,
+                        heaps: Vec::new(),
+                    },
+                )
+            }
             Stop::Falls => {
                 let mut ground = falls::open(cast, start.everyone, now);
                 let outset = falls::wading::Outset {
@@ -263,6 +322,14 @@ impl Leg {
                     .map(LegEvent::Forage)
                     .collect()
             }
+            Play::Scavenge { scavenge, .. } => {
+                scavenge.tick(ground, now);
+                scavenge
+                    .take_events()
+                    .into_iter()
+                    .map(LegEvent::Scavenge)
+                    .collect()
+            }
             Play::Rest { picnic } => {
                 picnic.tick(now);
                 picnic
@@ -290,6 +357,7 @@ impl Leg {
             Play::Fish { angling, .. } => angling.phase() == fishing::angling::Phase::Over,
             Play::Bugs { hunt, .. } => hunt.phase() == meadow::catching::Phase::Over,
             Play::Forage { foray } => foray.phase() == hedgerow::foraging::Phase::Over,
+            Play::Scavenge { scavenge, .. } => scavenge.phase() == track::scavenging::Phase::Over,
             Play::Rest { picnic } => picnic.over(),
             Play::Falls { wading } => wading.phase() == falls::wading::Phase::Over,
         }
@@ -302,6 +370,7 @@ impl Leg {
             Play::Fish { angling, .. } => angling.light(),
             Play::Bugs { hunt, .. } => hunt.light(),
             Play::Forage { foray } => foray.light(),
+            Play::Scavenge { scavenge, .. } => scavenge.light().0,
             Play::Rest { .. } => self.light_in,
             Play::Falls { wading } => wading.light(),
         }
@@ -313,6 +382,7 @@ impl Leg {
         match &self.play {
             Play::Rummage { rummage, .. } => rummage.basket().to_vec(),
             Play::Forage { foray } => foray.basket().to_vec(),
+            Play::Scavenge { scavenge, .. } => scavenge.basket().to_vec(),
             Play::Falls { wading } => wading.basket().to_vec(),
             Play::Fish { angling, .. } => [self.carried_in.as_slice(), angling.basket()].concat(),
             Play::Bugs { hunt, .. } => [self.carried_in.as_slice(), hunt.basket()].concat(),
@@ -343,9 +413,18 @@ impl Leg {
         }
     }
 
+    /// The torn maps found, by who found each: kept, whatever is in the basket.
+    pub fn maps(&self) -> Vec<Id> {
+        match &self.play {
+            Play::Scavenge { scavenge, .. } => scavenge.maps().to_vec(),
+            _ => Vec::new(),
+        }
+    }
+
     /// A click in the leg's scene, as the activity takes it, kept to the leg: at the pool a cast
-    /// or two, at the hedgerow one patch.
-    pub fn click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
+    /// or two, at the hedgerow one patch. Says what was done, if it was something the window
+    /// hears.
+    pub fn click(&mut self, pointer: Option<(f32, f32)>, now: f32) -> Option<Act> {
         let ground = &mut self.ground;
         let reduce_motion = ground.reduce_motion();
         match &mut self.play {
@@ -362,6 +441,7 @@ impl Leg {
                     rummage::Phase::Exploring | rummage::Phase::Catching(_) => {
                         if let Some(spot) = spot {
                             rummage.choose(ground, spot, now);
+                            return Some(Act::Rummaged);
                         }
                     }
                     _ => {}
@@ -373,6 +453,7 @@ impl Leg {
                         angling.cast(ground, at, now);
                         if angling.phase() != fishing::angling::Phase::Ready {
                             *casts += 1;
+                            return Some(Act::Cast);
                         }
                     }
                 }
@@ -380,37 +461,57 @@ impl Leg {
                 _ => {}
             },
             Play::Bugs { hunt, .. } => {
-                let Some((x, y)) = pointer else {
-                    return;
-                };
+                let (x, y) = pointer?;
                 let chosen = hunt.target().map(|(_, at)| at);
                 let on_chosen = chosen.is_some_and(|at| distance(at, (x, y)) <= 9.0);
                 if on_chosen && hunt.in_reach(ground) {
                     hunt.swing(ground, now);
-                } else {
-                    hunt.choose(ground, x, y, now);
+                    return Some(Act::Swung);
                 }
+                hunt.choose(ground, x, y, now);
             }
             Play::Forage { foray } => {
-                let Some((x, y)) = pointer else {
-                    return;
-                };
+                let (x, y) = pointer?;
                 if let Some(slot) = foray.basket_slot_at(x, y, ground.backdrop().width()) {
                     foray.put_back(slot);
-                    return;
+                    return None;
                 }
                 if let Some(item) = foray.item_at(x, y)
                     && let Some((_, patch, _)) = foray.item(item)
                     && foray.at() == Some(patch)
                 {
                     foray.pick(ground, item, now);
-                    return;
+                    return None;
                 }
                 // One patch a stop: somewhere to go, until the party is at one.
                 if foray.at().is_none()
                     && let Some(patch) = foray.patch_at(x, y)
                 {
                     foray.choose(ground, patch, now);
+                    return Some(Act::Foraged);
+                }
+            }
+            Play::Scavenge { scavenge, heaps } => {
+                let (x, y) = pointer?;
+                if let Some(slot) = scavenge.basket_slot_at(x, y, ground.backdrop().width()) {
+                    scavenge.put_back(slot);
+                    return None;
+                }
+                let here = scavenge.at();
+                if let Some((heap, hidden)) = scavenge.open_at(x, y)
+                    && here == Some(heap)
+                {
+                    scavenge.take(ground, heap, hidden, now);
+                    return None;
+                }
+                if let Some((heap, item)) = scavenge.item_at(x, y)
+                    && here == Some(heap)
+                {
+                    scavenge.act(ground, item, now);
+                    return None;
+                }
+                if let Some(heap) = scavenge.heap_at(x, y) {
+                    go_to_heap(scavenge, heaps, ground, heap, now);
                 }
             }
             Play::Rest { .. } => {}
@@ -420,10 +521,12 @@ impl Leg {
                 }
             }
         }
+        None
     }
 
-    /// The key for trying, striking or swinging, for anyone not using the pointer.
-    pub fn strike(&mut self, now: f32) {
+    /// The key for trying, striking or swinging, for anyone not using the pointer. Says what
+    /// was done, if it was something the window hears.
+    pub fn strike(&mut self, now: f32) -> Option<Act> {
         let ground = &mut self.ground;
         let reduce_motion = ground.reduce_motion();
         match &mut self.play {
@@ -437,14 +540,18 @@ impl Leg {
                     angling.strike(ground, now);
                 }
             }
-            Play::Bugs { hunt, .. } => hunt.swing(ground, now),
+            Play::Bugs { hunt, .. } => {
+                hunt.swing(ground, now);
+                return Some(Act::Swung);
+            }
             Play::Falls { wading } => {
                 if !reduce_motion {
                     wading.strike(ground, now);
                 }
             }
-            Play::Forage { .. } | Play::Rest { .. } => {}
+            Play::Forage { .. } | Play::Scavenge { .. } | Play::Rest { .. } => {}
         }
+        None
     }
 
     /// The person would rather move on: the party finishes up here and goes back to the map
@@ -456,6 +563,7 @@ impl Leg {
             Play::Fish { angling, .. } => angling.head_home(ground, now),
             Play::Bugs { hunt, .. } => hunt.head_home(ground, now),
             Play::Forage { foray } => foray.head_home(ground, now),
+            Play::Scavenge { scavenge, .. } => scavenge.head_home(ground, now),
             Play::Rest { picnic } => picnic.move_on(),
             Play::Falls { wading } => wading.head_home(ground, now),
         }
@@ -480,6 +588,10 @@ impl Leg {
                 foray.phase(),
                 hedgerow::foraging::Phase::Leaving { .. } | hedgerow::foraging::Phase::Over
             ),
+            Play::Scavenge { scavenge, .. } => matches!(
+                scavenge.phase(),
+                track::scavenging::Phase::Leaving { .. } | track::scavenging::Phase::Over
+            ),
             Play::Rest { picnic } => picnic.over(),
             Play::Falls { wading } => matches!(
                 wading.phase(),
@@ -492,8 +604,8 @@ impl Leg {
     /// spots in turn and catches each moment on the gold; casts round the pool's haunts, strikes
     /// on the bite and reels in only while the fish isn't pulling; creeps up on the nearest bug
     /// while it is calm and swings when it is open; goes where something is ripening and picks
-    /// it ripe; and catches what the falls bring down as it comes past the stone. Says what it
-    /// is holding down.
+    /// it ripe; works a heap or two on the old track as a careful hand would; and catches what
+    /// the falls bring down as it comes past the stone. Says what it is holding down.
     pub fn steady(&mut self, now: f32) -> Input {
         let ground = &mut self.ground;
         let mut input = Input {
@@ -568,6 +680,29 @@ impl Leg {
                     _ => {}
                 }
             }
+            Play::Scavenge { scavenge, heaps } => {
+                use track::scavenging::Move;
+                match scavenge.canny() {
+                    Move::Act { hand, item } => {
+                        scavenge.set_hand(hand);
+                        scavenge.act(ground, item, now);
+                    }
+                    Move::Take(hidden) => {
+                        if let Some(heap) = scavenge.at() {
+                            scavenge.take(ground, heap, hidden, now);
+                        }
+                    }
+                    Move::PutBack(slot) => scavenge.put_back(slot),
+                    Move::Go(heap) => {
+                        // A heap or two, then on.
+                        if !go_to_heap(scavenge, heaps, ground, heap, now) {
+                            scavenge.head_home(ground, now);
+                        }
+                    }
+                    Move::Home => scavenge.head_home(ground, now),
+                    Move::Wait => {}
+                }
+            }
             Play::Rest { .. } => {}
             Play::Falls { wading } => {
                 if wading.at_the_stone(now) {
@@ -587,12 +722,14 @@ impl Leg {
             Play::Fish { angling, .. } => angling.set_hour_dark(dark),
             Play::Bugs { hunt, .. } => hunt.set_hour_dark(dark),
             Play::Forage { foray } => foray.set_hour_dark(dark),
+            Play::Scavenge { scavenge, .. } => scavenge.set_hour_dark(dark),
             Play::Falls { wading } => wading.set_hour_dark(dark),
             Play::Rest { .. } => {}
         }
     }
 
-    /// The leg's scene as it is now; `pointer` marks whatever is under it along the hedgerow.
+    /// The leg's scene as it is now; `pointer` marks whatever is under it along the hedgerow or
+    /// in a heap on the old track.
     pub fn compose(&mut self, now: f32, pointer: Option<(f32, f32)>) -> Canvas {
         let ground = &mut self.ground;
         match &mut self.play {
@@ -619,6 +756,13 @@ impl Leg {
                 let mut scene = ground.compose(now);
                 let hovered = pointer.and_then(|(x, y)| foray.item_at(x, y));
                 foray.draw(&mut scene, hovered, now);
+                scene
+            }
+            Play::Scavenge { scavenge, .. } => {
+                ground.set_fliers(scavenge.props(now));
+                let mut scene = ground.compose(now);
+                let hovered = pointer.and_then(|(x, y)| scavenge.item_at(x, y));
+                scavenge.draw(&mut scene, hovered, now);
                 scene
             }
             Play::Rest { .. } => ground.compose(now),
@@ -652,12 +796,16 @@ pub fn players(stop: Stop, party: &[(Id, Character)]) -> Vec<Id> {
                         0.0
                     }
             }
+            // Steady paws, and strong ones for the beams and boulders.
+            Stop::Scavenge => {
+                1.0 - a.impulsiveness + if crew::strong(character) { 0.3 } else { 0.0 }
+            }
             Stop::Falls => rummage::knack(character, Kind::Scoop),
             Stop::Rest | Stop::Edge | Stop::Fork => 0.0,
         }
     };
-    // Something only they open here: a little one's crevice or tucked-in places, an explorer's
-    // badger sett, a bold one's high branches.
+    // Something only they open here: a little one's crevice, tucked-in places or gap under a
+    // board, an explorer's badger sett, a bold one's high branches, a curious one's peek.
     let opens = |character: &Character| match stop {
         Stop::Rummage => {
             character.parent.is_some()
@@ -665,6 +813,7 @@ pub fn players(stop: Stop, party: &[(Id, Character)]) -> Vec<Id> {
                 || character.axes.curiosity >= 0.8
         }
         Stop::Forage => character.parent.is_some() || character.axes.boldness >= 0.65,
+        Stop::Scavenge => crew::little(character) || crew::curious(character),
         _ => false,
     };
     let mut ranked: Vec<&(Id, Character)> = party.iter().collect();
@@ -680,4 +829,27 @@ pub fn players(stop: Stop, party: &[(Id, Character)]) -> Vec<Id> {
         .or_else(|| ranked.get(1));
     chosen.extend(second.map(|(id, _)| *id));
     chosen
+}
+
+/// Sends the party at the old track to a heap, if it is one gone to already or there is still
+/// one to go to: a heap or two a stop. Says whether it went.
+fn go_to_heap(
+    scavenge: &mut Scavenge,
+    heaps: &mut Vec<usize>,
+    ground: &mut Playground,
+    heap: usize,
+    now: f32,
+) -> bool {
+    if !heaps.contains(&heap) && heaps.len() >= HEAPS {
+        return false;
+    }
+    scavenge.choose(ground, heap, now);
+    let going = matches!(
+        scavenge.phase(),
+        track::scavenging::Phase::Going { heap: to } if to == heap
+    );
+    if going && !heaps.contains(&heap) {
+        heaps.push(heap);
+    }
+    going
 }

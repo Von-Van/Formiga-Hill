@@ -193,6 +193,8 @@ pub struct Homecoming<'a> {
     /// Fish landed and bugs caught on the way, each with its size and who caught it.
     pub fish: &'a [(&'a str, f32, u64)],
     pub bugs: &'a [(&'a str, f32, u64)],
+    /// Torn maps found on the way, by who found each.
+    pub maps: &'a [u64],
 }
 
 /// One kind of fish in the journal.
@@ -522,10 +524,12 @@ impl Memories {
 
     /// Remembers an expedition: who went, the way it went, and what came home. Each find goes
     /// into the journal and the satchel as first found by whoever found it, and the fish and bugs
-    /// caught on the way into the journal, as they were let go. The furthest yet is kept with who
-    /// got there, and the far places the map is to show. Each activity's own outings and dry
-    /// spells are its own, and are left as they are. Says which finds were new.
+    /// caught on the way into the journal, as they were let go. Any torn maps are kept to follow
+    /// another day, as a scavenge's are. The furthest yet is kept with who got there, and the far
+    /// places the map is to show. Each activity's own outings and dry spells are its own, and are
+    /// left as they are. Says which finds were new.
     pub fn back_from_the_expedition(&mut self, home: &Homecoming) -> Vec<&'static str> {
+        let id = self.colony.clone();
         let colony = self.colony_mut();
         colony.expeditions += 1;
         let party: Vec<String> = home.party.iter().map(u64::to_string).collect();
@@ -576,6 +580,9 @@ impl Memories {
             record.count += 1;
             record.biggest = record.biggest.max(size);
             caught.push(bug.id.to_owned());
+        }
+        for by in home.maps {
+            keep_map(colony, &id, *by);
         }
         colony.expedition_pages.push(ExpeditionPage {
             route: home.route.iter().map(|place| (*place).to_owned()).collect(),
@@ -1397,6 +1404,7 @@ mod tests {
             found: &[("pinecone", 9), ("falls_pearl", 11), ("nonsense", 7)],
             fish: &[("perch", 21.0, 9)],
             bugs: &[("ladybird", 6.5, 7)],
+            maps: &[],
         };
         let new = memories.back_from_the_expedition(&home);
         assert_eq!(new, vec!["pinecone", "falls_pearl"]);
@@ -1466,6 +1474,42 @@ mod tests {
             "the oldest pages give way"
         );
         assert_eq!(colony.expedition_pages[0].route, vec!["edge", "hedgerow"]);
+    }
+
+    #[test]
+    fn a_torn_map_found_on_an_expedition_is_kept_as_a_scavenges_is() {
+        let mut memories = Memories::open(None, "c");
+        let home = Homecoming {
+            party: &[7, 9],
+            route: &["edge", "glade", "old_track"],
+            stops: &["old_track"],
+            furthest: ("old_track", 3),
+            found: &[("tin_soldier", 9)],
+            maps: &[9],
+            ..Homecoming::default()
+        };
+        memories.back_from_the_expedition(&home);
+        let colony = memories.colony();
+        assert_eq!(colony.maps.len(), 1, "the map came home");
+        assert_eq!(colony.maps[0].found_by, "9", "the map is the finder's");
+        assert_eq!(colony.maps_found, 1);
+        assert_eq!(
+            (colony.scavenges, colony.scavenge_drought),
+            (0, 0),
+            "a leg is not a scavenge of its own"
+        );
+        // The same as one found on an ordinary scavenge: followed the same way, and no more held
+        // than a scavenge would keep.
+        let mut scavenged = Memories::open(None, "c");
+        scavenged.back_from_scavenging(&[7, 9], &["tin_soldier"], &[9]);
+        assert_eq!(scavenged.colony().maps, memories.colony().maps);
+        for _ in 0..10 {
+            memories.back_from_the_expedition(&home);
+        }
+        assert_eq!(
+            memories.colony().maps.len(),
+            crate::track::scavenging::MAPS_HELD
+        );
     }
 
     #[test]

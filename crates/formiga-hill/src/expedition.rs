@@ -1,7 +1,7 @@
 //! An expedition: a longer outing than any of the Woods' activities, with one to three
 //! companions, that strings them together on one day's light and one basket, and goes further in
-//! than any of them: to the fallen log for a rest, past the old signpost, and to the Far Falls,
-//! which only an expedition reaches.
+//! than any of them: to the fallen log for a rest, along the old track, past the old signpost, and
+//! to the Far Falls, which only an expedition reaches.
 //!
 //! The person plays. The expedition is planned on a map of the Woods (see `map`) and the way is
 //! chosen at each fork as the party goes: walking a path takes some of the day, and who came
@@ -10,7 +10,8 @@
 //! handing back the light left and the basket as it is then. The basket holds six all day, so
 //! what to keep matters: back from a stop with too much, something has to be left before going
 //! on. The day has its own dusk, whatever the hour: once the light has gone, or whenever the
-//! person likes, the party heads home with everything in the basket. Nothing in it is lost.
+//! person likes, the party heads home with everything in the basket. Nothing in it is lost, and a
+//! torn map turned up on the old track comes home too, to be followed another day.
 //!
 //! What stands on the Hilltop helps: whatever lends the Woods light lends the expedition's day as
 //! much, and a telescope shows the Far Falls on the map from the start.
@@ -67,6 +68,7 @@ pub struct Droughts {
     pub fish: u32,
     pub bugs: u32,
     pub forage: u32,
+    pub scavenge: u32,
     /// Visits to the far places in a row with nothing new from afar.
     pub far: u32,
 }
@@ -81,6 +83,8 @@ pub struct Known {
     pub hilltop: Arrangement,
     /// The far places it has been to, by their ids on the map.
     pub far_places: BTreeSet<String>,
+    /// Torn maps it holds, not yet followed.
+    pub maps_held: usize,
 }
 
 /// What an expedition sets out with.
@@ -235,6 +239,8 @@ pub struct Expedition {
     /// Fish landed and bugs caught on the way, each with its size and who caught it.
     fish: Vec<Caught>,
     bugs: Vec<Caught>,
+    /// Torn maps found on the way, by who found each.
+    maps: Vec<Id>,
     at: usize,
     route: Vec<usize>,
     stops: Vec<usize>,
@@ -343,6 +349,7 @@ impl Expedition {
             basket: Vec::new(),
             fish: Vec::new(),
             bugs: Vec::new(),
+            maps: Vec::new(),
             at: EDGE,
             route: vec![EDGE],
             stops: Vec::new(),
@@ -505,6 +512,11 @@ impl Expedition {
 
     pub fn bugs(&self) -> &[Caught] {
         &self.bugs
+    }
+
+    /// The torn maps found on the way, by who found each.
+    pub fn maps(&self) -> &[Id] {
+        &self.maps
     }
 
     /// Whether a place is in sight on the map.
@@ -703,6 +715,7 @@ impl Expedition {
             basket: carried,
             influence: &self.influence,
             droughts: self.known.droughts,
+            maps_held: self.known.maps_held + self.maps.len(),
             found: &found,
             fish: &fish,
             bugs: &bugs,
@@ -727,7 +740,7 @@ impl Expedition {
     }
 
     /// The leg is over: the party is back on the map with the light left, the basket as it is,
-    /// and anything caught.
+    /// anything caught, and any map found.
     fn end_leg(&mut self, now: f32) {
         let Some(leg) = self.leg.take() else {
             return;
@@ -739,6 +752,7 @@ impl Expedition {
         let caught = fish.len() + bugs.len();
         self.fish.extend(fish);
         self.bugs.extend(bugs);
+        self.maps.extend(leg.maps());
         self.events.push(Event::Ended {
             place: leg.place,
             found: self.basket.len().saturating_sub(before),
@@ -1117,7 +1131,7 @@ mod tests {
     use crate::finds;
     use crate::hilltop::Standing;
     use legs::Play;
-    use map::{FAR_FALLS, GLADE, LOG, POOL};
+    use map::{FAR_FALLS, GLADE, LOG, OLD_TRACK, POOL};
 
     fn sample() -> Cast {
         Cast::new(formiga_travel::sample::snapshot()).unwrap()
@@ -1307,6 +1321,7 @@ mod tests {
             (POOL, Stop::Fish),
             (map::MEADOW, Stop::Bugs),
             (map::HEDGEROW, Stop::Forage),
+            (OLD_TRACK, Stop::Scavenge),
             (FAR_FALLS, Stop::Falls),
             (LOG, Stop::Rest),
         ] {
@@ -1322,6 +1337,7 @@ mod tests {
                 basket: carried.clone(),
                 influence: &influence,
                 droughts: Droughts::default(),
+                maps_held: 0,
                 found: &nothing,
                 fish: &nothing,
                 bugs: &nothing,
@@ -1332,26 +1348,44 @@ mod tests {
             };
             let mut leg = Leg::start(&cast, start, 0.0).unwrap();
             let mut now = 0.0;
+            // A careful hand may put something back for something better, as the person may.
+            let mut put_back = Vec::new();
             while !leg.over() {
                 now += 1.0 / 30.0;
                 let input = leg.steady(now);
-                leg.tick(&cast, input, now);
+                for event in leg.tick(&cast, input, now) {
+                    if let LegEvent::Scavenge(crate::track::scavenging::Event::PutBack { find })
+                    | LegEvent::Forage(crate::hedgerow::foraging::Event::PutBack { find }) =
+                        event
+                    {
+                        put_back.push(find);
+                    }
+                }
                 if now > 150.0 && !leg.leaving() {
                     leg.move_on(now);
                 }
                 assert!(now < 400.0, "{stop:?} never ended");
             }
             let basket = leg.basket();
-            assert_eq!(
-                &basket[..2],
-                &carried[..],
-                "{stop:?} lost what it was given"
-            );
+            if put_back.is_empty() {
+                assert_eq!(
+                    &basket[..2],
+                    &carried[..],
+                    "{stop:?} lost what it was given"
+                );
+            }
+            for given in &carried {
+                assert!(
+                    basket.contains(given) || put_back.contains(given),
+                    "{stop:?} lost {given}"
+                );
+            }
             let from = |catalogue: &[finds::Find], id: &str| catalogue.iter().any(|f| f.id == id);
-            for id in &basket[2..] {
+            for id in basket.iter().filter(|id| !carried.contains(id)) {
                 let right = match stop {
                     Stop::Rummage | Stop::Fish | Stop::Bugs => from(&finds::CATALOGUE, id),
                     Stop::Forage => from(&finds::FORAGED, id),
+                    Stop::Scavenge => from(&finds::SCAVENGED, id),
                     Stop::Falls => from(&finds::AFAR, id),
                     _ => false,
                 };
@@ -1361,8 +1395,11 @@ mod tests {
                 Stop::Rest => assert_eq!(leg.light(), 120.0, "a rest's cost is the expedition's"),
                 _ => assert!(leg.light() < 120.0, "{stop:?} took no light"),
             }
-            if matches!(stop, Stop::Rummage | Stop::Falls) {
-                assert!(basket.len() > 2, "a steady hand found nothing at {stop:?}");
+            if matches!(stop, Stop::Rummage | Stop::Scavenge | Stop::Falls) {
+                assert!(
+                    basket.iter().any(|id| !carried.contains(id)),
+                    "a steady hand found nothing at {stop:?}"
+                );
             }
             let (fish, bugs) = leg.caught();
             assert!(
@@ -1451,6 +1488,24 @@ mod tests {
         assert_eq!(foray.light(), hedgerow::foraging::LIGHT + 6.0);
         assert_eq!(foray.light_left(), 1.0);
         assert!(foray.basket().is_empty());
+        let mut track = crate::track::open(&cast, &party, 0.0, &Arrangement::new());
+        let scavenge = crate::track::scavenging::Scavenge::new(
+            &mut track,
+            crate::track::scavenging::Outset {
+                party: party.clone(),
+                drought: 0,
+                close_pair: false,
+                influence: lent.clone(),
+                maps_held: 0,
+                seed: 1,
+            },
+            |_| false,
+            0.0,
+        );
+        let day = crate::track::scavenging::LIGHT + 6.0;
+        assert_eq!(scavenge.light(), (day, day));
+        assert_eq!(scavenge.light_left(), 1.0);
+        assert!(scavenge.basket().is_empty() && scavenge.maps().is_empty());
         let mut pool = falls::open(&cast, &party, 0.0);
         let wading = falls::wading::Wading::new(
             &mut pool,
@@ -1528,7 +1583,7 @@ mod tests {
         let mut now = arrived(&mut trip, &cast);
         // Every kind of stop with a steady hand: whatever was in the basket going in is still
         // there coming out, unless the person put it back.
-        for place in [map::HEDGEROW, GLADE, map::SIGNPOST, POOL, FAR_FALLS] {
+        for place in [map::HEDGEROW, GLADE, OLD_TRACK, POOL, FAR_FALLS] {
             now = walk(&mut trip, &cast, place, now);
             if !trip.can_stop() {
                 continue;
@@ -1546,9 +1601,10 @@ mod tests {
                     .unwrap_or_default();
                 trip.tick(&cast, input, now);
                 for event in trip.take_events() {
-                    if let Event::Leg(LegEvent::Forage(
-                        crate::hedgerow::foraging::Event::PutBack { find },
-                    )) = event
+                    if let Event::Leg(
+                        LegEvent::Forage(crate::hedgerow::foraging::Event::PutBack { find })
+                        | LegEvent::Scavenge(crate::track::scavenging::Event::PutBack { find }),
+                    ) = event
                     {
                         put_back.push(find);
                     }
@@ -1827,7 +1883,11 @@ mod tests {
         if let Play::Fish { casts, .. } = &mut leg.play {
             *casts = legs::CASTS;
         }
-        leg.click(Some((200.0, 112.0)), now);
+        assert_eq!(
+            leg.click(Some((200.0, 112.0)), now),
+            None,
+            "no third cast, so none is heard"
+        );
         assert!(ready(&trip), "cast a third time");
         // And the next tick sees the leg is done, and the party back to the map.
         let stopped = now;
@@ -1848,7 +1908,7 @@ mod tests {
         let (first, other) = (0, 6);
         let click = |trip: &mut Expedition, patch: usize, now: f32| {
             let (x, y) = crate::hedgerow::PATCHES[patch].stand;
-            trip.leg_mut().unwrap().click(Some((x, y - 8.0)), now);
+            trip.leg_mut().unwrap().click(Some((x, y - 8.0)), now)
         };
         let foray = |trip: &Expedition| match trip.leg().map(|leg| &leg.play) {
             Some(Play::Forage { foray }) => (foray.phase(), foray.at()),
@@ -1860,13 +1920,21 @@ mod tests {
             trip.tick(&cast, Input::default(), now);
             assert!(now < 100.0);
         }
-        click(&mut trip, first, now);
+        assert_eq!(
+            click(&mut trip, first, now),
+            Some(legs::Act::Foraged),
+            "going to a patch is heard, as on a foray of its own"
+        );
         while foray(&trip).1.is_none() {
             now += 1.0 / 30.0;
             trip.tick(&cast, Input::default(), now);
             assert!(now < 200.0);
         }
-        click(&mut trip, other, now);
+        assert_eq!(
+            click(&mut trip, other, now),
+            None,
+            "one patch a stop, so the second isn't gone to"
+        );
         for _ in 0..60 {
             now += 1.0 / 30.0;
             trip.tick(&cast, Input::default(), now);
@@ -1921,6 +1989,7 @@ mod tests {
             basket: Vec::new(),
             influence: &influence,
             droughts: Droughts::default(),
+            maps_held: 0,
             found: &nothing,
             fish: &nothing,
             bugs: &nothing,
@@ -1971,6 +2040,186 @@ mod tests {
                 (left, top)
             );
         }
+    }
+
+    #[test]
+    fn on_the_old_track_a_heap_or_two_take_the_days_light_and_what_they_give_goes_on() {
+        let cast = sample();
+        let party = vec![named(&cast, "Mochi"), named(&cast, "Pip")];
+        let mut trip = setting_off(&cast, party.clone(), Known::default());
+        let mut now = arrived(&mut trip, &cast);
+        now = walk(&mut trip, &cast, GLADE, now);
+        now = walk(&mut trip, &cast, OLD_TRACK, now);
+        // Carried in from afar: worth more than anything a heap gives, so never put back for it.
+        trip.basket = vec![Carried {
+            find: "rainbow_prism",
+            by: party[0],
+        }];
+        let arrived_with = trip.light();
+        trip.take_events();
+        assert!(trip.stop(&cast, now));
+        let leader = trip.leg().unwrap().leader;
+        assert_eq!(
+            trip.leg().unwrap().light(),
+            arrived_with,
+            "the leg didn't start where the day was"
+        );
+        let (mut last, mut most, stopped) = (arrived_with, 0, now);
+        while trip.phase() == Phase::Stopped {
+            assert!(now < stopped + 300.0, "the old track was never left");
+            now += 1.0 / 30.0;
+            let input = trip
+                .leg_mut()
+                .map(|leg| leg.steady(now))
+                .unwrap_or_default();
+            trip.tick(&cast, input, now);
+            if let Some(leg) = trip.leg() {
+                assert!(leg.light() <= last + 0.001, "the light came back");
+                last = leg.light();
+                if let Play::Scavenge { heaps, .. } = &leg.play {
+                    most = most.max(heaps.len());
+                }
+            }
+        }
+        assert!((1..=legs::HEAPS).contains(&most), "worked {most} heaps");
+        assert!(
+            (trip.light() - last.max(0.0)).abs() < 0.001,
+            "the day didn't go on from what the old track left"
+        );
+        assert!(
+            trip.light() < arrived_with,
+            "the old track took none of the day"
+        );
+        let found = finds_of(&trip);
+        assert_eq!(
+            found[0], "rainbow_prism",
+            "what was carried in is still there"
+        );
+        assert!(found.len() > 1, "a steady hand found nothing");
+        for carried in &trip.basket()[1..] {
+            assert!(
+                finds::is_scavenged(carried.find),
+                "{} came from the old track",
+                carried.find
+            );
+            assert_eq!(carried.by, leader, "whoever led found it");
+        }
+        assert!(trip.take_events().iter().any(|event| matches!(
+            event,
+            Event::Ended { place: OLD_TRACK, found, .. } if *found == trip.basket().len() - 1
+        )));
+        assert!(!trip.can_stop(), "scavenged here already today");
+    }
+
+    #[test]
+    fn at_the_old_track_the_party_goes_to_a_heap_or_two_and_no_further() {
+        let cast = sample();
+        let party = [named(&cast, "Fig")];
+        let map = scenery::map(&Shown {
+            places: [true; PLACES.len()],
+            paths: [true; PATHS.len()],
+        });
+        let (influence, hilltop) = (Influence::default(), Arrangement::new());
+        let nothing = |_: &str| false;
+        let start = Start {
+            place: OLD_TRACK,
+            stop: Stop::Scavenge,
+            everyone: &party,
+            players: party.to_vec(),
+            close_pair: false,
+            light: 150.0,
+            full: LIGHT,
+            basket: Vec::new(),
+            influence: &influence,
+            droughts: Droughts::default(),
+            maps_held: 0,
+            found: &nothing,
+            fish: &nothing,
+            bugs: &nothing,
+            hilltop: &hilltop,
+            map: &map,
+            daylight: Daylight::default(),
+            seed: 4,
+        };
+        let mut leg = Leg::start(&cast, start, 0.0).unwrap();
+        let at = |leg: &Leg| match &leg.play {
+            Play::Scavenge { scavenge, .. } => scavenge.phase(),
+            _ => panic!("not on the old track"),
+        };
+        let settle = |leg: &mut Leg, from: f32| {
+            let mut now = from;
+            while !matches!(
+                at(leg),
+                crate::track::scavenging::Phase::Choosing
+                    | crate::track::scavenging::Phase::At { .. }
+            ) {
+                now += 1.0 / 30.0;
+                leg.tick(&cast, Input::default(), now);
+                assert!(now < from + 30.0, "never got there");
+            }
+            now
+        };
+        let middle = |heap: usize| {
+            let site = crate::track::SITES[heap];
+            Some((
+                (site.left + site.width / 2) as f32,
+                (site.ground - 4) as f32,
+            ))
+        };
+        use crate::track::scavenging::Phase::At;
+        let mut now = settle(&mut leg, 0.0);
+        for heap in [0, 1] {
+            leg.click(middle(heap), now);
+            now = settle(&mut leg, now);
+            assert_eq!(at(&leg), At { heap }, "didn't go to heap {heap}");
+        }
+        leg.click(middle(2), now);
+        now = settle(&mut leg, now);
+        assert_eq!(at(&leg), At { heap: 1 }, "went on to a third heap");
+        // Back to one already gone to, though.
+        leg.click(middle(0), now);
+        settle(&mut leg, now);
+        assert_eq!(at(&leg), At { heap: 0 });
+    }
+
+    #[test]
+    fn a_torn_map_found_on_the_old_track_comes_home_to_be_followed_another_day() {
+        let cast = sample();
+        let fig = named(&cast, "Fig");
+        let mut trip = setting_off(&cast, vec![fig], Known::default());
+        let mut now = arrived(&mut trip, &cast);
+        now = walk(&mut trip, &cast, GLADE, now);
+        now = walk(&mut trip, &cast, OLD_TRACK, now);
+        assert!(trip.stop(&cast, now));
+        if let Some(Play::Scavenge { scavenge, .. }) = trip.leg_mut().map(|leg| &mut leg.play) {
+            for heap in 0..crate::track::SITES.len() {
+                scavenge.hide_a_map(heap);
+            }
+        }
+        let now = play(&mut trip, &cast, now, |trip| trip.phase() != Phase::Stopped);
+        assert!(!trip.maps().is_empty(), "no map turned up");
+        assert!(
+            trip.maps().iter().all(|by| *by == fig),
+            "the map is the finder's"
+        );
+        assert!(trip.take_events().iter().any(|event| matches!(
+            event,
+            Event::Leg(LegEvent::Scavenge(crate::track::scavenging::Event::Map { who }))
+                if *who == fig
+        )));
+        // It comes home whatever the basket held, and is kept as a scavenge's map is.
+        trip.basket.clear();
+        trip.head_home(now);
+        play(&mut trip, &cast, now, |trip| trip.phase() == Phase::Over);
+        let mut memories = crate::memories::Memories::open(None, "c");
+        memories.back_from_the_expedition(&crate::memories::Homecoming {
+            party: trip.party(),
+            maps: trip.maps(),
+            ..Default::default()
+        });
+        let kept = &memories.colony().maps;
+        assert_eq!(kept.len(), trip.maps().len());
+        assert!(kept.iter().all(|map| map.found_by == fig.to_string()));
     }
 
     #[test]
