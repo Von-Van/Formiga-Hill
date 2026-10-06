@@ -4,11 +4,11 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
-## Unreleased
+## 0.1.1 (2026-10-06)
 
 ### With Formiga Desktop
 
-- Hill is now built on Formiga Desktop 0.67.0 and speaks travel version 4. Desktop 0.67.0 adopts
+- Hill is now built on Formiga Desktop 0.67.1 and speaks travel version 4. Desktop 0.67.0 adopts
   the Fairground's four souvenirs (the rosette, the little brass bell, the teddy and the knot of
   rope), so all eleven go home to its Journal. Hill 0.1.0 already sends those four to Desktop
   0.67.0; with Desktop 0.66.6 they stay at the Hill.
