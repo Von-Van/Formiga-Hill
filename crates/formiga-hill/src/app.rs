@@ -1271,11 +1271,15 @@ impl eframe::App for HillApp {
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));
-        } else if matches!(self.arrival.visit, Visit::Trip(_)) {
-            // Keep looking for a recall even when nothing on screen moves.
-            ctx.request_repaint_after(Duration::from_secs_f32(RECALL_CHECK_SECS));
-        } else if !self.arrival.cast.reduce_motion() {
-            ctx.request_repaint_after(Duration::from_millis(100));
+        } else {
+            // A still platform is drawn again just as its next frame is due, so the idles and
+            // the smoke keep their own pace, as they do on Desktop; and on a trip at least as
+            // often as Hill looks for a recall, even when nothing on screen moves.
+            let recall = matches!(self.arrival.visit, Visit::Trip(_)).then_some(RECALL_CHECK_SECS);
+            let next = self.station.next_change(now).map(|at| at - now);
+            if let Some(wait) = [next, recall].into_iter().flatten().min_by(f32::total_cmp) {
+                ctx.request_repaint_after(Duration::from_secs_f32(wait.max(0.001)));
+            }
         }
     }
 

@@ -78,7 +78,7 @@ impl StationTraveler {
         if self.frames.len() == 1 {
             return 0;
         }
-        usize::from(self.spec.frame_at(elapsed + self.phase)) % self.frames.len()
+        usize::from(crate::actor::frame_in(self.spec, elapsed + self.phase)) % self.frames.len()
     }
 }
 
@@ -226,6 +226,25 @@ impl Station {
     pub fn heard(&self, from: f32, now: f32) -> Vec<Heard> {
         self.journey
             .heard(from, now, self.travelers.len(), self.reduce_motion)
+    }
+
+    /// When what is showing next changes, after `now`: someone on the platform moving on to
+    /// the next frame of their idle, or the smoke stepping. `None` when nothing will until
+    /// something else happens, as with reduced motion. While the train is coming or going it
+    /// changes every frame, so this is only asked once it is still.
+    pub fn next_change(&self, now: f32) -> Option<f32> {
+        if self.reduce_motion {
+            return None;
+        }
+        let after = |per_second: f32, offset: f32| {
+            (((now + offset) * per_second).floor() + 1.0) / per_second - offset
+        };
+        self.travelers
+            .iter()
+            .filter(|traveler| traveler.frames.len() > 1)
+            .map(|traveler| after(f32::from(traveler.spec.fps), traveler.phase))
+            .chain([after(scenery::SMOKE_STEPS_PER_SECOND, 0.0)])
+            .min_by(f32::total_cmp)
     }
 
     /// What is showing at `now`: the scene only needs composing again when this changes.
@@ -449,6 +468,43 @@ mod tests {
             let gap = pair[1].origin.0 - pair[0].origin.0;
             assert!(gap >= 40, "only {gap} pixels between neighbours");
         }
+    }
+
+    #[test]
+    fn the_platform_keeps_breathing_however_long_the_visit() {
+        let station = Station::new(&sample(), Journey::Here, &[]);
+        for start in [0.0, 90.0, 600.0, 3600.0] {
+            let shown: std::collections::HashSet<usize> = (0..12)
+                .map(|tick| station.travelers[0].frame_at(start + tick as f32 / 4.0))
+                .collect();
+            assert!(shown.len() > 2, "{start} seconds in it shows {shown:?}");
+        }
+    }
+
+    #[test]
+    fn a_still_platform_is_drawn_again_just_as_its_next_frame_is_due() {
+        let station = Station::new(&sample(), Journey::Here, &[]);
+        for now in [0.0, 1.03, 47.5, 600.2] {
+            let next = station.next_change(now).unwrap();
+            assert!(now < next && next <= now + 1.0 / scenery::SMOKE_STEPS_PER_SECOND + 1e-3);
+            let before = station.frame_key(now);
+            assert_eq!(
+                station.frame_key(next - 2e-3),
+                before,
+                "nothing changes sooner"
+            );
+            assert_ne!(
+                station.frame_key(next + 2e-3),
+                before,
+                "something changes then"
+            );
+        }
+        let mut cast = sample();
+        cast.snapshot.presentation.reduce_motion = true;
+        assert_eq!(
+            Station::new(&cast, Journey::Here, &[]).next_change(5.0),
+            None
+        );
     }
 
     #[test]

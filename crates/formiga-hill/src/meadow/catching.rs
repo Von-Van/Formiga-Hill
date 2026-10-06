@@ -484,7 +484,7 @@ impl Hunt {
             && let Some(at) = ground.position(*netter)
         {
             let stand = self.stand_for(pos, at);
-            self.bring_helper(ground, stand, pos.0, now);
+            self.bring_helper(ground, at, stand, pos.0, now);
         }
         true
     }
@@ -567,7 +567,6 @@ impl Hunt {
             Phase::Hunting => {
                 self.light -= LIGHT_PER_SEC * dt;
                 self.creep_on(ground, dt, now);
-                self.keep_helper_clear(ground, now);
             }
             Phase::Swinging { target, since } if now - since >= SWING_SECS => {
                 self.resolve(ground, target, now);
@@ -583,6 +582,14 @@ impl Hunt {
             }
             Phase::Leaving { since } if now - since >= 1.5 => self.phase = Phase::Over,
             _ => {}
+        }
+        // Through the swing and the admiring too: whatever the net carrier is doing, the helper
+        // is never stood on.
+        if !matches!(
+            self.phase,
+            Phase::Arriving { .. } | Phase::Leaving { .. } | Phase::Over
+        ) {
+            self.keep_helper_clear(ground, now);
         }
         if !self.dusk_told && self.light < self.dusk {
             self.dusk_told = true;
@@ -686,20 +693,32 @@ impl Hunt {
         }
     }
 
-    /// Sends the second companion, if one came, to watch from beside the one with the net at
-    /// `stand`, behind them from the bug at `bug_x` and never on top of them.
-    fn bring_helper(&self, ground: &mut Playground, stand: (f32, f32), bug_x: f32, now: f32) {
+    /// Sends the second companion, if one came, to watch from beside where the one with the net
+    /// will stand, at `stand`, behind them from the bug at `bug_x`: never on top of them, and
+    /// off the way they creep there from `from`, so they never creep onto it either.
+    fn bring_helper(
+        &self,
+        ground: &mut Playground,
+        from: (f32, f32),
+        stand: (f32, f32),
+        bug_x: f32,
+        now: f32,
+    ) {
         let Some(&helper) = self.party.get(1) else {
             return;
         };
         let back = if stand.0 < bug_x { -1.0 } else { 1.0 };
-        let clear = |(x, y): (f32, f32)| walkable(x, y) && distance((x, y), stand) >= HELPER_ROOM;
+        let clear =
+            |(x, y): (f32, f32)| walkable(x, y) && off_the_way((x, y), from, stand) >= HELPER_ROOM;
+        // Side by side first: straight in front or behind, one hides the other.
         let preferred = [
             (back * 28.0, 4.0),
-            (back * 22.0, 16.0),
-            (back * 22.0, -12.0),
-            (0.0, 22.0),
-            (-back * 26.0, 18.0),
+            (back * 28.0, 14.0),
+            (back * 28.0, -10.0),
+            (back * 42.0, 2.0),
+            (-back * 30.0, 12.0),
+            (back * 22.0, 22.0),
+            (0.0, 24.0),
         ]
         .into_iter()
         .map(|(dx, dy)| (stand.0 + dx, stand.1 + dy))
@@ -732,8 +751,8 @@ impl Hunt {
         );
     }
 
-    /// If the second companion has ended up over the one with the net (the net carrier crept to
-    /// where it was waiting), it steps aside.
+    /// If the second companion is in the way of the one with the net, standing where it is or
+    /// where it is creeping to, it steps aside before the net carrier gets there.
     fn keep_helper_clear(&self, ground: &mut Playground, now: f32) {
         let (Some(&netter), Some(&helper)) = (self.party.first(), self.party.get(1)) else {
             return;
@@ -741,14 +760,13 @@ impl Hunt {
         let (Some(at), Some(helping)) = (ground.position(netter), ground.position(helper)) else {
             return;
         };
-        if distance(at, helping) >= HELPER_ROOM || ground.walking(helper) {
+        let target = self.target.and_then(|index| self.fliers.get(index));
+        let stand = target.map_or(at, |flier| self.stand_for(flier.pos, at));
+        if off_the_way(helping, at, stand) >= HELPER_ROOM || ground.walking(helper) {
             return;
         }
-        let bug_x = self
-            .target
-            .and_then(|index| self.fliers.get(index))
-            .map_or(at.0 + 1.0, |flier| flier.pos.0);
-        self.bring_helper(ground, at, bug_x, now);
+        let bug_x = target.map_or(at.0 + 1.0, |flier| flier.pos.0);
+        self.bring_helper(ground, at, stand, bug_x, now);
     }
 
     /// Where to stand to have a bug at `pos` in the net: before it and below, on whichever side
@@ -1258,6 +1276,21 @@ fn path(way: Way, from: (f32, f32), to: (f32, f32), t: f32, clock: f32) -> (f32,
     }
 }
 
+/// How far `spot` is from the way between `from` and `to`, at its nearest, as it looks: a step
+/// in front or behind counts for half a step aside, since standing just in front of someone
+/// still hides them.
+fn off_the_way(spot: (f32, f32), from: (f32, f32), to: (f32, f32)) -> f32 {
+    let squash = |(x, y): (f32, f32)| (x, y * 0.5);
+    let (spot, from, to) = (squash(spot), squash(from), squash(to));
+    let (dx, dy) = (to.0 - from.0, to.1 - from.1);
+    let length = dx * dx + dy * dy;
+    if length < 1e-6 {
+        return distance(spot, from);
+    }
+    let along = (((spot.0 - from.0) * dx + (spot.1 - from.1) * dy) / length).clamp(0.0, 1.0);
+    distance(spot, (from.0 + dx * along, from.1 + dy * along))
+}
+
 fn nearest(perches: &[(f32, f32)], to: (f32, f32)) -> usize {
     perches
         .iter()
@@ -1481,13 +1514,58 @@ mod tests {
     }
 
     #[test]
+    fn a_helper_waits_off_the_way_the_net_creeps_and_is_never_stood_on() {
+        for seed in [3, 9, 11] {
+            let (cast, mut ground, mut hunt) = hunt_with(2, seed);
+            let (netter, helper) = (hunt.party[0], hunt.party[1]);
+            let mut now = 0.0;
+            while now < 120.0 {
+                now += 1.0 / 30.0;
+                ground.tick(&cast, now);
+                if hunt.phase() == Phase::Hunting {
+                    // Played as a patient hand would: the nearest bug, crept up on while it is
+                    // calm, and netted when it is open to it.
+                    let at = ground.position(netter).unwrap();
+                    if hunt.target().is_none()
+                        && let Some(nearest) = (0..hunt.fliers.len())
+                            .filter(|index| hunt.fliers[*index].here())
+                            .min_by(|a, b| {
+                                distance(hunt.fliers[*a].pos, at)
+                                    .total_cmp(&distance(hunt.fliers[*b].pos, at))
+                            })
+                    {
+                        let (x, y) = hunt.fliers[nearest].pos;
+                        hunt.choose(&mut ground, x, y, now);
+                    }
+                    hunt.hold(!hunt.in_reach(&ground) && hunt.nerve() < 0.55);
+                    if hunt.open_now(&ground, now) {
+                        hunt.swing(&mut ground, now);
+                    }
+                }
+                hunt.tick(&mut ground, now);
+                if !matches!(hunt.phase(), Phase::Arriving { .. }) && !ground.walking(helper) {
+                    let at = ground.position(netter).unwrap();
+                    let apart = off_the_way(ground.position(helper).unwrap(), at, at);
+                    assert!(
+                        apart >= HELPER_ROOM - 1.0,
+                        "seed {seed}, {now:.1} seconds in, {:?}: only {apart:.1} px apart, netter {:?} helper {:?}",
+                        hunt.phase(),
+                        ground.position(netter),
+                        ground.position(helper)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn a_helper_finds_room_even_where_the_ground_is_hemmed_in() {
         let (cast, mut ground, hunt) = hunt_with(2, 9);
         let helper = hunt.party[1];
         // Netting from the bank by the far reeds, with the pond and the meadow's edge close by.
         let stand = hunt.stand_for((362.0, 108.0), (192.0, 180.0));
         ground.reserve(hunt.party.clone());
-        hunt.bring_helper(&mut ground, stand, 362.0, 0.0);
+        hunt.bring_helper(&mut ground, stand, stand, 362.0, 0.0);
         let mut now = 0.0;
         while now < 40.0 {
             now += 1.0 / 30.0;
