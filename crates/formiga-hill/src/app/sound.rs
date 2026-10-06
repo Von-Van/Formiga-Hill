@@ -1,9 +1,9 @@
 //! Sound in the window: the piece for wherever the person is; what the train, the sack race, the
 //! rope, the colony at work and a story are heard doing, listened for each frame; and the Sound
-//! window, with its levels and mute. The cues for things that tell the window themselves are
+//! card, with its levels and mute. The cues for things that tell the window themselves are
 //! played where they are told, beside their notices.
 
-use super::{Area, HillApp};
+use super::{Area, Card, HillApp, paper};
 use crate::audio::{Cue, Music, Track};
 use crate::character::Offer;
 use crate::clearing::sovereign::State;
@@ -115,8 +115,6 @@ pub struct Listening {
     page: Option<Page>,
     /// How far the brush has moved since the last stroke was heard.
     pub brushed: f32,
-    /// Whether the Sound window is open.
-    window: bool,
 }
 
 /// What a story shows at a moment: a line, choices to make, or neither while it plays on.
@@ -266,79 +264,65 @@ impl HillApp {
         self.notice = Some((line.to_owned(), now));
     }
 
-    /// The speaker in every bar, for the Sound window.
+    /// The speaker among the buttons everywhere, for the Sound card; it shows when all is quiet.
     pub(super) fn sound_button(&mut self, ui: &mut egui::Ui) {
         let muted = self.sound.levels().muted;
-        let (icon, hint) = if muted {
-            ("\u{1f507}", "Sound\u{2026} Muted: M brings it back")
+        let (picture, name) = if muted {
+            (paper::pictures::QUIET, "Sound (muted)  M")
         } else {
-            ("\u{1f50a}", "Sound\u{2026} M mutes it")
+            (paper::pictures::SOUND, "Sound  M mutes")
         };
-        if ui
-            .selectable_label(self.listening.window, icon)
-            .on_hover_text(hint)
-            .clicked()
-        {
-            self.listening.window = !self.listening.window;
+        let response = ui.add(
+            paper::Button::new("")
+                .picture(paper::picture(picture), 1)
+                .selected(self.showing(Card::Sound)),
+        );
+        paper::name_it(ui, &response, name);
+        if response.clicked() {
+            self.toggle(Card::Sound);
         }
     }
 
-    /// The Sound window: how loud everything is, the music and the sounds, and mute. Changes are
-    /// heard at once, and kept once a slider is let go.
+    /// The Sound card: how loud everything is, the music and the sounds, and mute. Changes are
+    /// heard at once, and kept once a level is let go.
     pub(super) fn sound_window(&mut self, ctx: &egui::Context) {
-        if !self.listening.window {
+        if !self.showing(Card::Sound) {
             return;
         }
         let before = self.sound.levels();
         let mut levels = before;
-        let mut open = true;
         let mut dragging = false;
         // Whether the master or the sounds' level was let go, to be heard at its new level.
         let mut set = false;
-        egui::Window::new("Sound")
-            .open(&mut open)
-            .collapsible(false)
-            .resizable(false)
-            .default_width(260.0)
-            .show(ctx, |ui| {
-                egui::Grid::new("levels")
-                    .num_columns(2)
-                    .spacing([12.0, 6.0])
-                    .show(ui, |ui| {
-                        // The music is heard at its new level as it is moved; the others
-                        // with a click once they are let go.
-                        for (label, level, clicks) in [
-                            ("Master", &mut levels.master, true),
-                            ("Music", &mut levels.music, false),
-                            ("Sounds", &mut levels.sounds, true),
-                        ] {
-                            ui.label(label);
-                            let mut percent = (*level * 100.0).round() as u32;
-                            let slider = egui::Slider::new(&mut percent, 0..=100).suffix("%");
-                            let response = ui.add_enabled(!levels.muted, slider);
-                            if response.changed() {
-                                *level = percent as f32 / 100.0;
-                            }
-                            dragging |= response.dragged();
-                            let let_go = response.drag_stopped()
-                                || response.changed() && !response.dragged();
-                            set |= clicks && let_go;
-                            ui.end_row();
-                        }
-                    });
-                ui.add_space(4.0);
-                ui.checkbox(&mut levels.muted, "Mute  M");
-                if self.sound.silent() {
-                    ui.add_space(4.0);
-                    ui.label(
-                        egui::RichText::new(
-                            "There is nothing here to play sound on, so the Hill is quiet.",
-                        )
-                        .italics()
-                        .small(),
-                    );
-                }
-            });
+        let silent = self.sound.silent();
+        self.show_card(ctx, Card::Sound, "Sound", 0.36, |_, ui| {
+            // The music is heard at its new level as it is moved; the others with a click once
+            // they are let go.
+            for (label, level, clicks) in [
+                ("Master", &mut levels.master, true),
+                ("Music", &mut levels.music, false),
+                ("Sounds", &mut levels.sounds, true),
+            ] {
+                let response = paper::level(ui, label, level, !levels.muted);
+                dragging |= response.dragged();
+                let let_go = response.drag_stopped() || response.changed() && !response.dragged();
+                set |= clicks && let_go;
+            }
+            paper::spaced(ui);
+            if ui
+                .add(paper::Button::new("Mute  M").selected(levels.muted))
+                .clicked()
+            {
+                levels.muted = !levels.muted;
+            }
+            if silent {
+                paper::spaced(ui);
+                paper::aside(
+                    ui,
+                    "There is nothing here to play sound on, so the Hill is quiet.",
+                );
+            }
+        });
         if levels != before {
             self.sound.set_levels(levels);
         }
@@ -349,7 +333,6 @@ impl HillApp {
         if !dragging {
             self.sound.keep();
         }
-        self.listening.window = open;
     }
 }
 

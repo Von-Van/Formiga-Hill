@@ -1,7 +1,7 @@
 //! Bug catching in the meadow, in the window: setting off, choosing a bug and creeping up on it,
 //! swinging the net, and remembering what was caught.
 
-use super::HillApp;
+use super::{HillApp, paper};
 use crate::cast::Id;
 use crate::finds;
 use crate::meadow::catching::{Event, Hunt, Outset, Phase, Why};
@@ -210,16 +210,12 @@ impl HillApp {
         Some((name.to_owned(), (at.0, at.1 - 10.0)))
     }
 
-    pub(super) fn bug_hunt_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn bug_hunt_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let Some((ground, hunt)) = &self.woods.hunt else {
             return;
         };
-        ui.add(
-            egui::ProgressBar::new(hunt.light_left())
-                .desired_width(70.0)
-                .text("light"),
-        );
-        ui.label(format!("Caught {}", hunt.jar().len()));
+        paper::meter(ui, hunt.light_left(), "light");
+        paper::slip(ui, format!("Caught {}", hunt.jar().len()));
         let hint = match (hunt.phase(), hunt.target()) {
             (Phase::Hunting, None) => "Click a bug to go after it.",
             (Phase::Hunting, Some(_)) if hunt.in_reach(ground) => "In reach! Space to swing.",
@@ -227,11 +223,11 @@ impl HillApp {
             _ => "",
         };
         if !hint.is_empty() {
-            ui.label(egui::RichText::new(hint).strong());
+            paper::hint(ui, hint);
         }
         let leaving = matches!(hunt.phase(), Phase::Leaving { .. } | Phase::Over);
         if ui
-            .add_enabled(!leaving, egui::Button::new("Head home"))
+            .add(paper::Button::new("Head home").enabled(!leaving))
             .clicked()
             && let Some((ground, hunt)) = &mut self.woods.hunt
         {

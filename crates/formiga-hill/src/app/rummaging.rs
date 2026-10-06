@@ -1,7 +1,7 @@
 //! The Woods in the window: choosing who comes along, the outing's controls, and keeping what
 //! came home.
 
-use super::HillApp;
+use super::{HillApp, paper};
 use crate::cast::Id;
 use crate::character::Character;
 use crate::finds;
@@ -28,6 +28,21 @@ pub enum Activity {
     Scavenge,
     /// Following a torn map along the old track.
     Treasure,
+}
+
+impl Activity {
+    /// What it is called on the Woods' tray.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Rummage => "Rummage",
+            Self::Fish => "Fish",
+            Self::Bugs => "Catch bugs",
+            Self::Forage => "Forage",
+            Self::Expedition => "Expedition",
+            Self::Scavenge => "Scavenge",
+            Self::Treasure => "Follow a map",
+        }
+    }
 }
 
 #[derive(Default)]
@@ -400,63 +415,49 @@ impl HillApp {
         Some((label, (place.sign.0, place.sign.1 - 12.0)))
     }
 
-    pub(super) fn woods_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn woods_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let mut set_off = false;
         let mut home = false;
         if self.woods.expedition.is_some() {
-            self.expedition_bar(ui, now);
-            if ui.button("Journal").clicked() {
-                self.journal = !self.journal;
-            }
+            self.expedition_tray(ui, now);
             return;
         }
         if self.woods.fishing.is_some() {
-            self.fishing_bar(ui, now);
-            if ui.button("Journal").clicked() {
-                self.journal = !self.journal;
-            }
+            self.fishing_tray(ui, now);
             return;
         }
         if self.woods.hunt.is_some() {
-            self.bug_hunt_bar(ui, now);
-            if ui.button("Journal").clicked() {
-                self.journal = !self.journal;
-            }
+            self.bug_hunt_tray(ui, now);
             return;
         }
         if self.woods.foray.is_some() {
-            self.foraging_bar(ui, now);
-            if ui.button("Journal").clicked() {
-                self.journal = !self.journal;
-            }
+            self.foraging_tray(ui, now);
             return;
         }
         if self.woods.scavenge.is_some() {
-            self.scavenging_bar(ui, now);
-            if ui.button("Journal").clicked() {
-                self.journal = !self.journal;
-            }
+            self.scavenging_tray(ui, now);
             return;
         }
         if self.woods.treasure.is_some() {
-            self.treasure_bar(ui, now);
-            if ui.button("Journal").clicked() {
-                self.journal = !self.journal;
-            }
+            self.treasure_tray(ui, now);
             return;
         }
         match &self.woods.outing {
             None => {
-                for (activity, label) in [
-                    (Activity::Rummage, "Rummage"),
-                    (Activity::Fish, "Fish"),
-                    (Activity::Bugs, "Catch bugs"),
-                    (Activity::Forage, "Forage"),
-                    (Activity::Expedition, "Expedition"),
-                ] {
-                    ui.selectable_value(&mut self.woods.activity, activity, label);
-                }
-                self.track_activities(ui);
+                let doing = paper::Button::new(format!("{} \u{25b4}", self.woods.activity.label()));
+                paper::menu(ui, doing, false, |ui| {
+                    for activity in [
+                        Activity::Rummage,
+                        Activity::Fish,
+                        Activity::Bugs,
+                        Activity::Forage,
+                        Activity::Expedition,
+                    ] {
+                        paper::choice(ui, &mut self.woods.activity, activity, activity.label());
+                    }
+                    self.track_activities(ui);
+                });
+                self.map_choice(ui);
                 // Only an expedition takes three.
                 let most = if self.woods.activity == Activity::Expedition {
                     crate::expedition::PARTY
@@ -464,8 +465,7 @@ impl HillApp {
                     PARTY
                 };
                 self.woods.party.truncate(most);
-                ui.separator();
-                ui.label("Who's coming?");
+                paper::slip(ui, "Who's coming?");
                 let cast = &self.arrival.cast;
                 let colony = self.memories.colony();
                 for member in &cast.members {
@@ -496,11 +496,8 @@ impl HillApp {
                         }
                         Activity::Treasure => super::scavenging::reader_hint(&character),
                     };
-                    if ui
-                        .selectable_label(chosen, &member.name)
-                        .on_hover_text(hint)
-                        .clicked()
-                    {
+                    let pick = ui.add(paper::Button::new(&member.name).selected(chosen));
+                    if paper::explain(ui, pick, &hint).clicked() {
                         if chosen {
                             self.woods.party.retain(|id| *id != member.id);
                         } else if self.woods.party.len() < most {
@@ -514,16 +511,12 @@ impl HillApp {
                 }
                 let ready = !self.woods.party.is_empty();
                 set_off = ui
-                    .add_enabled(ready, egui::Button::new("Set off"))
+                    .add(paper::Button::new("Set off").enabled(ready))
                     .clicked();
             }
             Some((ground, rummage)) => {
-                ui.add(
-                    egui::ProgressBar::new(rummage.light_left())
-                        .desired_width(70.0)
-                        .text("light"),
-                );
-                ui.label(format!("Basket {}/{BASKET}", rummage.basket().len()));
+                paper::meter(ui, rummage.light_left(), "light");
+                paper::slip(ui, format!("Basket {}/{BASKET}", rummage.basket().len()));
                 let hint = match rummage.phase() {
                     Phase::Catching(_) if ground.reduce_motion() => {
                         "Hold to turn the marker; let go on the gold."
@@ -532,16 +525,13 @@ impl HillApp {
                     _ => "",
                 };
                 if !hint.is_empty() {
-                    ui.label(egui::RichText::new(hint).strong());
+                    paper::hint(ui, hint);
                 }
                 let leaving = matches!(rummage.phase(), Phase::Leaving { .. } | Phase::Over);
                 home = ui
-                    .add_enabled(!leaving, egui::Button::new("Head home"))
+                    .add(paper::Button::new("Head home").enabled(!leaving))
                     .clicked();
             }
-        }
-        if ui.button("Journal").clicked() {
-            self.journal = !self.journal;
         }
         if set_off {
             match self.woods.activity {

@@ -115,8 +115,12 @@ and a telescope brings rare signs out sooner.
 - Each place has its own soft music, quieter once the lamps are lit, and most things that happen
   have a sound. All of it is placeholder audio made in code for now. Sound is never needed to play.
 - The camera (C) frames part of any scene and keeps the photo in the colony's album.
-- Desktop's reduced motion, theme and text size carry over. With reduced motion, Hill uses held
-  poses and cuts rather than simply slowing the animation down.
+- Everything to press or read sits on the scene itself, on paper in Formiga's own pixel lettering:
+  buttons along the bottom edge, cards that open over the scene's corner, and what is said in a
+  story in a box over whoever says it. Like Desktop's speech bubbles, the paper is the same in
+  light and dark.
+- Desktop's reduced motion and text size carry over. With reduced motion, Hill uses held poses
+  and cuts rather than simply slowing the animation down.
 
 ### Controls
 

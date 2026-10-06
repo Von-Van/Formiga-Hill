@@ -2,8 +2,8 @@
 //! now and what it nearly can, the colony building one on the spot the person chooses, and taking
 //! something built apart again.
 
-use super::HillApp;
 use super::arranging::Placing;
+use super::{Card, HillApp, paper};
 use crate::audio::Cue;
 use crate::finds;
 use crate::finds::plans::{PLANS, Plan};
@@ -11,11 +11,10 @@ use crate::hilltop::building::{Building, Moment, PUFF_SECS, puff};
 use eframe::egui;
 use formiga_art::Canvas;
 
-/// Building on the Hilltop, while there is any: whether the plans are open, something going up,
-/// and puffs of dust still clearing where something was taken apart.
+/// Building on the Hilltop, while there is any: something going up, and puffs of dust still
+/// clearing where something was taken apart.
 #[derive(Default)]
 pub struct Crafting {
-    pub open: bool,
     pub building: Option<Building>,
     puffs: Vec<(u8, f32)>,
 }
@@ -130,7 +129,9 @@ impl HillApp {
         if let Some(ground) = &mut self.hilltop {
             self.crafting.building = Some(Building::begin(ground, spot, now));
         }
-        self.crafting.open = false;
+        if self.showing(Card::Plans) {
+            self.card = None;
+        }
         self.refresh_hilltop();
     }
 
@@ -212,79 +213,60 @@ impl HillApp {
     /// The plans: what can be built now, with a button to build it; and what nearly can, with what
     /// it still needs. Only the plans the colony has thought of, so the list grows with the journal.
     pub(super) fn plans_window(&mut self, ctx: &egui::Context) {
-        if !self.crafting.open || self.area != super::Area::Hilltop {
+        if self.area != super::Area::Hilltop {
             return;
         }
-        let colony = self.memories.colony();
-        let found = |id: &str| colony.finds.contains_key(id);
-        let thought_of = self.thought_of();
-        let busy = self.crafting.building.is_some();
         let mut chosen = None;
-        let mut open = true;
-        egui::Window::new("Plans")
-            .open(&mut open)
-            .default_width(340.0)
-            .default_height(380.0)
-            .show(ctx, |ui| {
-                if thought_of.is_empty() {
-                    ui.label(
-                        egui::RichText::new(
-                            "Ideas for building come with what the Woods turns up.",
-                        )
-                        .italics(),
-                    );
-                    return;
-                }
-                egui::ScrollArea::vertical().show(ui, |ui| {
+        self.show_card(ctx, Card::Plans, "Plans", 0.46, |app, ui| {
+            let colony = app.memories.colony();
+            let found = |id: &str| colony.finds.contains_key(id);
+            let thought_of = app.thought_of();
+            let busy = app.crafting.building.is_some();
+            if thought_of.is_empty() {
+                paper::aside(ui, "Ideas for building come with what the Woods turns up.");
+                return;
+            }
+            {
+                {
                     let (ready, nearly): (Vec<&Plan>, Vec<&Plan>) = thought_of
                         .iter()
                         .partition(|plan| plan.ready(&colony.satchel));
                     if !ready.is_empty() {
-                        ui.strong("Ready to build");
+                        paper::heading(ui, "Ready to build");
                         for plan in ready {
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(plan.name).strong());
-                                let button = egui::Button::new("Build");
-                                if ui.add_enabled(!busy, button).clicked() {
+                                paper::name(ui, plan.name);
+                                let button = paper::Button::new("Build").enabled(!busy);
+                                if ui.add(button).clicked() {
                                     chosen = Some(plan.id);
                                 }
                             });
-                            ui.label(egui::RichText::new(plan.blurb).small());
-                            ui.label(
-                                egui::RichText::new(format!("Takes {}", takes(plan)))
-                                    .small()
-                                    .italics(),
-                            );
+                            paper::words(ui, plan.blurb);
+                            paper::aside(ui, format!("Takes {}", takes(plan)));
                         }
                     }
                     if !nearly.is_empty() {
                         ui.add_space(8.0);
-                        ui.strong("Ideas");
+                        paper::heading(ui, "Ideas");
                         for plan in nearly {
                             ui.add_space(4.0);
-                            ui.label(egui::RichText::new(plan.name).strong());
-                            ui.label(egui::RichText::new(plan.blurb).small());
-                            ui.label(
-                                egui::RichText::new(short_of(plan, &colony.satchel, found))
-                                    .small()
-                                    .italics(),
-                            );
+                            paper::name(ui, plan.name);
+                            paper::words(ui, plan.blurb);
+                            paper::aside(ui, short_of(plan, &colony.satchel, found));
                         }
                     }
                     let unthought = PLANS.len() - thought_of.len();
                     if unthought > 0 {
                         ui.add_space(8.0);
-                        ui.label(
-                            egui::RichText::new("More ideas will come with more finds.").weak(),
-                        );
+                        paper::faint(ui, "More ideas will come with more finds.");
                     }
-                });
-            });
-        self.crafting.open = open;
+                }
+            }
+        });
         if let Some(plan) = chosen {
             self.placing = Some(Placing::Plan(plan));
-            self.crafting.open = false;
+            self.card = None;
         }
     }
 
@@ -297,11 +279,10 @@ impl HillApp {
             return;
         }
         ui.add_space(6.0);
-        ui.strong(format!(
-            "Plans ({} of {} thought of)",
-            thought_of.len(),
-            PLANS.len()
-        ));
+        paper::heading(
+            ui,
+            format!("Plans ({} of {} thought of)", thought_of.len(), PLANS.len()),
+        );
         for plan in thought_of {
             let standing = colony
                 .hilltop
@@ -319,9 +300,9 @@ impl HillApp {
                     takes(plan)
                 ),
             };
-            ui.label(egui::RichText::new(plan.name).strong());
-            ui.label(egui::RichText::new(plan.blurb).small());
-            ui.label(egui::RichText::new(line).small().italics());
+            paper::name(ui, plan.name);
+            paper::words(ui, plan.blurb);
+            paper::aside(ui, line);
         }
     }
 }

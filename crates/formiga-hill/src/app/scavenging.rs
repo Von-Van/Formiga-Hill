@@ -1,7 +1,7 @@
 //! The old track in the window: setting off to scavenge or to follow a map, choosing who does
 //! what at a heap, the way at a fork and where to dig, and bringing everything home.
 
-use super::HillApp;
+use super::{HillApp, paper};
 use crate::cast::{Cast, Id};
 use crate::character::Character;
 use crate::finds::{self, SCAVENGED, Tier};
@@ -385,20 +385,23 @@ impl HillApp {
         Some((hunt.describe_spot(spot)?, (at.0, at.1 - 16.0)))
     }
 
-    pub(super) fn scavenging_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn scavenging_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let cast = &self.arrival.cast;
         let Some((ground, scavenge)) = &mut self.woods.scavenge else {
             return;
         };
         light_and_basket(ui, scavenge.light_left(), scavenge.basket().len(), 0);
         if !scavenge.maps().is_empty() {
-            ui.label(format!(
-                "{} torn map{}",
-                scavenge.maps().len(),
-                plural(scavenge.maps().len())
-            ));
+            paper::slip(
+                ui,
+                format!(
+                    "{} torn map{}",
+                    scavenge.maps().len(),
+                    plural(scavenge.maps().len())
+                ),
+            );
         }
-        hands_bar(ui, cast, scavenge);
+        hands_tray(ui, cast, scavenge);
         let hint = match scavenge.phase() {
             Phase::Choosing | Phase::Going { .. } => "Click a heap to go to it.",
             Phase::At { .. } if scavenge.basket().len() >= BASKET => {
@@ -408,26 +411,26 @@ impl HillApp {
             _ => "",
         };
         if !hint.is_empty() {
-            ui.label(egui::RichText::new(hint).strong());
+            paper::hint(ui, hint);
         }
         let leaving = matches!(scavenge.phase(), Phase::Leaving { .. } | Phase::Over);
         if ui
-            .add_enabled(!leaving, egui::Button::new("Head home"))
+            .add(paper::Button::new("Head home").enabled(!leaving))
             .clicked()
         {
             scavenge.head_home(ground, now);
         }
     }
 
-    pub(super) fn treasure_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn treasure_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let cast = &self.arrival.cast;
         let Some((ground, hunt)) = &mut self.woods.treasure else {
             return;
         };
         if let Some(nook) = hunt.nook_mut() {
             light_and_basket(ui, nook.light_left(), nook.basket().len(), 0);
-            hands_bar(ui, cast, nook);
-            if ui.button("Back to the fork").clicked() {
+            hands_tray(ui, cast, nook);
+            if paper::button(ui, "Back to the fork").clicked() {
                 hunt.back(ground, now);
             }
         } else {
@@ -441,8 +444,8 @@ impl HillApp {
             let lines = hunt.route().lines(read);
             if let Some(line) = hunt.line() {
                 let whole = lines.join("\n");
-                ui.label(egui::RichText::new(format!("The map: {line}")).strong())
-                    .on_hover_text(format!("The whole map:\n{whole}"));
+                let map = paper::hint(ui, format!("The map: {line}"));
+                paper::explain(ui, map, &format!("The whole map:\n{whole}"));
             }
             let hint = match hunt.phase() {
                 treasure::Phase::Reading { .. } => "Click the way to take.",
@@ -450,7 +453,7 @@ impl HillApp {
                 _ => "",
             };
             if !hint.is_empty() {
-                ui.label(egui::RichText::new(hint).italics());
+                paper::hint(ui, hint);
             }
         }
         let leaving = matches!(
@@ -458,44 +461,74 @@ impl HillApp {
             treasure::Phase::Leaving { .. } | treasure::Phase::Over
         );
         if ui
-            .add_enabled(!leaving, egui::Button::new("Head home"))
+            .add(paper::Button::new("Head home").enabled(!leaving))
             .clicked()
         {
             hunt.head_home(ground, now);
         }
     }
 
-    /// The old track's choices on the Woods bar, beside the others: scavenging, and following a
-    /// map once there is one, with which map.
+    /// The old track's choices among the Woods' others: scavenging, and following a map once
+    /// there is one.
     pub(super) fn track_activities(&mut self, ui: &mut egui::Ui) {
         use super::rummaging::Activity;
-        ui.selectable_value(&mut self.woods.activity, Activity::Scavenge, "Scavenge");
+        paper::choice(
+            ui,
+            &mut self.woods.activity,
+            Activity::Scavenge,
+            Activity::Scavenge.label(),
+        );
+        let maps = self.memories.colony().maps.len();
+        let follow = paper::Button::new(Activity::Treasure.label())
+            .selected(self.woods.activity == Activity::Treasure)
+            .enabled(maps > 0);
+        let follow = ui.add(follow);
+        let about = match maps {
+            0 => "A torn map turns up now and then on the old track.".to_owned(),
+            count => format!("{count} torn map{} to follow", plural(count)),
+        };
+        if paper::explain(ui, follow, &about).clicked() {
+            self.woods.activity = Activity::Treasure;
+        }
+    }
+
+    /// Which map to follow, when there is more than one.
+    pub(super) fn map_choice(&mut self, ui: &mut egui::Ui) {
+        use super::rummaging::Activity;
         let maps = self.memories.colony().maps.clone();
-        ui.add_enabled_ui(!maps.is_empty(), |ui| {
-            ui.selectable_value(&mut self.woods.activity, Activity::Treasure, "Follow a map")
-                .on_hover_text(match maps.len() {
-                    0 => "A torn map turns up now and then on the old track.".to_owned(),
-                    count => format!("{count} torn map{} to follow", plural(count)),
-                });
-        });
-        if self.woods.activity == Activity::Treasure && maps.len() > 1 {
-            let cast = &self.arrival.cast;
-            let label = |index: usize| {
-                let by = maps[index]
-                    .found_by
-                    .parse::<u64>()
-                    .ok()
-                    .and_then(|id| cast.member(id))
-                    .map_or("a companion", |member| member.name.as_str());
-                format!("Map {} (found by {by})", index + 1)
-            };
-            egui::ComboBox::from_id_salt("map")
-                .selected_text(label(self.woods.map.min(maps.len() - 1)))
-                .show_ui(ui, |ui| {
-                    for index in 0..maps.len() {
-                        ui.selectable_value(&mut self.woods.map, index, label(index));
+        if self.woods.activity != Activity::Treasure || maps.len() < 2 {
+            return;
+        }
+        let cast = &self.arrival.cast;
+        let label = |index: usize| {
+            let by = maps[index]
+                .found_by
+                .parse::<u64>()
+                .ok()
+                .and_then(|id| cast.member(id))
+                .map_or("a companion", |member| member.name.as_str());
+            format!("Map {} (found by {by})", index + 1)
+        };
+        let current = self.woods.map.min(maps.len() - 1);
+        let (_, picked) = paper::menu(
+            ui,
+            paper::Button::new(format!("{} \u{25b4}", label(current))),
+            false,
+            |ui| {
+                let mut picked = None;
+                for index in 0..maps.len() {
+                    if ui
+                        .add(paper::Button::new(label(index)).selected(index == current))
+                        .clicked()
+                    {
+                        picked = Some(index);
                     }
-                });
+                }
+                picked
+            },
+        );
+        if let Some(Some(index)) = picked {
+            self.woods.map = index;
         }
     }
 }
@@ -584,28 +617,21 @@ pub(super) fn heap_hover(
 
 /// The light left, and how full the basket is (and the chest, if anything came out of one).
 fn light_and_basket(ui: &mut egui::Ui, light: f32, basket: usize, chest: usize) {
-    ui.add(
-        egui::ProgressBar::new(light)
-            .desired_width(70.0)
-            .text("light"),
-    );
-    ui.label(format!("Basket {basket}/{BASKET}"));
+    paper::meter(ui, light, "light");
+    paper::slip(ui, format!("Basket {basket}/{BASKET}"));
     if chest > 0 {
-        ui.label("The chest!");
+        paper::slip(ui, "The chest!");
     }
 }
 
 /// Who can do what at a heap: one to choose for each thing the party can do.
-pub(super) fn hands_bar(ui: &mut egui::Ui, cast: &Cast, scavenge: &mut Scavenge) {
+pub(super) fn hands_tray(ui: &mut egui::Ui, cast: &Cast, scavenge: &mut Scavenge) {
     let hands = scavenge.hands();
     let mut chosen = scavenge.hand();
     for (index, hand) in hands.iter().enumerate() {
         let (label, about) = hand_label(cast, scavenge, *hand);
-        if ui
-            .selectable_label(chosen == index, label)
-            .on_hover_text(about)
-            .clicked()
-        {
+        let pick = ui.add(paper::Button::new(label).selected(chosen == index));
+        if paper::explain(ui, pick, about).clicked() {
             chosen = index;
         }
     }
@@ -801,38 +827,40 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
         .filter(|find| colony.finds.contains_key(find.id))
         .count();
     ui.add_space(6.0);
-    ui.strong(format!(
-        "Found on the old track ({found} of {}) \u{b7} {} scavenge{} \u{b7} {} chest{} dug up",
-        SCAVENGED.len(),
-        colony.scavenges,
-        plural(colony.scavenges as usize),
-        colony.chests,
-        plural(colony.chests as usize)
-    ));
+    paper::heading(
+        ui,
+        format!(
+            "Found on the old track ({found} of {}) \u{b7} {} scavenge{} \u{b7} {} chest{} dug up",
+            SCAVENGED.len(),
+            colony.scavenges,
+            plural(colony.scavenges as usize),
+            colony.chests,
+            plural(colony.chests as usize)
+        ),
+    );
     if !colony.maps.is_empty() {
-        ui.label(
-            egui::RichText::new(format!(
+        paper::aside(
+            ui,
+            format!(
                 "{} torn map{} to follow, from the Woods bar.",
                 colony.maps.len(),
                 plural(colony.maps.len())
-            ))
-            .italics(),
+            ),
         );
     }
     for find in &SCAVENGED {
         match colony.finds.get(find.id) {
             Some(record) => {
-                ui.label(egui::RichText::new(find.name).strong());
-                ui.label(egui::RichText::new(find.blurb).small());
-                ui.label(
-                    egui::RichText::new(format!(
+                paper::name(ui, find.name);
+                paper::words(ui, find.blurb);
+                paper::aside(
+                    ui,
+                    format!(
                         "Becomes {} \u{b7} brought home {}\u{d7} \u{b7} first found with {}",
                         find.piece.to_lowercase(),
                         record.count,
                         who(&record.first_by)
-                    ))
-                    .small()
-                    .italics(),
+                    ),
                 );
             }
             None => {
@@ -841,12 +869,9 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
                     Tier::Rare => "deep in a heap, or in a chest",
                     _ => "in a heap on the old track",
                 };
-                ui.label(
-                    egui::RichText::new(format!(
-                        "??? \u{b7} something {} {whereabouts}",
-                        find.tier.label()
-                    ))
-                    .weak(),
+                paper::faint(
+                    ui,
+                    format!("??? \u{b7} something {} {whereabouts}", find.tier.label()),
                 );
             }
         }

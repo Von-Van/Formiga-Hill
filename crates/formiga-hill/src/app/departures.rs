@@ -5,7 +5,7 @@
 //! time away.
 
 use super::games::{reached, rings_rung};
-use super::{Area, HillApp, Visit, clock};
+use super::{Area, Card, HillApp, Visit, clock, paper};
 use crate::character::Character;
 use crate::hilltop::Standing;
 use crate::station::Fixture;
@@ -554,75 +554,54 @@ impl HillApp {
     /// Opens the board the person clicked on, once everyone is on the platform.
     pub(super) fn look_at(&mut self, fixture: Fixture) {
         match fixture {
-            Fixture::Notices => self.notices_open = true,
-            Fixture::Departures => self.departures_open = true,
+            Fixture::Notices => self.card = Some(Card::Notices),
+            Fixture::Departures => self.card = Some(Card::Departures),
             Fixture::Case => {}
         }
     }
 
     pub(super) fn notices_window(&mut self, ctx: &egui::Context) {
-        if !self.notices_open || self.area != Area::Station {
+        if self.area != Area::Station {
             return;
         }
         let notes = notices(&self.board());
-        let mut open = true;
-        egui::Window::new("Notices")
-            .open(&mut open)
-            .default_width(300.0)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                for (index, note) in notes.iter().enumerate() {
-                    if index > 0 {
-                        ui.separator();
-                    }
-                    ui.strong(&note.heading);
-                    ui.label(&note.text);
+        self.show_card(ctx, Card::Notices, "Notices", 0.42, |_, ui| {
+            for (index, note) in notes.iter().enumerate() {
+                if index > 0 {
+                    paper::rule(ui);
                 }
-            });
-        self.notices_open = open;
+                ui.add(paper::Words::new(&note.heading).color(paper::FOREST));
+                paper::words(ui, &note.text);
+            }
+        });
     }
 
     pub(super) fn departures_window(&mut self, ctx: &egui::Context, now: f32) {
-        if !self.departures_open || self.area != Area::Station {
+        if self.area != Area::Station {
             return;
         }
         let rows = departures(&self.board());
         let ready = self.station.is_settled() && self.leaving.is_none();
         let mut target = None;
-        let mut open = true;
-        egui::Window::new("Departures")
-            .open(&mut open)
-            .default_width(420.0)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                egui::Grid::new("departures")
-                    .num_columns(2)
-                    .spacing([12.0, 8.0])
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for row in &rows {
-                            ui.vertical(|ui| {
-                                ui.strong(row.to);
-                                ui.label(&row.on);
-                                if !row.keen.is_empty() {
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "Keen: {}",
-                                            row.keen.join(", ")
-                                        ))
-                                        .italics()
-                                        .small(),
-                                    );
-                                }
-                            });
-                            if ui.add_enabled(ready, egui::Button::new("Go")).clicked() {
-                                target = Some(row.area);
-                            }
-                            ui.end_row();
+        self.show_card(ctx, Card::Departures, "Departures", 0.5, |_, ui| {
+            for (index, row) in rows.iter().enumerate() {
+                if index > 0 {
+                    paper::rule(ui);
+                }
+                ui.horizontal(|ui| {
+                    if ui.add(paper::Button::new("Go").enabled(ready)).clicked() {
+                        target = Some(row.area);
+                    }
+                    ui.vertical(|ui| {
+                        ui.add(paper::Words::new(row.to).color(paper::FOREST));
+                        paper::words(ui, &row.on);
+                        if !row.keen.is_empty() {
+                            paper::aside(ui, format!("Keen: {}", row.keen.join(", ")));
                         }
                     });
-            });
-        self.departures_open = open && target.is_none();
+                });
+            }
+        });
         if let Some(area) = target {
             self.go_to(area, now);
         }

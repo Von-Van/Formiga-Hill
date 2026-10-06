@@ -1,11 +1,11 @@
 //! The clearing in the window: following the glint, playing the Sovereign through, and bringing
 //! its arrow home.
 
-use super::{Area, HillApp, INK, PAPER};
+use super::{Area, HillApp, paper};
 use crate::audio::Cue;
 use crate::cast::Id;
 use crate::clearing::{
-    self,
+    self, boss,
     sovereign::{Event, Sovereign, State},
     stage::Speaker,
 };
@@ -81,87 +81,28 @@ impl HillApp {
         }
     }
 
-    /// The line being said, or the menu of attacks, or the way back out.
-    pub(super) fn clearing_bar(&mut self, ui: &mut egui::Ui, now: f32) {
-        self.sound_button(ui);
-        let cast = &self.arrival.cast;
+    /// The menu of attacks, or the way back out; and reading on while someone speaks.
+    pub(super) fn clearing_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let Some((_, sovereign)) = &mut self.clearing else {
             return;
         };
         let mut chosen = None;
         let mut leave = false;
-        egui::Frame::new()
-            .fill(
-                if sovereign
-                    .stage
-                    .line
-                    .as_ref()
-                    .is_some_and(|(speaker, _)| *speaker == Speaker::Boss)
-                {
-                    egui::Color32::from_rgb(0x1a, 0x10, 0x26)
-                } else {
-                    PAPER
-                },
-            )
-            .corner_radius(6.0)
-            .inner_margin(egui::Margin::symmetric(12, 8))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                if let Some((speaker, text)) = &sovereign.stage.line {
-                    let (name, color, size) = match speaker {
-                        Speaker::Boss => (
-                            "THE CURSOR SOVEREIGN".to_owned(),
-                            egui::Color32::from_rgb(0xf5, 0xd2, 0x5e),
-                            17.0,
-                        ),
-                        Speaker::Member(id) => (
-                            cast.member(*id).map_or(String::new(), |m| m.name.clone()),
-                            INK,
-                            16.0,
-                        ),
-                        Speaker::Narrator => (String::new(), INK, 15.0),
-                    };
-                    if !name.is_empty() {
-                        ui.label(egui::RichText::new(name).strong().color(color));
-                    }
-                    let mut words =
-                        egui::RichText::new(text)
-                            .size(size)
-                            .color(if *speaker == Speaker::Boss {
-                                egui::Color32::from_rgb(0xf6, 0xee, 0xd8)
-                            } else {
-                                INK
-                            });
-                    if *speaker == Speaker::Narrator {
-                        words = words.italics();
-                    }
-                    ui.horizontal_wrapped(|ui| ui.label(words));
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Next  \u{25b8}").clicked() {
-                            sovereign.stage.read_on();
-                        }
-                    });
-                } else if sovereign.state() == State::Choosing {
-                    ui.label(egui::RichText::new("What will you do?").strong().color(INK));
-                    ui.horizontal_wrapped(|ui| {
-                        for (index, choice) in sovereign.choices().iter().enumerate() {
-                            if ui
-                                .button(format!("{}  {}", index + 1, choice.name))
-                                .clicked()
-                            {
-                                chosen = Some(index);
-                            }
-                        }
-                    });
-                } else if sovereign.state() == State::Over {
-                    if let Some((notice, _)) = &self.notice {
-                        ui.label(egui::RichText::new(notice).italics().color(INK));
-                    }
-                    leave = ui.button("Back to the Woods").clicked();
-                } else {
-                    ui.label(egui::RichText::new("\u{2026}").color(INK));
+        if sovereign.stage.line.is_some() {
+            let next = ui.add(paper::Button::new("Next \u{25b8}"));
+            if paper::explain(ui, next, "Or click the scene, or press Space").clicked() {
+                sovereign.stage.read_on();
+            }
+        } else if sovereign.state() == State::Choosing {
+            paper::hint(ui, "What will you do?");
+            for (index, choice) in sovereign.choices().iter().enumerate() {
+                if paper::button(ui, format!("{}  {}", index + 1, choice.name)).clicked() {
+                    chosen = Some(index);
                 }
-            });
+            }
+        } else if sovereign.state() == State::Over {
+            leave = paper::button(ui, "Back to the Woods").clicked();
+        }
         if let Some(index) = chosen {
             sovereign.choose(index);
         }
@@ -169,5 +110,41 @@ impl HillApp {
             self.clearing = None;
             self.go_to(Area::Woods, now);
         }
+    }
+
+    /// The line being said, in a box over whoever says it: the Sovereign's from the dark, over
+    /// its pointer; the party's over their heads; and the telling in a caption at the top.
+    pub(super) fn clearing_speech(
+        &mut self,
+        ctx: &egui::Context,
+        painter: &egui::Painter,
+        scene: egui::Rect,
+        now: f32,
+    ) {
+        let cast = &self.arrival.cast;
+        let Some((ground, sovereign)) = &mut self.clearing else {
+            return;
+        };
+        let Some((speaker, text)) = &sovereign.stage.line else {
+            return;
+        };
+        let point = scene.width() / super::SCENE_WIDTH as f32;
+        let to_screen = |(x, y): (f32, f32)| scene.min + egui::vec2(x, y) * point;
+        let (boss_move, since) = sovereign.stage.boss;
+        let (head, name, voice) = match speaker {
+            Speaker::Boss => (
+                Some(to_screen(boss::tip(boss_move, now - since))),
+                "The Cursor Sovereign".to_owned(),
+                paper::Voice::Night,
+            ),
+            Speaker::Member(id) => (
+                ground.head(*id, now).map(|(x, y)| to_screen((x, y - 2.0))),
+                cast.member(*id)
+                    .map_or(String::new(), |member| member.name.clone()),
+                paper::Voice::Speaker,
+            ),
+            Speaker::Narrator => (None, String::new(), paper::Voice::Narrator),
+        };
+        paper::speech(ctx, painter, scene, head, Some(&name), text, voice, true);
     }
 }

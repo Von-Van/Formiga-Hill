@@ -11,6 +11,7 @@ mod finery;
 mod fishing_trip;
 mod foraging;
 mod games;
+mod paper;
 mod plans;
 mod rummaging;
 mod scavenging;
@@ -32,7 +33,6 @@ use crate::trip::Trip;
 use arranging::Placing;
 use eframe::egui;
 use formiga_art::Canvas;
-use formiga_travel::Theme;
 use std::time::{Duration, Instant};
 
 /// Who has come, and how.
@@ -79,19 +79,69 @@ const AREAS: [(Area, &str); 6] = [
     (Area::Hilltop, "The Hilltop"),
 ];
 
+/// A card laid over the scene in place of a window. One at a time, so none hides another.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Card {
+    /// The station's notice board, and its departures board.
+    Notices,
+    Departures,
+    /// The Clubhouse's notice board of stories, and the shelf of story packages.
+    Board,
+    Shelf,
+    DressUp,
+    Journal,
+    Plans,
+    Album,
+    Sound,
+}
+
+/// For review only: where the window opens, with which card, and when its picture is taken.
+pub struct Snap {
+    pub path: std::path::PathBuf,
+    pub at: f32,
+    pub place: Option<String>,
+    pub card: Option<String>,
+    /// In the Clubhouse, begin the first story on the shelves.
+    pub story: bool,
+}
+
+/// What `--place` can name, in `Snap`.
+pub const SNAP_PLACES: [&str; 6] = [
+    "station",
+    "green",
+    "clubhouse",
+    "fairground",
+    "woods",
+    "hilltop",
+];
+
+/// What `--card` can name, in `Snap`.
+pub const SNAP_CARDS: [&str; 9] = [
+    "notices",
+    "departures",
+    "board",
+    "shelf",
+    "dress-up",
+    "journal",
+    "plans",
+    "album",
+    "sound",
+];
+
 pub struct HillApp {
+    /// A review picture to take, whether the window has been set up for it yet, and whether
+    /// the picture has been asked for.
+    snap: Option<(Snap, bool, bool)>,
     arrival: Arrival,
     station: Station,
     /// Made the first time anyone goes there, and kept for the rest of the visit.
     green: Option<Playground>,
     /// The same, for the room where stories are staged.
     clubhouse: Option<Clubhouse>,
-    /// Whether the notice board of stories is open, and the list of packages behind it.
-    board: bool,
-    shelf: bool,
-    /// Whether the station's notices, or its departures board, are open.
-    notices_open: bool,
-    departures_open: bool,
+    /// The card open over the scene, if any.
+    card: Option<Card>,
+    /// Where the scene was drawn last, in points, for laying paper over it.
+    scene: egui::Rect,
     /// The packages the person has set aside, and where community packages go.
     set_aside: SetAside,
     packages_folder: Option<std::path::PathBuf>,
@@ -112,8 +162,6 @@ pub struct HillApp {
     crafting: plans::Crafting,
     /// Where each piece on the Hilltop is drawn, for pointing at them.
     piece_bounds: Vec<(u8, (i32, i32, i32, i32))>,
-    /// Whether the journal of finds is open.
-    journal: bool,
     /// Where the pointer is over the scene, in scene pixels.
     pointer: Option<(f32, f32)>,
     /// When the last frame was drawn, for anything that moves by how long a key is held.
@@ -125,10 +173,8 @@ pub struct HillApp {
     /// visit only.
     costumes: std::collections::HashMap<Id, &'static str>,
     groomed: std::collections::HashSet<Id>,
-    /// Whether the dress-up box is open, what has been picked out of it, and its pictures.
-    dress_up: bool,
+    /// What has been picked out of the dress-up box.
     picked: Option<finery::Pick>,
-    costume_icons: Vec<egui::TextureHandle>,
     /// Where the brush last was, over whom, and who the pointer is over this frame.
     stroke: Option<(Id, (f32, f32))>,
     hovered: Option<Id>,
@@ -155,20 +201,17 @@ pub struct HillApp {
     memories: Memories,
     /// What has grown on the Hilltop since the last visit, as it is now, spot by spot.
     grown: Vec<(u8, crate::hilltop::Standing)>,
-    /// A short note in the bottom bar, and when it was posted.
+    /// A short note over the trays, and when it was posted.
     notice: Option<(String, f32)>,
     /// The music and the sounds, and what has been heard of what goes on.
     sound: Sound,
     listening: sound::Listening,
 }
 
-/// How long a notice stays in the bottom bar.
+/// How long a notice stays over the trays.
 const NOTICE_SECS: f32 = 8.0;
 
-const INK: egui::Color32 = egui::Color32::from_rgb(0x4a, 0x36, 0x26);
-const PAPER: egui::Color32 = egui::Color32::from_rgb(0xf6, 0xee, 0xd8);
 const LETTERBOX: egui::Color32 = egui::Color32::from_rgb(0x2f, 0x3b, 0x2c);
-const TAG: egui::Color32 = egui::Color32::from_rgba_unmultiplied_const(0xf6, 0xee, 0xd8, 0xe0);
 
 impl HillApp {
     pub fn new(
@@ -178,11 +221,8 @@ impl HillApp {
         clock: Clock,
     ) -> Self {
         let presentation = arrival.cast.snapshot.presentation;
-        cc.egui_ctx.set_theme(match presentation.theme {
-            Theme::System => egui::ThemePreference::System,
-            Theme::Light => egui::ThemePreference::Light,
-            Theme::Dark => egui::ThemePreference::Dark,
-        });
+        // Paper over the scene looks the same in light and dark, as Desktop's bubbles do.
+        paper::dress(&cc.egui_ctx);
         cc.egui_ctx
             .set_zoom_factor(f32::from(presentation.text_scale_percent.clamp(100, 150)) / 100.0);
         // Every visit begins with the train pulling in.
@@ -205,10 +245,9 @@ impl HillApp {
             station,
             green: None,
             clubhouse: None,
-            board: false,
-            shelf: false,
-            notices_open: false,
-            departures_open: false,
+            card: None,
+            snap: None,
+            scene: egui::Rect::NOTHING,
             set_aside: SetAside::open(Memories::folder().as_deref()),
             packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
             fairground: None,
@@ -220,16 +259,13 @@ impl HillApp {
             placing: None,
             crafting: plans::Crafting::default(),
             piece_bounds: Vec::new(),
-            journal: false,
             pointer: None,
             last_frame: 0.0,
             area: Area::Station,
             tool: Offer::Pet,
             costumes: std::collections::HashMap::new(),
             groomed: std::collections::HashSet::new(),
-            dress_up: false,
             picked: None,
-            costume_icons: Vec::new(),
             stroke: None,
             hovered: None,
             camera: camera::Camera::default(),
@@ -283,6 +319,93 @@ impl HillApp {
 
     /// Looks at the clock now and then, and lights everywhere for the hour it is: everywhere
     /// the colony has been, so a place gone back to is already in the right light.
+    /// For review only: take the picture `snap` describes, then close.
+    pub fn snap(mut self, snap: Snap) -> Self {
+        self.snap = Some((snap, false, false));
+        self
+    }
+
+    /// Goes where the review picture is to be taken, opens its card, and begins its story,
+    /// the first frame the window is up.
+    fn set_up_snap(&mut self, now: f32) {
+        let Some((snap, set, _)) = &mut self.snap else {
+            return;
+        };
+        if std::mem::replace(set, true) {
+            return;
+        }
+        let place = match snap.place.as_deref() {
+            Some("green") => Some(Area::Green),
+            Some("clubhouse") => Some(Area::Clubhouse),
+            Some("fairground") => Some(Area::Fairground),
+            Some("woods") => Some(Area::Woods),
+            Some("hilltop") => Some(Area::Hilltop),
+            _ => None,
+        };
+        let card = match snap.card.as_deref() {
+            Some("notices") => Some(Card::Notices),
+            Some("departures") => Some(Card::Departures),
+            Some("board") => Some(Card::Board),
+            Some("shelf") => Some(Card::Shelf),
+            Some("dress-up") => Some(Card::DressUp),
+            Some("journal") => Some(Card::Journal),
+            Some("plans") => Some(Card::Plans),
+            Some("album") => Some(Card::Album),
+            Some("sound") => Some(Card::Sound),
+            _ => None,
+        };
+        let story = snap.story;
+        if let Some(place) = place {
+            self.go_to(place, now);
+            self.leaving = None;
+        }
+        let first = self
+            .library
+            .stories()
+            .next()
+            .map(|(package, story)| (package.id.clone(), story.id.clone()));
+        if story && let Some((package, story)) = first {
+            self.start_story(&package, &story, now);
+        }
+        self.card = card;
+    }
+
+    /// Asks for the review picture once it is time, and saves it and closes when it comes.
+    fn take_snap(&mut self, ctx: &egui::Context, now: f32) {
+        let Some((snap, _, asked)) = &mut self.snap else {
+            return;
+        };
+        ctx.request_repaint();
+        if !*asked && now >= snap.at {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default()));
+            *asked = true;
+        }
+        let image = ctx.input(|input| {
+            input.events.iter().find_map(|event| match event {
+                egui::Event::Screenshot { image, .. } => Some(image.clone()),
+                _ => None,
+            })
+        });
+        if let Some(image) = image {
+            let [width, height] = image.size;
+            let mut canvas = Canvas::new(width as u32, height as u32);
+            for (index, pixel) in image.pixels.iter().enumerate() {
+                let [r, g, b, a] = pixel.to_srgba_unmultiplied();
+                canvas.set(
+                    (index % width) as i32,
+                    (index / width) as i32,
+                    formiga_art::Rgba::new(r, g, b, a),
+                );
+            }
+            match crate::write_png(&snap.path, &canvas, 1) {
+                Ok(()) => println!("Pictured the window to {}", snap.path.display()),
+                Err(error) => eprintln!("formiga-hill: {error:#}"),
+            }
+            self.snap = None;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
     fn keep_hours(&mut self, now: f32) {
         if self
             .last_hour_check
@@ -392,8 +515,7 @@ impl HillApp {
             self.finish_treasure(now);
         }
         self.placing = None;
-        self.notices_open = false;
-        self.departures_open = false;
+        self.card = None;
         if area == Area::Station {
             self.pin_notices();
         }
@@ -422,27 +544,87 @@ impl HillApp {
         }
     }
 
-    /// Everywhere else the colony can go, and the sound beside it.
-    fn go_menu(&mut self, ui: &mut egui::Ui, now: f32) {
-        self.sound_button(ui);
-        self.places_menu(ui, now);
+    /// Whether `card` is the one open.
+    fn showing(&self, card: Card) -> bool {
+        self.card == Some(card)
     }
 
-    /// The "Go to" menu, and the camera.
-    fn places_menu(&mut self, ui: &mut egui::Ui, now: f32) {
+    /// Opens `card` over whatever was open, or closes it if it was the one open.
+    fn toggle(&mut self, card: Card) {
+        self.card = if self.showing(card) { None } else { Some(card) };
+    }
+
+    /// Lays `card` over the scene while it is the one open, and notices when it is closed.
+    fn show_card<R>(
+        &mut self,
+        ctx: &egui::Context,
+        card: Card,
+        title: &str,
+        width: f32,
+        add: impl FnOnce(&mut Self, &mut egui::Ui) -> R,
+    ) -> Option<R> {
+        let mut open = self.showing(card);
+        let scene = self.scene;
+        let shown = paper::card(
+            ctx,
+            scene,
+            &format!("{card:?}"),
+            title,
+            width,
+            &mut open,
+            |ui| add(self, ui),
+        );
+        if !open && self.showing(card) {
+            self.card = None;
+        }
+        shown
+    }
+
+    /// The signpost to everywhere else: a little card of places over the button.
+    fn places_menu(&mut self, ui: &mut egui::Ui, enabled: bool, now: f32) {
+        let signpost = paper::picture(paper::pictures::SIGNPOST);
+        let button = paper::Button::new("Go to")
+            .picture(signpost, 1)
+            .enabled(enabled);
         let mut target = None;
-        ui.menu_button("Go to\u{2026}", |ui| {
+        paper::menu(ui, button, false, |ui| {
             for (area, label) in AREAS {
-                if area != self.area && ui.button(label).clicked() {
+                if area != self.area && paper::button(ui, label).clicked() {
                     target = Some(area);
-                    ui.close();
                 }
             }
         });
         if let Some(area) = target {
             self.go_to(area, now);
         }
-        self.camera_buttons(ui);
+    }
+
+    /// The buttons for things that go everywhere, at the scene's bottom right: the way to
+    /// other places, the sound, the camera and the album, and the journal where there are finds
+    /// to look up. Laid right to left, so the signpost is in the corner.
+    fn everywhere_tray(&mut self, ui: &mut egui::Ui, now: f32) {
+        let in_story = self.area == Area::Clubhouse && self.story.is_some();
+        let in_clearing = self.area == Area::Clearing;
+        // A story is left, and the clearing walked out of, from their own buttons.
+        if !in_story && !in_clearing {
+            let settled = self.area != Area::Station || self.station.is_settled();
+            self.places_menu(ui, settled, now);
+        }
+        self.sound_button(ui);
+        if !in_clearing {
+            self.camera_buttons(ui);
+        }
+        if matches!(self.area, Area::Woods | Area::Hilltop) {
+            let journal = ui.add(
+                paper::Button::new("")
+                    .picture(paper::picture(paper::pictures::JOURNAL), 1)
+                    .selected(self.showing(Card::Journal)),
+            );
+            paper::name_it(ui, &journal, "Journal");
+            if journal.clicked() {
+                self.toggle(Card::Journal);
+            }
+        }
     }
 
     fn refresh_scene(&mut self, ctx: &egui::Context, now: f32) -> egui::TextureId {
@@ -484,64 +666,82 @@ impl HillApp {
             .map_or(egui::TextureId::default(), |texture| texture.id())
     }
 
-    fn bottom_bar(&mut self, ui: &mut egui::Ui, now: f32) {
-        ui.add_space(6.0);
-        ui.horizontal(|ui| match self.area {
+    /// What there is to do here, at the scene's bottom left.
+    fn area_tray(&mut self, ui: &mut egui::Ui, now: f32) {
+        match self.area {
             Area::Station => {
-                ui.label(arrivals_line(&self.arrival));
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let leaving = matches!(self.station.journey(), Journey::Leaving { .. });
-                    let home = egui::Button::new("Take the train home");
-                    if ui.add_enabled(!leaving, home).clicked() {
-                        self.station.skip_arrival();
-                        self.station.set_off_home(now);
-                    }
-                    // The sound can be turned down while the train is still pulling in.
-                    self.sound_button(ui);
-                    let settled = self.station.is_settled();
-                    ui.add_enabled_ui(settled, |ui| self.places_menu(ui, now));
-                });
+                let leaving = matches!(self.station.journey(), Journey::Leaving { .. });
+                let home = paper::Button::new("Take the train home").enabled(!leaving);
+                if ui.add(home).clicked() {
+                    self.station.skip_arrival();
+                    self.station.set_off_home(now);
+                }
+                ui.add(
+                    paper::Words::new(arrivals_line(&self.arrival))
+                        .slip()
+                        .most(220),
+                );
             }
             Area::Green => {
                 tools(ui, &mut self.tool);
-                ui.separator();
+                let open = self.showing(Card::DressUp);
                 if ui
-                    .selectable_label(self.dress_up, "The dress-up box")
+                    .add(paper::Button::new("The dress-up box").selected(open))
                     .clicked()
                 {
-                    self.dress_up = !self.dress_up;
-                    self.picked = None;
+                    self.toggle(Card::DressUp);
                 }
-                if let Some((notice, _)) = &self.notice {
-                    ui.label(egui::RichText::new(notice).italics());
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.go_menu(ui, now);
-                });
             }
-            Area::Clubhouse => self.clubhouse_bar(ui, now),
-            Area::Fairground => self.fairground_bar(ui, now),
-            Area::Woods => {
-                self.woods_bar(ui, now);
-                if let Some((notice, _)) = &self.notice {
-                    ui.label(egui::RichText::new(notice).italics());
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.go_menu(ui, now);
-                });
-            }
-            Area::Clearing => self.clearing_bar(ui, now),
-            Area::Hilltop => {
-                self.hilltop_bar(ui);
-                if let Some((notice, _)) = &self.notice {
-                    ui.label(egui::RichText::new(notice).italics());
-                }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    self.go_menu(ui, now);
-                });
-            }
+            Area::Clubhouse => self.clubhouse_tray(ui, now),
+            Area::Fairground => self.fairground_tray(ui, now),
+            Area::Woods => self.woods_tray(ui, now),
+            Area::Clearing => self.clearing_tray(ui, now),
+            Area::Hilltop => self.hilltop_tray(ui),
+        }
+    }
+
+    /// What is being said in a story or the clearing, in a box over whoever says it.
+    fn draw_speech(
+        &mut self,
+        ctx: &egui::Context,
+        painter: &egui::Painter,
+        scene: egui::Rect,
+        now: f32,
+    ) {
+        match self.area {
+            Area::Clubhouse => self.story_speech(ctx, painter, scene, now),
+            Area::Clearing => self.clearing_speech(ctx, painter, scene, now),
+            _ => {}
+        }
+    }
+
+    /// The trays along the scene's bottom edge, and the latest notice over them.
+    fn trays(&mut self, ctx: &egui::Context, now: f32) {
+        let scene = self.scene;
+        let grain = paper::Grain::of(ctx);
+        let everywhere = paper::tray(ctx, scene, "everywhere", true, scene.width() * 0.5, |ui| {
+            self.everywhere_tray(ui, now)
         });
-        ui.add_space(6.0);
+        let room = scene.width() - everywhere.response.rect.width() - grain.len(14);
+        let here = paper::tray(ctx, scene, "here", false, room, |ui| {
+            self.area_tray(ui, now)
+        });
+        let top = here.response.rect.top().min(everywhere.response.rect.top());
+        if let Some((notice, _)) = &self.notice {
+            let notice = notice.clone();
+            egui::Area::new(egui::Id::new("hill-notice"))
+                .order(egui::Order::Middle)
+                .interactable(false)
+                .pivot(egui::Align2::CENTER_BOTTOM)
+                .fixed_pos(paper::snap(
+                    ctx,
+                    egui::pos2(scene.center().x, top - grain.len(4)),
+                ))
+                .constrain_to(scene)
+                .show(ctx, |ui| {
+                    ui.add(paper::Words::new(notice).slip().most(260));
+                });
+        }
     }
 }
 
@@ -552,11 +752,21 @@ const TOOLS: [(Offer, &str, &str); 4] = [
     (Offer::Brush, "A brush", "4"),
 ];
 
-/// What the person can hold out, to choose from.
+/// What the person can hold out, to choose from: Desktop's own snack and toy among them.
 fn tools(ui: &mut egui::Ui, tool: &mut Offer) {
-    ui.label("Hold out:");
     for (offer, label, key) in TOOLS {
-        let response = ui.selectable_label(*tool == offer, format!("{label}  {key}"));
+        let picture = match offer {
+            Offer::Pet => paper::picture(paper::pictures::PAT),
+            Offer::Snack => paper::desktop_picture(formiga_art::MenuIcon::Snack),
+            Offer::Toy => paper::desktop_picture(formiga_art::MenuIcon::Toy),
+            Offer::Brush => paper::picture(paper::pictures::BRUSH),
+        };
+        let response = ui.add(
+            paper::Button::new("")
+                .picture(picture, 1)
+                .selected(*tool == offer),
+        );
+        paper::name_it(ui, &response, &format!("{label}  {key}"));
         if response.clicked() {
             *tool = offer;
         }
@@ -573,6 +783,7 @@ impl eframe::App for HillApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let now = self.now();
+        self.set_up_snap(now);
         self.keep_hours(now);
         self.station.update(now);
         if !self.departed && self.recalled(now) {
@@ -595,6 +806,7 @@ impl eframe::App for HillApp {
             mute |= input.key_pressed(egui::Key::M);
             if input.key_pressed(egui::Key::Escape) {
                 self.camera.out = false;
+                self.card = None;
             }
             match &mut self.story {
                 Some((_, director)) if self.area == Area::Clubhouse => {
@@ -707,8 +919,6 @@ impl eframe::App for HillApp {
         self.listen(now);
         let texture = self.refresh_scene(&ctx, now);
 
-        egui::Panel::bottom("platform").show(ui, |ui| self.bottom_bar(ui, now));
-
         // Whoever the person clicks with something picked out of the dress-up box, and whether
         // a click took a photo.
         let mut dress_on = None;
@@ -718,6 +928,14 @@ impl eframe::App for HillApp {
             .show(ui, |ui| {
                 let available = ui.available_rect_before_wrap();
                 let rect = scene_rect(available, ctx.pixels_per_point());
+                self.scene = rect;
+                paper::Grain::for_scene(
+                    rect,
+                    SCENE_WIDTH,
+                    ctx.pixels_per_point(),
+                    ctx.zoom_factor(),
+                )
+                .keep(&ctx);
                 let response = ui.allocate_rect(rect, egui::Sense::click());
                 let painter = ui.painter_at(rect);
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
@@ -729,16 +947,7 @@ impl eframe::App for HillApp {
                     let scene = (pos - rect.min) / point;
                     (scene.x, scene.y)
                 });
-                let font = egui::FontId::proportional((5.5 * point).clamp(10.0, 20.0));
-                let tag = |text: &str, centre: egui::Pos2| {
-                    let galley = painter.layout_no_wrap(text.to_owned(), font.clone(), INK);
-                    let label = egui::Rect::from_center_size(
-                        centre,
-                        galley.size() + egui::vec2(point * 4.0, point * 1.0),
-                    );
-                    painter.rect_filled(label, point * 2.0, TAG);
-                    painter.galley(label.center() - galley.size() / 2.0, galley, INK);
-                };
+                let tag = |text: &str, centre: egui::Pos2| paper::tag(&ctx, &painter, text, centre);
 
                 let mut fixture = None;
                 let mut on_box = false;
@@ -863,7 +1072,9 @@ impl eframe::App for HillApp {
                                 let (x, y) = clubhouse::board_label();
                                 tag("The notice board", to_screen(x, y));
                                 if response.clicked() {
-                                    self.board = !self.board;
+                                    // The card by its field: the room is still borrowed.
+                                    self.card =
+                                        (self.card != Some(Card::Board)).then_some(Card::Board);
                                 }
                             } else if let Some(id) = hovered {
                                 ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -902,7 +1113,7 @@ impl eframe::App for HillApp {
                                     tag(&member.name, to_screen(x, y - 6.0));
                                 }
                             }
-                            // The dress-up box opens with a click, as well as from the bar.
+                            // The dress-up box opens with a click, as well as from its button.
                             let (left, top, right, bottom) = crate::green::DRESS_UP;
                             on_box = hovered.is_none()
                                 && pointer.is_some_and(|(x, y)| {
@@ -912,8 +1123,7 @@ impl eframe::App for HillApp {
                             if on_box {
                                 ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                                 if response.clicked() {
-                                    self.dress_up = !self.dress_up;
-                                    self.picked = None;
+                                    self.toggle(Card::DressUp);
                                 }
                             }
                             hovered
@@ -952,30 +1162,31 @@ impl eframe::App for HillApp {
                     }
                 };
                 self.hovered = hovered;
-                if on_box {
-                    let open = self.dress_up;
-                    response.on_hover_ui_at_pointer(|ui| {
-                        ui.strong("The dress-up box");
-                        ui.label(if open {
+                // A note at the pointer about whatever it is over: on paper, as everything is.
+                let about: Option<(String, String)> = if on_box {
+                    Some((
+                        "The dress-up box".to_owned(),
+                        if self.showing(Card::DressUp) {
                             "Click to close it."
                         } else {
                             "Click to open it and dress someone up."
-                        });
-                    });
+                        }
+                        .to_owned(),
+                    ))
                 } else if fixture == Some(Fixture::Notices) && hovered.is_none() {
                     let notes = departures::notices(&self.board()).len();
-                    response.on_hover_ui_at_pointer(|ui| {
-                        ui.strong("The notice board");
-                        ui.label(format!(
+                    Some((
+                        "The notice board".to_owned(),
+                        format!(
                             "{notes} pinned up. Click to read {}.",
                             if notes == 1 { "it" } else { "them" }
-                        ));
-                    });
+                        ),
+                    ))
                 } else if fixture == Some(Fixture::Departures) && hovered.is_none() {
-                    response.on_hover_ui_at_pointer(|ui| {
-                        ui.strong("Departures");
-                        ui.label("Where to go, and who would like to. Click to look closer.");
-                    });
+                    Some((
+                        "Departures".to_owned(),
+                        "Where to go, and who would like to. Click to look closer.".to_owned(),
+                    ))
                 } else if fixture == Some(Fixture::Case) && hovered.is_none() {
                     let kept: Vec<&str> = self
                         .memories
@@ -984,29 +1195,27 @@ impl eframe::App for HillApp {
                         .iter()
                         .filter_map(|id| souvenirs::name(id))
                         .collect();
-                    response.on_hover_ui_at_pointer(|ui| {
-                        ui.strong("The display case");
+                    Some((
+                        "The display case".to_owned(),
                         if kept.is_empty() {
-                            ui.label(
-                                "Empty for now. Souvenirs from stories and games are kept here.",
-                            );
-                        }
-                        for name in kept {
-                            ui.label(name);
-                        }
-                    });
+                            "Empty for now. Souvenirs from stories and games are kept here."
+                                .to_owned()
+                        } else {
+                            kept.join("\n")
+                        },
+                    ))
                 } else if let Some(id) = hovered {
-                    let lines = describe(&self.arrival.cast, id);
-                    response.on_hover_ui_at_pointer(|ui| {
-                        for (index, line) in lines.iter().enumerate() {
-                            if index == 0 {
-                                ui.strong(line);
-                            } else {
-                                ui.label(line);
-                            }
-                        }
-                    });
+                    let mut lines = describe(&self.arrival.cast, id).into_iter();
+                    lines
+                        .next()
+                        .map(|name| (name, lines.collect::<Vec<_>>().join("\n")))
+                } else {
+                    None
+                };
+                if let (Some((heading, text)), Some(at)) = (about, response.hover_pos()) {
+                    paper::note(&ctx, rect, at, &[heading.as_str()], &text);
                 }
+                self.draw_speech(&ctx, &painter, rect, now);
                 self.draw_camera(&painter, to_screen, rect, now);
             });
 
@@ -1018,6 +1227,10 @@ impl eframe::App for HillApp {
         let held = ctx.input(|input| input.pointer.primary_down()) && !self.camera.out;
         self.groom(held, now);
         self.dress_everyone();
+        self.trays(&ctx, now);
+        if !self.showing(Card::DressUp) {
+            self.picked = None;
+        }
         self.dress_up_window(&ctx);
         self.album_window(&ctx, now);
         self.journal_window(&ctx);
@@ -1027,6 +1240,7 @@ impl eframe::App for HillApp {
         self.notices_window(&ctx);
         self.departures_window(&ctx, now);
         self.sound_window(&ctx);
+        self.take_snap(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
             ctx.request_repaint_after(Duration::from_millis(16));
@@ -1035,6 +1249,16 @@ impl eframe::App for HillApp {
             ctx.request_repaint_after(Duration::from_secs_f32(RECALL_CHECK_SECS));
         } else if !self.arrival.cast.reduce_motion() {
             ctx.request_repaint_after(Duration::from_millis(100));
+        }
+    }
+
+    /// While a review picture is being taken nothing the keys or pointer do reaches the Hill,
+    /// so a review never changes anything.
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if self.snap.is_some() {
+            raw_input
+                .events
+                .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
         }
     }
 
