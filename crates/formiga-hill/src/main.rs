@@ -23,6 +23,7 @@ mod hilltop;
 mod hosting;
 mod icon;
 mod kit;
+mod lettering;
 mod materials;
 mod meadow;
 mod memories;
@@ -106,7 +107,14 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --hour <HOUR>            Draw at that hour of the day, from 0 to 24, rather than at midday;
                            with a window, hold the Hill at that hour rather than the clock's
   --at <SECONDS>           Draw that far into the arrival, or into free play on the green, in
-                           the Clubhouse or at the Fairground
+                           the Clubhouse or at the Fairground; with --snap, when to take it
+  --snap <PNG>             For review: open the window, picture it after --at seconds (3 if not
+                           given) and close, with nothing the keys or pointer do let in
+  --place <PLACE>          With --snap: open at the station, green, clubhouse, fairground, woods
+                           or hilltop rather than the station
+  --card <CARD>            With --snap: open the notices, departures, board, shelf, dress-up,
+                           journal, plans, album or sound card, at its own place if none is given
+  --story                  With --snap in the Clubhouse: begin the first story on the shelves
 ";
 
 enum Source {
@@ -191,6 +199,8 @@ struct Args {
     hour: Option<f32>,
     /// Write every sound to WAV files in this folder, without opening a window.
     sounds: Option<PathBuf>,
+    /// Picture the window for review, and close.
+    snap: Option<app::Snap>,
 }
 
 fn main() -> Result<()> {
@@ -375,7 +385,7 @@ fn main() -> Result<()> {
             .with_title("Formiga Hill")
             .with_inner_size([
                 station::SCENE_WIDTH as f32 * scale,
-                station::SCENE_HEIGHT as f32 * scale + 40.0,
+                station::SCENE_HEIGHT as f32 * scale,
             ])
             .with_min_inner_size([station::SCENE_WIDTH as f32, station::SCENE_HEIGHT as f32])
             .with_icon({
@@ -409,10 +419,18 @@ fn main() -> Result<()> {
                 Some(hour) => daylight::Clock::Held(hour),
                 None => daylight::Clock::Local(offset),
             };
-            Ok(Box::new(HillApp::new(cc, arrival, library, clock)))
+            let app = HillApp::new(cc, arrival, library, clock);
+            Ok(Box::new(match args.snap {
+                Some(snap) => app.snap(snap),
+                None => app,
+            }))
         }),
     )
-    .map_err(|error| anyhow::anyhow!("the Hill window could not open: {error}"))
+    .map_err(|error| anyhow::anyhow!("the Hill window could not open: {error}"))?;
+    if let Some(why) = app::snap_failed() {
+        bail!("{why}");
+    }
+    Ok(())
 }
 
 fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> {
@@ -425,6 +443,10 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut sample_hilltop = false;
     let mut hour = None;
     let mut sounds = None;
+    let mut snap = None;
+    let mut place = None;
+    let mut card = None;
+    let mut story = false;
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
             bail!("choose one of --sample, {LAUNCH_ARGUMENT}, or --from-save");
@@ -515,6 +537,22 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 render = Some((Area::Costumes, value("--render-costumes")?));
             }
             Some("--render-sounds") => sounds = Some(value("--render-sounds")?),
+            Some("--snap") => snap = Some(value("--snap")?),
+            Some("--place") => {
+                let named = value("--place")?.to_string_lossy().into_owned();
+                if !app::SNAP_PLACES.contains(&named.as_str()) {
+                    bail!("--place needs one of {}", app::SNAP_PLACES.join(", "));
+                }
+                place = Some(named);
+            }
+            Some("--card") => {
+                let named = value("--card")?.to_string_lossy().into_owned();
+                if !app::SNAP_CARDS.contains(&named.as_str()) {
+                    bail!("--card needs one of {}", app::SNAP_CARDS.join(", "));
+                }
+                card = Some(named);
+            }
+            Some("--story") => story = true,
             Some("--at") => {
                 let seconds = value("--at")?;
                 at = Some(
@@ -545,9 +583,44 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             _ => bail!("unexpected argument {arg:?}\n\n{USAGE}"),
         }
     }
-    if at.is_some() && render.is_none() {
-        bail!("--at only goes with one of the --render options");
+    if at.is_some() && render.is_none() && snap.is_none() {
+        bail!("--at only goes with --snap or one of the --render options");
     }
+    if (place.is_some() || card.is_some() || story) && snap.is_none() {
+        bail!("--place, --card and --story only go with --snap");
+    }
+    if snap.is_some() && render.is_some() {
+        bail!("choose --snap or a --render option, not both");
+    }
+    // A card is pictured where it can be open: at its own place if none is named, and a place
+    // it is never open at is refused rather than pictured without it.
+    if let Some(card) = &card {
+        let places = app::snap_card_places(card);
+        match place.as_deref() {
+            _ if places.is_empty() => {}
+            None => place = Some(places[0].to_owned()),
+            Some(named) if !places.contains(&named) => {
+                bail!(
+                    "the {card} card is only open at the {}",
+                    places.join(" or the ")
+                )
+            }
+            Some(_) => {}
+        }
+    }
+    if story && place.as_deref() != Some("clubhouse") {
+        bail!("--story only goes with --place clubhouse");
+    }
+    if story && card.as_deref() == Some("board") {
+        bail!("the board is put away while a story is told");
+    }
+    let snap = snap.map(|path| app::Snap {
+        path,
+        at: at.unwrap_or(3.0),
+        place,
+        card,
+        story,
+    });
     Ok(Some(Args {
         source: source.unwrap_or(Source::Sample),
         render,
@@ -558,6 +631,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         sample_hilltop,
         hour,
         sounds,
+        snap,
     }))
 }
 
@@ -1732,6 +1806,74 @@ mod tests {
         assert_eq!(args.at, Some(2.5));
         assert!(parse(&["--at", "2.5"]).is_err());
         assert!(parse(&["--render-station", "out.png", "--at", "soon"]).is_err());
+    }
+
+    #[test]
+    fn the_window_can_be_pictured_anywhere_with_any_card_open() {
+        let args = parse(&[
+            "--snap",
+            "board.png",
+            "--place",
+            "clubhouse",
+            "--card",
+            "board",
+            "--at",
+            "5",
+        ])
+        .unwrap()
+        .unwrap();
+        let snap = args.snap.unwrap();
+        assert_eq!(snap.path, PathBuf::from("board.png"));
+        assert_eq!(snap.place.as_deref(), Some("clubhouse"));
+        assert_eq!(snap.card.as_deref(), Some("board"));
+        assert_eq!(snap.at, 5.0);
+        assert_eq!(
+            parse(&["--snap", "a.png"])
+                .unwrap()
+                .unwrap()
+                .snap
+                .unwrap()
+                .at,
+            3.0
+        );
+        assert!(parse(&["--snap", "a.png", "--place", "the moon"]).is_err());
+        assert!(parse(&["--snap", "a.png", "--card", "menu"]).is_err());
+        assert!(parse(&["--place", "green"]).is_err(), "only with --snap");
+        assert!(parse(&["--snap", "a.png", "--render-green", "b.png"]).is_err());
+    }
+
+    #[test]
+    fn a_card_is_pictured_where_it_can_be_open_and_nowhere_else() {
+        let place = |args: &[&str]| parse(args).unwrap().unwrap().snap.unwrap().place;
+        let board = place(&["--snap", "a.png", "--card", "board"]);
+        assert_eq!(
+            board.as_deref(),
+            Some("clubhouse"),
+            "its own place if none is named"
+        );
+        let journal = place(&["--snap", "a.png", "--card", "journal", "--place", "hilltop"]);
+        assert_eq!(journal.as_deref(), Some("hilltop"));
+        let album = place(&["--snap", "a.png", "--card", "album", "--place", "woods"]);
+        assert_eq!(
+            album.as_deref(),
+            Some("woods"),
+            "the album is open anywhere"
+        );
+        assert!(parse(&["--snap", "a.png", "--card", "plans", "--place", "green"]).is_err());
+        assert!(
+            parse(&["--snap", "a.png", "--story"]).is_err(),
+            "a story is in the Clubhouse"
+        );
+        let both = [
+            "--snap",
+            "a.png",
+            "--place",
+            "clubhouse",
+            "--story",
+            "--card",
+            "board",
+        ];
+        assert!(parse(&both).is_err(), "the board is away during a story");
     }
 
     #[test]

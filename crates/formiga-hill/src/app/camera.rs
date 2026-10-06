@@ -3,7 +3,7 @@
 //! photo of what is in it, into the colony's album. The album shows them all, and saves a copy
 //! of any wherever the person chooses. Photos are Hill's: nothing goes to Desktop.
 
-use super::{HillApp, SCENE_HEIGHT, SCENE_WIDTH};
+use super::{Card, HillApp, SCENE_HEIGHT, SCENE_WIDTH, paper};
 use crate::audio::Cue;
 use crate::photos::{self, Album};
 use eframe::egui;
@@ -23,7 +23,6 @@ pub struct Camera {
     pub out: bool,
     /// How wide the viewfinder is, in scene pixels.
     pub width: f32,
-    pub album_open: bool,
     album: Option<Album>,
     /// The photo being looked at in the album, if one is.
     viewing: Option<usize>,
@@ -38,7 +37,6 @@ impl Default for Camera {
         Self {
             out: false,
             width: 192.0,
-            album_open: false,
             album: None,
             viewing: None,
             flashed: None,
@@ -77,21 +75,25 @@ impl HillApp {
         })
     }
 
-    /// The camera and album buttons, for every bar.
+    /// The album and camera buttons, beside the sound wherever the camera can go.
     pub(super) fn camera_buttons(&mut self, ui: &mut egui::Ui) {
-        if ui
-            .selectable_label(self.camera.album_open, "Album")
-            .on_hover_text("Photos taken at the Hill")
-            .clicked()
-        {
-            self.camera.album_open = !self.camera.album_open;
+        let album = ui.add(
+            paper::Button::new("")
+                .picture(paper::picture(paper::pictures::ALBUM), 1)
+                .selected(self.showing(Card::Album)),
+        );
+        paper::name_it(ui, &album, "Album");
+        if album.clicked() {
+            self.toggle(Card::Album);
             self.camera.viewing = None;
         }
-        if ui
-            .selectable_label(self.camera.out, "Camera  C")
-            .on_hover_text("Frame part of the scene and click to take a photo")
-            .clicked()
-        {
+        let camera = ui.add(
+            paper::Button::new("")
+                .picture(paper::picture(paper::pictures::CAMERA), 1)
+                .selected(self.camera.out),
+        );
+        paper::name_it(ui, &camera, "Camera  C");
+        if camera.clicked() {
             self.camera.out = !self.camera.out;
         }
     }
@@ -185,7 +187,7 @@ impl HillApp {
 
     /// The album: every photo, and one looked at closely, with a copy to save.
     pub(super) fn album_window(&mut self, ctx: &egui::Context, now: f32) {
-        if !self.camera.album_open {
+        if !self.showing(Card::Album) {
             return;
         }
         self.album();
@@ -232,98 +234,81 @@ impl HillApp {
             crate::daylight::Clock::Local(offset) => offset,
             crate::daylight::Clock::Held(_) => time::UtcOffset::UTC,
         };
-        let mut open = true;
         let mut chosen = None;
         let mut save = None;
         let mut remove = None;
         let mut back = false;
-        egui::Window::new("Album")
-            .open(&mut open)
-            .default_width(420.0)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                let Some(album) = &self.camera.album else {
-                    return;
-                };
-                if album.photos.is_empty() {
-                    ui.label(
-                        egui::RichText::new(
-                            "No photos yet. Take the camera out (C), frame something, and click.",
-                        )
-                        .italics(),
-                    );
-                    return;
-                }
-                let texture = |name: &str| {
-                    self.camera
-                        .thumbnails
-                        .iter()
-                        .find(|(n, _)| n == name)
-                        .map(|(_, texture)| texture)
-                };
-                match self
-                    .camera
-                    .viewing
-                    .filter(|index| *index < album.photos.len())
-                {
-                    Some(index) => {
-                        let photo = &album.photos[index];
-                        if let Some(texture) = texture(&photo.name) {
-                            let size = egui::vec2(
-                                photo.picture.width() as f32,
-                                photo.picture.height() as f32,
-                            );
-                            let fit = (400.0 / size.x).min(260.0 / size.y).max(1.0);
-                            ui.add(egui::Image::new(texture).fit_to_exact_size(size * fit));
-                        }
-                        ui.label(when(photo.taken, offset));
-                        ui.horizontal(|ui| {
-                            back = ui.button("\u{25c2}  All photos").clicked();
-                            if ui.button("Save a copy\u{2026}").clicked() {
-                                save = Some(index);
-                            }
-                            if ui.button("Take out of the album").clicked() {
-                                remove = Some(index);
-                            }
-                        });
+        self.show_card(ctx, Card::Album, "Album", 0.5, |app, ui| {
+            let Some(album) = &app.camera.album else {
+                return;
+            };
+            if album.photos.is_empty() {
+                paper::aside(
+                    ui,
+                    "No photos yet. Take the camera out (C), frame something, and click.",
+                );
+                return;
+            }
+            let texture = |name: &str| {
+                app.camera
+                    .thumbnails
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, texture)| texture)
+            };
+            let grain = paper::Grain::of(ui.ctx());
+            match app
+                .camera
+                .viewing
+                .filter(|index| *index < album.photos.len())
+            {
+                Some(index) => {
+                    let photo = &album.photos[index];
+                    if let Some(texture) = texture(&photo.name) {
+                        // At whole pixels, as big as the card allows.
+                        let width = photo.picture.width() as f32;
+                        let height = photo.picture.height() as f32;
+                        let ppp = ui.ctx().pixels_per_point();
+                        let fit = (ui.available_width() * ppp / width).floor().max(1.0) / ppp;
+                        framed(ui, texture, egui::vec2(width, height) * fit, grain, false);
                     }
-                    None => {
-                        ui.label(format!(
+                    paper::aside(ui, when(photo.taken, offset));
+                    ui.horizontal_wrapped(|ui| {
+                        back = paper::button(ui, "\u{25c2} All photos").clicked();
+                        if paper::button(ui, "Save a copy\u{2026}").clicked() {
+                            save = Some(index);
+                        }
+                        if paper::button(ui, "Take out of the album").clicked() {
+                            remove = Some(index);
+                        }
+                    });
+                }
+                None => {
+                    paper::aside(
+                        ui,
+                        format!(
                             "{} photo{} \u{b7} click one to look closer",
                             album.photos.len(),
                             if album.photos.len() == 1 { "" } else { "s" }
-                        ));
-                        egui::ScrollArea::vertical()
-                            .max_height(320.0)
-                            .show(ui, |ui| {
-                                ui.horizontal_wrapped(|ui| {
-                                    for (index, photo) in album.photos.iter().enumerate().rev() {
-                                        let Some(texture) = texture(&photo.name) else {
-                                            continue;
-                                        };
-                                        let height = 64.0;
-                                        let width = height * photo.picture.width() as f32
-                                            / photo.picture.height().max(1) as f32;
-                                        let button = egui::Button::image(
-                                            egui::Image::new(texture)
-                                                .fit_to_exact_size(egui::vec2(width, height)),
-                                        );
-                                        if ui
-                                            .add(button)
-                                            .on_hover_text(when(photo.taken, offset))
-                                            .clicked()
-                                        {
-                                            chosen = Some(index);
-                                        }
-                                    }
-                                });
-                            });
-                    }
+                        ),
+                    );
+                    ui.horizontal_wrapped(|ui| {
+                        for (index, photo) in album.photos.iter().enumerate().rev() {
+                            let Some(texture) = texture(&photo.name) else {
+                                continue;
+                            };
+                            let height = grain.len(40);
+                            let width = height * photo.picture.width() as f32
+                                / photo.picture.height().max(1) as f32;
+                            let shown = framed(ui, texture, egui::vec2(width, height), grain, true);
+                            if paper::explain(ui, shown, &when(photo.taken, offset)).clicked() {
+                                chosen = Some(index);
+                            }
+                        }
+                    });
                 }
-            });
-        if !open {
-            self.camera.album_open = false;
-        }
+            }
+        });
         if back {
             self.camera.viewing = None;
         }
@@ -364,6 +349,32 @@ impl HillApp {
         };
         self.notice = Some((line, now));
     }
+}
+
+/// A photo in a plum frame, as a print is mounted; one to click lights up when pointed at.
+fn framed(
+    ui: &mut egui::Ui,
+    texture: &egui::TextureHandle,
+    size: egui::Vec2,
+    grain: paper::Grain,
+    clickable: bool,
+) -> egui::Response {
+    let border = grain.len(2);
+    let sense = if clickable {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, response) = ui.allocate_exact_size(size + egui::vec2(border, border) * 2.0, sense);
+    let lit = clickable && response.hovered();
+    let painter = ui.painter();
+    painter.rect_filled(rect, 0.0, if lit { paper::CHOSEN } else { paper::OUTLINE });
+    let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
+    painter.image(texture.id(), rect.shrink(border), uv, egui::Color32::WHITE);
+    if lit {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    response
 }
 
 /// When a photo was taken, in the person's own time.

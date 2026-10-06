@@ -1,7 +1,7 @@
 //! Expeditions in the window: planning one on the map, choosing the way, the stops along it,
 //! making room in the basket, and the day's page in the journal.
 
-use super::HillApp;
+use super::{HillApp, paper};
 use crate::cast::Id;
 use crate::character::Character;
 use crate::expedition::legs::{Input, LegEvent, Play};
@@ -321,30 +321,26 @@ impl HillApp {
         }
     }
 
-    pub(super) fn expedition_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn expedition_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let cast = &self.arrival.cast;
         let Some(expedition) = &mut self.woods.expedition else {
             return;
         };
-        ui.add(
-            egui::ProgressBar::new(expedition.light_left())
-                .desired_width(70.0)
-                .text("day"),
-        );
-        ui.label(format!("Basket {}/{BASKET}", expedition.basket().len()));
+        paper::meter(ui, expedition.light_left(), "day");
+        paper::slip(ui, format!("Basket {}/{BASKET}", expedition.basket().len()));
         let mut stop = false;
         let mut move_on = false;
         let reduce_motion = cast.reduce_motion();
         match expedition.phase() {
             Phase::Arriving { .. } => {
-                ui.label("Onto the map\u{2026}");
+                paper::slip(ui, "Onto the map\u{2026}");
             }
             Phase::Choosing => {
                 if expedition.can_stop() {
                     let here = PLACES[expedition.at()].stop;
-                    stop = ui.button(capital(verb(here))).clicked();
+                    stop = paper::button(ui, capital(verb(here))).clicked();
                 }
-                ui.label(egui::RichText::new("Click a place on the map to go there.").strong());
+                paper::hint(ui, "Click a place on the map to go there.");
             }
             Phase::Walking { to, .. } => {
                 let name = if expedition.sighted(to) {
@@ -352,37 +348,35 @@ impl HillApp {
                 } else {
                     "somewhere in the mist"
                 };
-                ui.label(format!("On the way to {name}\u{2026}"));
+                paper::slip(ui, format!("On the way to {name}\u{2026}"));
             }
             Phase::Stopped => {
                 if let Some(leg) = expedition.leg_mut() {
                     if let Play::Scavenge { scavenge, .. } = &mut leg.play {
-                        super::scavenging::hands_bar(ui, cast, scavenge);
+                        super::scavenging::hands_tray(ui, cast, scavenge);
                     }
                     let hint = leg_hint(&leg.play, &leg.ground, reduce_motion);
                     if !hint.is_empty() {
-                        ui.label(egui::RichText::new(hint).strong());
+                        paper::hint(ui, hint);
                     }
                     move_on = ui
-                        .add_enabled(!leg.leaving(), egui::Button::new("Move on"))
+                        .add(paper::Button::new("Move on").enabled(!leg.leaving()))
                         .clicked();
                 }
             }
             Phase::MakingRoom => {
-                ui.label(
-                    egui::RichText::new(
-                        "Too much to carry: click something in the basket to leave it behind.",
-                    )
-                    .strong(),
+                paper::hint(
+                    ui,
+                    "Too much to carry: click something in the basket to leave it behind.",
                 );
             }
             Phase::Homeward { .. } | Phase::Over => {
-                ui.label("Heading home\u{2026}");
+                paper::slip(ui, "Heading home\u{2026}");
             }
         }
         let going = matches!(expedition.phase(), Phase::Homeward { .. } | Phase::Over);
         let home = ui
-            .add_enabled(!going, egui::Button::new("Head home"))
+            .add(paper::Button::new("Head home").enabled(!going))
             .clicked();
         let Some(expedition) = &mut self.woods.expedition else {
             return;
@@ -919,49 +913,48 @@ fn tell_leg(
 /// afar, and the latest expeditions' pages, the latest first.
 pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&str) -> String) {
     ui.add_space(6.0);
-    ui.strong(format!("Expeditions \u{b7} {} so far", colony.expeditions));
+    paper::heading(
+        ui,
+        format!("Expeditions \u{b7} {} so far", colony.expeditions),
+    );
     if let Some(furthest) = &colony.furthest {
         let place = map::place(&furthest.place).map_or("somewhere", |place| PLACES[place].name);
         let party: Vec<String> = furthest.party.iter().map(|id| who(id)).collect();
-        ui.label(
-            egui::RichText::new(format!(
+        paper::aside(
+            ui,
+            format!(
                 "The furthest yet: {place}, first reached by {}",
                 listed(&party)
-            ))
-            .small()
-            .italics(),
+            ),
         );
     }
     let found = AFAR
         .iter()
         .filter(|find| colony.finds.contains_key(find.id))
         .count();
-    ui.label(
-        egui::RichText::new(format!("Brought from afar ({found} of {})", AFAR.len())).strong(),
-    );
+    paper::name(ui, format!("Brought from afar ({found} of {})", AFAR.len()));
     for find in &AFAR {
         match colony.finds.get(find.id) {
             Some(record) => {
-                ui.label(egui::RichText::new(find.name).strong());
-                ui.label(egui::RichText::new(find.blurb).small());
-                ui.label(
-                    egui::RichText::new(format!(
+                paper::name(ui, find.name);
+                paper::words(ui, find.blurb);
+                paper::aside(
+                    ui,
+                    format!(
                         "Becomes {} \u{b7} brought home {}\u{d7} \u{b7} first found by {}",
                         find.piece.to_lowercase(),
                         record.count,
                         who(&record.first_by)
-                    ))
-                    .small()
-                    .italics(),
+                    ),
                 );
             }
             None => {
-                ui.label(
-                    egui::RichText::new(format!(
+                paper::faint(
+                    ui,
+                    format!(
                         "??? \u{b7} something {}, a long way into the Woods",
                         find.tier.label()
-                    ))
-                    .weak(),
+                    ),
                 );
             }
         }
@@ -974,8 +967,8 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
             .map(|id| map::place(id).map_or("somewhere", |place| PLACES[place].name))
             .collect();
         let party: Vec<String> = page.party.iter().map(|id| who(id)).collect();
-        ui.label(egui::RichText::new(format!("With {}", listed(&party))).strong());
-        ui.label(egui::RichText::new(capital(&route.join(" \u{2192} "))).small());
+        paper::name(ui, format!("With {}", listed(&party)));
+        paper::words(ui, capital(&route.join(" \u{2192} ")));
         if !page.found.is_empty() {
             let found: Vec<String> = page
                 .found
@@ -985,11 +978,7 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
                     format!("{} ({})", lower(name), who(by))
                 })
                 .collect();
-            ui.label(
-                egui::RichText::new(format!("Found {}", listed(&found)))
-                    .small()
-                    .italics(),
-            );
+            paper::aside(ui, format!("Found {}", listed(&found)));
         }
         if !page.caught.is_empty() {
             let caught: Vec<String> = page
@@ -1002,11 +991,7 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
                         .map_or("something".to_owned(), lower)
                 })
                 .collect();
-            ui.label(
-                egui::RichText::new(format!("Caught and let go: {}", listed(&caught)))
-                    .small()
-                    .italics(),
-            );
+            paper::aside(ui, format!("Caught and let go: {}", listed(&caught)));
         }
     }
 }

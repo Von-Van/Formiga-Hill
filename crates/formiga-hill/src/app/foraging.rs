@@ -1,7 +1,7 @@
 //! Foraging along the hedgerow, in the window: setting off, choosing where to go and what to
 //! pick, putting things back to make room, and bringing the basket home.
 
-use super::HillApp;
+use super::{HillApp, paper};
 use crate::cast::Id;
 use crate::finds::{self, FORAGED};
 use crate::hedgerow::foraging::{BASKET, Ending, Event, Foray, Outset, Phase};
@@ -280,16 +280,12 @@ impl HillApp {
             .then(|| (place.name.to_owned(), (place.stand.0, place.stand.1 - 40.0)))
     }
 
-    pub(super) fn foraging_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn foraging_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let Some((lane, foray)) = &self.woods.foray else {
             return;
         };
-        ui.add(
-            egui::ProgressBar::new(foray.light_left())
-                .desired_width(70.0)
-                .text("light"),
-        );
-        ui.label(format!("Basket {}/{BASKET}", foray.basket().len()));
+        paper::meter(ui, foray.light_left(), "light");
+        paper::slip(ui, format!("Basket {}/{BASKET}", foray.basket().len()));
         let hint = match foray.phase() {
             Phase::Choosing | Phase::Going { .. } => "Click a bush to go to it.",
             Phase::At { .. } if foray.basket().len() >= BASKET => {
@@ -299,12 +295,12 @@ impl HillApp {
             _ => "",
         };
         if !hint.is_empty() {
-            ui.label(egui::RichText::new(hint).strong());
+            paper::hint(ui, hint);
         }
         let _ = lane;
         let leaving = matches!(foray.phase(), Phase::Leaving { .. } | Phase::Over);
         if ui
-            .add_enabled(!leaving, egui::Button::new("Head home"))
+            .add(paper::Button::new("Head home").enabled(!leaving))
             .clicked()
             && let Some((lane, foray)) = &mut self.woods.foray
         {
@@ -321,12 +317,15 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
         .filter(|find| colony.finds.contains_key(find.id))
         .count();
     ui.add_space(6.0);
-    ui.strong(format!(
-        "Picked at the hedgerow ({picked} of {}) \u{b7} {} foray{}",
-        FORAGED.len(),
-        colony.forays,
-        if colony.forays == 1 { "" } else { "s" }
-    ));
+    paper::heading(
+        ui,
+        format!(
+            "Picked at the hedgerow ({picked} of {}) \u{b7} {} foray{}",
+            FORAGED.len(),
+            colony.forays,
+            if colony.forays == 1 { "" } else { "s" }
+        ),
+    );
     for find in &FORAGED {
         match colony.finds.get(find.id) {
             Some(record) => {
@@ -335,17 +334,16 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
                 } else {
                     "Becomes"
                 };
-                ui.label(egui::RichText::new(find.name).strong());
-                ui.label(egui::RichText::new(find.blurb).small());
-                ui.label(
-                    egui::RichText::new(format!(
+                paper::name(ui, find.name);
+                paper::words(ui, find.blurb);
+                paper::aside(
+                    ui,
+                    format!(
                         "{becomes} {} \u{b7} brought home {}\u{d7} \u{b7} first picked with {}",
                         find.piece.to_lowercase(),
                         record.count,
                         who(&record.first_by)
-                    ))
-                    .small()
-                    .italics(),
+                    ),
                 );
             }
             None => {
@@ -361,12 +359,12 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
                 } else {
                     ""
                 };
-                ui.label(
-                    egui::RichText::new(format!(
+                paper::faint(
+                    ui,
+                    format!(
                         "??? \u{b7} something {} at {place}{when}",
                         find.tier.label()
-                    ))
-                    .weak(),
+                    ),
                 );
             }
         }

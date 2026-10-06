@@ -72,6 +72,18 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 
 Any of the pictures takes `--hour <0-24>` to see it at that hour.
 
+The window itself, with its buttons, cards and speech, is pictured with `--snap <png>`: it opens,
+waits `--at` seconds (3 if not given), saves what it shows and closes, letting in nothing the keys
+or pointer do. `--place` opens it somewhere other than the station, `--card` opens one of its
+cards (at the place it belongs to, if none is named), and `--story` begins the first story in the
+Clubhouse. If the picture can't be saved, it says why and fails. Give it a scratch
+`FORMIGA_HILL_DATA_DIR` so a review never touches the colony's memories.
+
+```sh
+FORMIGA_HILL_DATA_DIR=/tmp/hill-review \
+  cargo run -p formiga-hill -- --snap board.png --place clubhouse --card board --hour 12
+```
+
 ## Layout
 
 Most of the code is organised by place, with a few shared pieces underneath that every place uses.
@@ -81,7 +93,9 @@ into what it actually does. Nothing anywhere is written for one particular creat
 ```text
 crates/formiga-hill/src/
   main.rs            arguments, the window, and the renders
-  app.rs, app/       the window: one module per place's controls and windows
+  app.rs, app/       the window: one module per place's controls and cards, and `paper.rs`,
+                     the paper buttons, cards, trays and speech they are all made of
+  lettering.rs       the pixel lettering everything in the window is written in
   trip.rs            Hill's side of the trip: acknowledgement, recall, receipt
   hosting.rs         one colony at a time
   cast.rs            the travellers, ready to draw, and how they get on

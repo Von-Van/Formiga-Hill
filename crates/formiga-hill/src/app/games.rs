@@ -1,7 +1,7 @@
-//! The Fairground's bar: which game to watch and who plays it, the game under way, and what the
+//! The Fairground's tray: which game to watch and who plays it, the game under way, and what the
 //! person is told as it goes; and what Hill remembers of each game once it is seen through.
 
-use super::{HillApp, clock, tools};
+use super::{HillApp, clock, paper, tools};
 use crate::audio::Cue;
 use crate::cast::{Cast, Id};
 use crate::fairground::tug_of_war::{self, Side};
@@ -44,7 +44,7 @@ pub(super) fn reached(height: f32) -> String {
     }
 }
 
-/// A race's finish order as the bar shows it: "1st Tansy 0:11 · 2nd Button 0:12".
+/// A race's finish order as the tray shows it: "1st Tansy 0:11 · 2nd Button 0:12".
 fn finish_order(cast: &Cast, results: &[(Id, f32)]) -> String {
     results
         .iter()
@@ -61,7 +61,7 @@ fn finish_order(cast: &Cast, results: &[(Id, f32)]) -> String {
         .join("  \u{b7}  ")
 }
 
-/// The striker's ranking as the bar shows it: "1st Fig, the bell · 2nd Biscuit, the 8th mark".
+/// The striker's ranking as the tray shows it: "1st Fig, the bell · 2nd Biscuit, the 8th mark".
 fn standings(cast: &Cast, ranking: &[(Id, f32)]) -> String {
     ranking
         .iter()
@@ -78,7 +78,7 @@ fn standings(cast: &Cast, ranking: &[(Id, f32)]) -> String {
         .join("  \u{b7}  ")
 }
 
-/// Hoopla's tally as the bar shows it: "1st Fig, 3 rings · 2nd Biscuit, 1 ring".
+/// Hoopla's tally as the tray shows it: "1st Fig, 3 rings · 2nd Biscuit, 1 ring".
 fn rung(cast: &Cast, tally: &[(Id, u32)]) -> String {
     tally
         .iter()
@@ -104,7 +104,7 @@ pub(super) fn rings_rung(rings: u32) -> String {
     }
 }
 
-/// The two sides of a tug-of-war as the bar says them: "Fig, Moss and Pip against Button, Tansy
+/// The two sides of a tug-of-war as the tray says them: "Fig, Moss and Pip against Button, Tansy
 /// and Biscuit".
 fn against(cast: &Cast, (left, right): &(Vec<Id>, Vec<Id>)) -> String {
     let names = |ids: &[Id]| -> String {
@@ -114,7 +114,7 @@ fn against(cast: &Cast, (left, right): &(Vec<Id>, Vec<Id>)) -> String {
     format!("{} against {}", names(left), names(right))
 }
 
-/// A side of the rope as the bar calls it, by whoever anchors it at the back: "Fig's side".
+/// A side of the rope as the tray calls it, by whoever anchors it at the back: "Fig's side".
 fn side_of(cast: &Cast, sides: &(Vec<Id>, Vec<Id>), side: Side) -> String {
     let ids = match side {
         Side::Left => &sides.0,
@@ -537,7 +537,7 @@ impl HillApp {
 
     /// The game under way, or the offers, a game to choose and who plays it when nobody is
     /// playing.
-    pub(super) fn fairground_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn fairground_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let race_record = self.race_record();
         let striker_record = self.striker_record();
         let hoopla_record = self.hoopla_record();
@@ -551,23 +551,35 @@ impl HillApp {
         match games.playing() {
             None => {
                 tools(ui, &mut self.tool);
-                ui.separator();
-                egui::ComboBox::from_id_salt("game")
-                    .selected_text(self.game.name())
-                    .show_ui(ui, |ui| {
+                let current = self.game;
+                let (_, picked) = paper::menu(
+                    ui,
+                    paper::Button::new(format!("{} \u{25b4}", current.name())),
+                    false,
+                    |ui| {
+                        let mut picked = None;
                         for game in Game::ALL {
-                            ui.selectable_value(&mut self.game, game, game.name());
+                            let button = paper::Button::new(game.name()).selected(game == current);
+                            if ui.add(button).clicked() {
+                                picked = Some(game);
+                            }
                         }
-                    });
+                        picked
+                    },
+                );
+                if let Some(Some(game)) = picked {
+                    self.game = game;
+                }
                 let travellers = cast.members.len();
                 let enough = self.picks.enough(self.game, travellers);
-                let watch = ui.add_enabled(enough, egui::Button::new("Watch"));
                 let why = match self.game.players() {
+                    _ if enough => "",
                     _ if travellers < 2 => "It takes two or more travellers to play this.",
                     Players::Sides => "Put someone on each side, or nobody for them to sort.",
                     _ => "Pick two or more to race, or nobody for everyone.",
                 };
-                start = watch.on_disabled_hover_text(why).clicked();
+                let watch = ui.add(paper::Button::new("Watch").enabled(enough));
+                start = paper::explain(ui, watch, why).clicked();
                 let game = self.game;
                 match game.players() {
                     Players::It => {
@@ -579,14 +591,31 @@ impl HillApp {
                             });
                         let mut it = self.picks.of(game).first().copied();
                         let chosen = it.map_or(turn.clone(), |id| name(cast, Some(id)));
-                        egui::ComboBox::from_id_salt("it")
-                            .selected_text(format!("It: {chosen}"))
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut it, None, turn);
-                                for member in &cast.members {
-                                    ui.selectable_value(&mut it, Some(member.id), &member.name);
+                        let (_, pick) = paper::menu(
+                            ui,
+                            paper::Button::new(format!("It: {chosen} \u{25b4}")),
+                            false,
+                            |ui| {
+                                let mut pick = None;
+                                if ui
+                                    .add(paper::Button::new(&turn).selected(it.is_none()))
+                                    .clicked()
+                                {
+                                    pick = Some(None);
                                 }
-                            });
+                                for member in &cast.members {
+                                    let button = paper::Button::new(&member.name)
+                                        .selected(it == Some(member.id));
+                                    if ui.add(button).clicked() {
+                                        pick = Some(Some(member.id));
+                                    }
+                                }
+                                pick
+                            },
+                        );
+                        if let Some(Some(new)) = pick {
+                            it = new;
+                        }
                         if it != self.picks.of(game).first().copied() {
                             match it {
                                 Some(id) => self.picks.toggle(game, id),
@@ -596,7 +625,7 @@ impl HillApp {
                         if let Some(best) = it.or(games.hide_and_seek.next_it()).and_then(|id| {
                             self.memories.colony().quickest_seekers.get(&id.to_string())
                         }) {
-                            ui.label(format!("Quickest: {}", clock(*best)));
+                            paper::slip(ui, format!("Quickest: {}", clock(*best)));
                         }
                     }
                     Players::Some { .. } => {
@@ -617,20 +646,28 @@ impl HillApp {
                             Game::SackRace => "Racing",
                             _ => "Having a go",
                         };
-                        egui::ComboBox::from_id_salt("players")
-                            .selected_text(format!("{label}: {who}"))
-                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                            .show_ui(ui, |ui| {
-                                if ui.selectable_label(picked.is_empty(), "Everyone").clicked() {
-                                    self.picks.clear(game);
+                        let picks = &mut self.picks;
+                        paper::menu(
+                            ui,
+                            paper::Button::new(format!("{label}: {who} \u{25b4}")),
+                            true,
+                            |ui| {
+                                let everyone =
+                                    paper::Button::new("Everyone").selected(picked.is_empty());
+                                if ui.add(everyone).clicked() {
+                                    picks.clear(game);
                                 }
                                 for member in &cast.members {
-                                    let mut on = picked.contains(&member.id);
-                                    if ui.checkbox(&mut on, &member.name).changed() {
-                                        self.picks.toggle(game, member.id);
+                                    let on = picked.contains(&member.id);
+                                    if ui
+                                        .add(paper::Button::new(&member.name).selected(on))
+                                        .clicked()
+                                    {
+                                        picks.toggle(game, member.id);
                                     }
                                 }
-                            });
+                            },
+                        );
                         let record = match game {
                             Game::SackRace => race_record
                                 .map(|(who, seconds)| format!("Record: {who} {}", clock(seconds))),
@@ -642,7 +679,7 @@ impl HillApp {
                             }),
                         };
                         if let Some(record) = record {
-                            ui.label(record);
+                            paper::slip(ui, record);
                         }
                         let last = match game {
                             Game::SackRace => finish_order(cast, games.sack_race.results()),
@@ -650,7 +687,8 @@ impl HillApp {
                             _ => standings(cast, &games.high_striker.ranking()),
                         };
                         if !last.is_empty() {
-                            ui.label("Last time").on_hover_text(last);
+                            let slip = paper::slip(ui, "Last time");
+                            paper::explain(ui, slip, &last);
                         }
                     }
                     Players::Sides => {
@@ -668,52 +706,61 @@ impl HillApp {
                                 .collect();
                             tug_of_war::sort(cast, &everyone)
                         };
-                        egui::ComboBox::from_id_salt("sides")
-                            .selected_text(format!("Sides: {chosen}"))
-                            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
-                            .show_ui(ui, |ui| {
+                        let picks = &mut self.picks;
+                        let (sides, _) = paper::menu(
+                            ui,
+                            paper::Button::new(format!("Sides: {chosen} \u{25b4}")),
+                            true,
+                            |ui| {
                                 let sorting = left.is_empty() && right.is_empty();
-                                if ui
-                                    .selectable_label(sorting, "Let the colony sort itself")
-                                    .on_hover_text(against(cast, &sorted))
-                                    .clicked()
-                                {
-                                    self.picks.unsort();
+                                let sort = ui.add(
+                                    paper::Button::new("Let the colony sort itself")
+                                        .selected(sorting),
+                                );
+                                if paper::explain(ui, sort, &against(cast, &sorted)).clicked() {
+                                    picks.unsort();
                                 }
                                 egui::Grid::new("sides-grid").show(ui, |ui| {
                                     for member in &cast.members {
-                                        ui.label(&member.name);
-                                        let now_on = self.picks.side(member.id);
+                                        paper::words(ui, &member.name);
+                                        let now_on = picks.side(member.id);
                                         for (label, side) in [
                                             ("Left", Some(Side::Left)),
                                             ("Right", Some(Side::Right)),
                                             ("Out", None),
                                         ] {
-                                            if ui.selectable_label(now_on == side, label).clicked()
-                                            {
-                                                self.picks.put(member.id, side);
+                                            let button =
+                                                paper::Button::new(label).selected(now_on == side);
+                                            if ui.add(button).clicked() {
+                                                picks.put(member.id, side);
                                             }
                                         }
                                         ui.end_row();
                                     }
                                 });
-                            })
-                            .response
-                            .on_hover_text(if left.is_empty() && right.is_empty() {
-                                against(cast, &sorted)
-                            } else {
-                                against(cast, &(left.clone(), right.clone()))
-                            });
+                            },
+                        );
+                        let about = if left.is_empty() && right.is_empty() {
+                            against(cast, &sorted)
+                        } else {
+                            against(cast, &(left.clone(), right.clone()))
+                        };
+                        paper::explain(ui, sides, &about);
                         if let Some((who, wins)) = &tug_record {
-                            ui.label(format!("Most wins: {who}, {wins}"));
+                            paper::slip(ui, format!("Most wins: {who}, {wins}"));
                         }
                         if let Some(winners) = games.tug_of_war.winners() {
                             let sides = games.tug_of_war.sides();
-                            ui.label("Last time").on_hover_text(format!(
-                                "{} won: {}",
-                                side_of(cast, &sides, winners),
-                                against(cast, &sides)
-                            ));
+                            let slip = paper::slip(ui, "Last time");
+                            paper::explain(
+                                ui,
+                                slip,
+                                &format!(
+                                    "{} won: {}",
+                                    side_of(cast, &sides, winners),
+                                    against(cast, &sides)
+                                ),
+                            );
                         }
                     }
                 }
@@ -749,32 +796,38 @@ impl HillApp {
                     }
                     tug_of_war::Phase::Ready => String::new(),
                 };
-                ui.label(status);
+                paper::slip(ui, status);
                 if matches!(
                     tug.phase(),
                     tug_of_war::Phase::TakingUp { .. }
                         | tug_of_war::Phase::Strain { .. }
                         | tug_of_war::Phase::Pulling { .. }
                 ) {
-                    call_off = ui.button("Call it off").clicked();
+                    call_off = paper::button(ui, "Call it off").clicked();
                 }
             }
             Some(Game::HideAndSeek) => match games.hide_and_seek.phase() {
                 Phase::Counting { .. } => {
-                    ui.label(format!(
-                        "{} is counting. Everyone's hiding!",
-                        name(cast, games.hide_and_seek.seeker())
-                    ));
-                    call_off = ui.button("Call it off").clicked();
+                    paper::slip(
+                        ui,
+                        format!(
+                            "{} is counting. Everyone's hiding!",
+                            name(cast, games.hide_and_seek.seeker())
+                        ),
+                    );
+                    call_off = paper::button(ui, "Call it off").clicked();
                 }
                 Phase::Seeking { .. } => {
                     let (found, of) = games.hide_and_seek.tally();
-                    ui.label(format!(
-                        "{} is looking  \u{b7}  found {found} of {of}  \u{b7}  {}",
-                        name(cast, games.hide_and_seek.seeker()),
-                        clock(games.hide_and_seek.searching_for(now))
-                    ));
-                    call_off = ui.button("Call it off").clicked();
+                    paper::slip(
+                        ui,
+                        format!(
+                            "{} is looking  \u{b7}  found {found} of {of}  \u{b7}  {}",
+                            name(cast, games.hide_and_seek.seeker()),
+                            clock(games.hide_and_seek.searching_for(now))
+                        ),
+                    );
+                    call_off = paper::button(ui, "Call it off").clicked();
                 }
                 Phase::Ready | Phase::Over { .. } => {}
             },
@@ -807,9 +860,9 @@ impl HillApp {
                         finish_order(cast, race.results())
                     }
                 };
-                ui.label(status);
+                paper::slip(ui, status);
                 if !matches!(race.phase(), sack_race::Phase::Over { .. }) {
-                    call_off = ui.button("Call it off").clicked();
+                    call_off = paper::button(ui, "Call it off").clicked();
                 }
             }
             Some(Game::HighStriker) => {
@@ -836,11 +889,11 @@ impl HillApp {
                                 reached(*height)
                             ));
                         }
-                        ui.label(status);
-                        call_off = ui.button("Call it off").clicked();
+                        paper::slip(ui, status);
+                        call_off = paper::button(ui, "Call it off").clicked();
                     }
                     _ => {
-                        ui.label(standings(cast, &striker.ranking()));
+                        paper::slip(ui, standings(cast, &striker.ranking()));
                     }
                 }
             }
@@ -862,11 +915,11 @@ impl HillApp {
                                 rings_rung(*rings)
                             ));
                         }
-                        ui.label(status);
-                        call_off = ui.button("Call it off").clicked();
+                        paper::slip(ui, status);
+                        call_off = paper::button(ui, "Call it off").clicked();
                     }
                     _ => {
-                        ui.label(rung(cast, &stall.tally()));
+                        paper::slip(ui, rung(cast, &stall.tally()));
                     }
                 }
             }
@@ -883,12 +936,6 @@ impl HillApp {
         if call_off {
             games.stop(ground, now);
         }
-        if let Some((notice, _)) = &self.notice {
-            ui.label(egui::RichText::new(notice).italics());
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            self.go_menu(ui, now);
-        });
     }
 
     /// The quickest sack race among those here: who, and in how long.

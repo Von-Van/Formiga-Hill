@@ -47,7 +47,7 @@ pub fn draw_text_shadowed(
     draw_text(canvas, x, y, text, color);
 }
 
-fn glyph(letter: char) -> Option<[u8; 7]> {
+pub(crate) fn glyph(letter: char) -> Option<[u8; 7]> {
     Some(match letter {
         'A' => [
             0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001,

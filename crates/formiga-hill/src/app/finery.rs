@@ -2,7 +2,7 @@
 //! dress-up box, and carrying what everyone has on, who shines, and whatever was won at hoopla,
 //! from place to place for the rest of the visit. None of it goes home.
 
-use super::{Area, HillApp};
+use super::{Area, Card, HillApp, paper};
 use crate::audio::Cue;
 use crate::cast::Id;
 use crate::character::{Brushing, Offer};
@@ -143,79 +143,35 @@ impl HillApp {
 
     /// The dress-up box, open: every piece to pick, and a way to take one off.
     pub(super) fn dress_up_window(&mut self, ctx: &egui::Context) {
-        if !self.dress_up || self.area != Area::Green {
+        if self.area != Area::Green {
             return;
         }
-        if self.costume_icons.is_empty() {
-            self.costume_icons = costume::PIECES
-                .iter()
-                .map(|piece| {
-                    let icon = costume::art::icon(piece.id);
-                    let scaled = scaled(&icon, 3);
-                    ctx.load_texture(
-                        format!("costume-{}", piece.id),
-                        egui::ColorImage::from_rgba_unmultiplied(
-                            [scaled.width() as usize, scaled.height() as usize],
-                            &scaled.rgba_bytes(),
-                        ),
-                        egui::TextureOptions::NEAREST,
-                    )
-                })
-                .collect();
-        }
-        let mut open = true;
-        egui::Window::new("The dress-up box")
-            .open(&mut open)
-            .default_width(260.0)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.label(
-                    egui::RichText::new(
-                        "Pick something, then click someone to put it on. Just for the visit.",
-                    )
-                    .italics(),
-                );
-                ui.add_space(4.0);
-                egui::Grid::new("pieces").num_columns(2).show(ui, |ui| {
-                    for (index, piece) in costume::PIECES.iter().enumerate() {
-                        let chosen = self.picked == Some(Pick::Piece(piece.id));
-                        let image = egui::Image::new(&self.costume_icons[index])
-                            .fit_to_exact_size(egui::vec2(27.0, 27.0));
-                        let button =
-                            egui::Button::image_and_text(image, piece.name).selected(chosen);
-                        if ui.add(button).clicked() {
-                            self.picked = (!chosen).then_some(Pick::Piece(piece.id));
-                        }
-                        if index % 2 == 1 {
-                            ui.end_row();
-                        }
+        self.show_card(ctx, Card::DressUp, "The dress-up box", 0.4, |app, ui| {
+            paper::aside(
+                ui,
+                "Pick something, then click someone to put it on. Just for the visit.",
+            );
+            ui.horizontal_wrapped(|ui| {
+                for piece in costume::PIECES.iter() {
+                    let chosen = app.picked == Some(Pick::Piece(piece.id));
+                    let button = paper::Button::new(piece.name)
+                        .picture(costume::art::icon(piece.id), 2)
+                        .selected(chosen);
+                    if ui.add(button).clicked() {
+                        app.picked = (!chosen).then_some(Pick::Piece(piece.id));
                     }
-                });
-                ui.separator();
-                let taking_off = self.picked == Some(Pick::TakeOff);
-                if ui
-                    .selectable_label(taking_off, "Take a costume off")
-                    .clicked()
-                {
-                    self.picked = (!taking_off).then_some(Pick::TakeOff);
                 }
             });
-        if !open {
-            self.dress_up = false;
-            self.picked = None;
-        }
+            paper::rule(ui);
+            let taking_off = app.picked == Some(Pick::TakeOff);
+            if ui
+                .add(paper::Button::new("Take a costume off").selected(taking_off))
+                .clicked()
+            {
+                app.picked = (!taking_off).then_some(Pick::TakeOff);
+            }
+        });
     }
-}
-
-/// A small picture made bigger by whole pixels, for showing in the window.
-fn scaled(picture: &formiga_art::Canvas, by: u32) -> formiga_art::Canvas {
-    let mut out = formiga_art::Canvas::new(picture.width() * by, picture.height() * by);
-    for y in 0..out.height() as i32 {
-        for x in 0..out.width() as i32 {
-            out.set(x, y, picture.get(x / by as i32, y / by as i32));
-        }
-    }
-    out
 }
 
 fn lower_first(text: &str) -> String {

@@ -1,7 +1,7 @@
-//! The Clubhouse in the window: the notice board of stories, a story played out by the fire, and
-//! the words of it in the bottom bar.
+//! The Clubhouse in the window: the notice board of stories, and a story played out by the fire,
+//! its words in a box over whoever says them.
 
-use super::{HillApp, INK, PAPER, tools};
+use super::{Area, Card, HillApp, paper, tools};
 use crate::clubhouse::Clubhouse;
 use crate::story::{Director, Origin, Package, Story, souvenirs};
 use eframe::egui;
@@ -60,7 +60,7 @@ impl HillApp {
             Ok(director) => {
                 room.ground().reserve(director.players());
                 self.story = Some((package.to_owned(), director));
-                self.board = false;
+                self.card = None;
             }
             Err(problem) => self.notice = Some((problem, now)),
         }
@@ -116,98 +116,73 @@ impl HillApp {
         self.story = None;
     }
 
-    pub(super) fn clubhouse_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn clubhouse_tray(&mut self, ui: &mut egui::Ui, _now: f32) {
         if self.story.is_some() {
-            // The camera is to hand during a story too: what is played out is worth a photo.
-            self.sound_button(ui);
-            self.camera_buttons(ui);
-            self.story_panel(ui);
+            self.story_tray(ui);
             return;
         }
         tools(ui, &mut self.tool);
-        ui.separator();
-        if ui
-            .selectable_label(self.board, "The notice board")
-            .on_hover_text("The stories pinned up in the Clubhouse")
-            .clicked()
-        {
-            self.board = !self.board;
+        let board =
+            ui.add(paper::Button::new("The notice board").selected(self.showing(Card::Board)));
+        if paper::explain(ui, board, "The stories pinned up in the Clubhouse").clicked() {
+            self.toggle(Card::Board);
         }
-        if let Some((notice, _)) = &self.notice {
-            ui.label(egui::RichText::new(notice).italics());
-        }
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            self.go_menu(ui, now);
-        });
     }
 
     /// The notice board, read close up: every story, and a way to start one.
     pub(super) fn board_window(&mut self, ctx: &egui::Context, now: f32) {
-        if !self.board || self.area != super::Area::Clubhouse || self.story.is_some() {
+        if self.area != Area::Clubhouse || self.story.is_some() {
             return;
         }
         let travellers = self.arrival.cast.members.len();
         let mut start = None;
-        let mut open = true;
         let mut open_shelf = false;
-        egui::Window::new("The notice board")
-            .open(&mut open)
-            .default_width(300.0)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.label(
-                    egui::RichText::new("Stories to play out by the fire. \u{2605} once finished.")
-                        .italics(),
-                );
-                ui.add_space(4.0);
-                for (package, story) in self.on_the_board() {
-                    let finished = self
-                        .memories
-                        .colony()
-                        .stories
-                        .contains(&format!("{}/{}", package.id, story.id));
-                    let label = if finished {
-                        format!("{}  \u{2605}", story.title)
-                    } else {
-                        story.title.clone()
-                    };
-                    let fits = travellers >= story.min_cast;
-                    let button = ui
-                        .add_enabled(fits, egui::Button::new(label))
-                        .on_disabled_hover_text(format!(
-                            "Needs at least {} travellers",
-                            story.min_cast
-                        ));
-                    // A community story says whose it is.
-                    let button = if self.library.origin(&package.id) == Some(Origin::Official) {
-                        button
-                    } else {
-                        button.on_hover_text(format!("By {}", package.author))
-                    };
-                    if button.clicked() {
-                        start = Some((package.id.clone(), story.id.clone()));
+        self.show_card(ctx, Card::Board, "The notice board", 0.42, |app, ui| {
+            paper::aside(
+                ui,
+                "Stories to play out by the fire. \u{2605} once finished.",
+            );
+            for (package, story) in app.on_the_board() {
+                let finished = app
+                    .memories
+                    .colony()
+                    .stories
+                    .contains(&format!("{}/{}", package.id, story.id));
+                let label = if finished {
+                    format!("{}  \u{2605}", story.title)
+                } else {
+                    story.title.clone()
+                };
+                let fits = travellers >= story.min_cast;
+                let button = ui.add(paper::Button::new(label).enabled(fits));
+                // A community story says whose it is; one too big for the visit says so.
+                let about = if !fits {
+                    format!("Needs at least {} travellers", story.min_cast)
+                } else if app.library.origin(&package.id) == Some(Origin::Official) {
+                    String::new()
+                } else {
+                    format!("By {}", package.author)
+                };
+                if paper::explain(ui, button, &about).clicked() {
+                    start = Some((package.id.clone(), story.id.clone()));
+                }
+            }
+            let kept = &app.memories.colony().souvenirs;
+            if !kept.is_empty() {
+                paper::heading(ui, "Kept");
+                for id in kept {
+                    if let Some(name) = souvenirs::name(id) {
+                        paper::words(ui, name);
                     }
                 }
-                let kept = &self.memories.colony().souvenirs;
-                if !kept.is_empty() {
-                    ui.separator();
-                    ui.label(egui::RichText::new("Kept").strong());
-                    for id in kept {
-                        if let Some(name) = souvenirs::name(id) {
-                            ui.label(name);
-                        }
-                    }
-                }
-                ui.separator();
-                if ui.small_button("Story packages\u{2026}").clicked() {
-                    open_shelf = true;
-                }
-            });
+            }
+            paper::rule(ui);
+            if paper::button(ui, "Story packages\u{2026}").clicked() {
+                open_shelf = true;
+            }
+        });
         if open_shelf {
-            self.shelf = true;
-        }
-        if !open {
-            self.board = false;
+            self.card = Some(Card::Shelf);
         }
         if let Some((package, story)) = start {
             self.start_story(&package, &story, now);
@@ -217,96 +192,66 @@ impl HillApp {
     /// Every package Hill found, where it came from, and a way to set any but Hill's own aside;
     /// then any that would not load, and why, and where community packages go.
     pub(super) fn shelf_window(&mut self, ctx: &egui::Context) {
-        if !self.shelf {
-            return;
-        }
-        let mut open = true;
         let mut changes = Vec::new();
-        egui::Window::new("Story packages")
-            .open(&mut open)
-            .default_width(340.0)
-            .collapsible(false)
-            .show(ctx, |ui| {
-                egui::ScrollArea::vertical()
-                    .max_height(320.0)
-                    .show(ui, |ui| {
-                        for (package, origin) in
-                            self.library.packages.iter().zip(&self.library.origins)
-                        {
-                            let stories = package.stories.len();
-                            let about = format!(
-                                "by {} \u{b7} version {} \u{b7} {stories} {}",
-                                package.author,
-                                package.version,
-                                if stories == 1 { "story" } else { "stories" }
-                            );
-                            ui.horizontal(|ui| {
-                                if *origin == Origin::Official {
-                                    ui.label(egui::RichText::new(&package.title).strong());
-                                    ui.label(egui::RichText::new("Hill's own").small().weak());
-                                } else {
-                                    let mut on = !self.set_aside.contains(&package.id);
-                                    if ui
-                                        .checkbox(
-                                            &mut on,
-                                            egui::RichText::new(&package.title).strong(),
-                                        )
-                                        .on_hover_text(if on {
-                                            "On the notice board. Untick to set it aside."
-                                        } else {
-                                            "Set aside: its stories are off the notice board."
-                                        })
-                                        .changed()
-                                    {
-                                        changes.push((package.id.clone(), !on));
-                                    }
-                                    if *origin == Origin::Named {
-                                        ui.label(
-                                            egui::RichText::new("named to try").small().weak(),
-                                        );
-                                    }
-                                }
-                            });
-                            ui.label(egui::RichText::new(about).small());
-                            ui.add_space(4.0);
-                        }
-                        if !self.library.problems.is_empty() {
-                            ui.separator();
-                            ui.label(egui::RichText::new("Would not load").strong());
-                            for problem in &self.library.problems {
-                                ui.label(egui::RichText::new(problem.to_string()).small());
-                            }
-                        }
-                    });
-                ui.separator();
-                match &self.packages_folder {
-                    Some(folder) => {
-                        ui.label(
-                            egui::RichText::new(
-                                "To add a story, put its package folder here and come back to \
-                                 the Hill:",
-                            )
-                            .small(),
+        self.show_card(ctx, Card::Shelf, "Story packages", 0.5, |app, ui| {
+            for (package, origin) in app.library.packages.iter().zip(&app.library.origins) {
+                let stories = package.stories.len();
+                let about = format!(
+                    "by {} \u{b7} version {} \u{b7} {stories} {}",
+                    package.author,
+                    package.version,
+                    if stories == 1 { "story" } else { "stories" }
+                );
+                ui.horizontal_wrapped(|ui| {
+                    if *origin == Origin::Official {
+                        paper::words(ui, &package.title);
+                        paper::faint(ui, "Hill's own");
+                    } else {
+                        let on = !app.set_aside.contains(&package.id);
+                        let toggle = ui.add(
+                            paper::Button::new(if on { "On the board" } else { "Set aside" })
+                                .selected(on),
                         );
-                        ui.add(egui::Label::new(
-                            egui::RichText::new(folder.display().to_string())
-                                .small()
-                                .monospace(),
-                        ));
-                    }
-                    None => {
-                        ui.label(
-                            egui::RichText::new(
-                                "There is nowhere to keep packages on this computer.",
-                            )
-                            .small(),
+                        let toggle = paper::explain(
+                            ui,
+                            toggle,
+                            if on {
+                                "On the notice board. Click to set it aside."
+                            } else {
+                                "Set aside: its stories are off the notice board."
+                            },
                         );
+                        if toggle.clicked() {
+                            changes.push((package.id.clone(), on));
+                        }
+                        paper::words(ui, &package.title);
+                        if *origin == Origin::Named {
+                            paper::faint(ui, "named to try");
+                        }
                     }
+                });
+                paper::aside(ui, about);
+            }
+            if !app.library.problems.is_empty() {
+                paper::heading(ui, "Would not load");
+                for problem in &app.library.problems {
+                    paper::aside(ui, problem.to_string());
                 }
-            });
-        if !open {
-            self.shelf = false;
-        }
+            }
+            paper::rule(ui);
+            match &app.packages_folder {
+                Some(folder) => {
+                    paper::aside(
+                        ui,
+                        "To add a story, put its package folder here and come back to the Hill:",
+                    );
+                    paper::words(ui, folder.display().to_string());
+                }
+                None => {
+                    paper::aside(ui, "There is nowhere to keep packages on this computer.");
+                }
+            }
+        });
         for (id, aside) in changes {
             self.set_aside.set(&id, aside);
         }
@@ -316,59 +261,70 @@ impl HillApp {
         }
     }
 
-    /// The story's words: who is speaking and what they say, or the choice to make.
-    fn story_panel(&mut self, ui: &mut egui::Ui) {
+    /// The story's controls on the tray: its title, reading on or the choice to make, and the way
+    /// out. What is said is over the speaker's head, in `story_speech`.
+    fn story_tray(&mut self, ui: &mut egui::Ui) {
         let Some((_, director)) = &mut self.story else {
             return;
         };
-        let mut leave = false;
-        egui::Frame::new()
-            .fill(PAPER)
-            .corner_radius(6.0)
-            .inner_margin(egui::Margin::symmetric(12, 8))
-            .show(ui, |ui| {
-                ui.set_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    ui.label(
-                        egui::RichText::new(director.title())
-                            .italics()
-                            .color(INK)
-                            .small(),
-                    );
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        leave = ui.small_button("Leave the story").clicked();
-                    });
-                });
-                if let Some(shown) = director.shown().cloned() {
-                    if let Some((_, name)) = &shown.speaker {
-                        ui.label(egui::RichText::new(name).strong().color(INK));
-                    }
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(egui::RichText::new(&shown.text).color(INK).size(16.0));
-                    });
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Next  \u{25b8}").clicked() {
-                            director.read_on();
-                        }
-                    });
-                } else if !director.choices().is_empty() {
-                    let mut chosen = None;
-                    ui.horizontal_wrapped(|ui| {
-                        for (index, choice) in director.choices().into_iter().enumerate() {
-                            if ui.button(format!("{}  {choice}", index + 1)).clicked() {
-                                chosen = Some(index);
-                            }
-                        }
-                    });
-                    if let Some(index) = chosen {
-                        director.choose(index);
-                    }
-                } else {
-                    ui.label(egui::RichText::new("\u{2026}").color(INK));
+        ui.add(
+            paper::Words::new(format!("\u{201c}{}\u{201d}", director.title()))
+                .slip()
+                .color(paper::FADED)
+                .most(160),
+        );
+        if director.shown().is_some() {
+            let next = ui.add(paper::Button::new("Next \u{25b8}"));
+            if paper::explain(ui, next, "Or click the scene, or press Space").clicked() {
+                director.read_on();
+            }
+        } else if !director.choices().is_empty() {
+            let mut chosen = None;
+            paper::hint(ui, "What happens next?");
+            for (index, choice) in director.choices().into_iter().enumerate() {
+                if paper::button(ui, format!("{}  {choice}", index + 1)).clicked() {
+                    chosen = Some(index);
                 }
-            });
-        if leave {
+            }
+            if let Some(index) = chosen {
+                director.choose(index);
+            }
+        }
+        if paper::button(ui, "Leave the story").clicked() {
             self.leave_story();
         }
+    }
+
+    /// What is being said in the story, in a box over the speaker; the story's own telling in a
+    /// caption at the top.
+    pub(super) fn story_speech(
+        &mut self,
+        ctx: &egui::Context,
+        painter: &egui::Painter,
+        scene: egui::Rect,
+        now: f32,
+    ) {
+        let (Some(room), Some((_, director))) = (&mut self.clubhouse, &self.story) else {
+            return;
+        };
+        let Some(shown) = director.shown() else {
+            return;
+        };
+        let point = scene.width() / super::SCENE_WIDTH as f32;
+        let (head, name) = match &shown.speaker {
+            Some((id, name)) => (
+                room.ground()
+                    .head(*id, now)
+                    .map(|(x, y)| scene.min + egui::vec2(x, y - 2.0) * point),
+                Some(name.as_str()),
+            ),
+            None => (None, None),
+        };
+        let voice = if shown.speaker.is_some() {
+            paper::Voice::Speaker
+        } else {
+            paper::Voice::Narrator
+        };
+        paper::speech(ctx, painter, scene, head, name, &shown.text, voice, true);
     }
 }

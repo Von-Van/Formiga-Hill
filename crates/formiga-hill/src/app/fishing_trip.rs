@@ -1,7 +1,7 @@
 //! Fishing at the pool, in the window: setting off, casting and striking, reeling in, and
 //! remembering what was caught.
 
-use super::HillApp;
+use super::{HillApp, paper};
 use crate::cast::Id;
 use crate::finds;
 use crate::fishing::angling::{Angling, Event, Outset, Phase};
@@ -170,16 +170,12 @@ impl HillApp {
         Some((haunt.name().to_owned(), (x, y - 10.0)))
     }
 
-    pub(super) fn fishing_bar(&mut self, ui: &mut egui::Ui, now: f32) {
+    pub(super) fn fishing_tray(&mut self, ui: &mut egui::Ui, now: f32) {
         let Some((_, angling)) = &self.woods.fishing else {
             return;
         };
-        ui.add(
-            egui::ProgressBar::new(angling.light_left())
-                .desired_width(70.0)
-                .text("light"),
-        );
-        ui.label(format!("Landed {}", angling.creel().len()));
+        paper::meter(ui, angling.light_left(), "light");
+        paper::slip(ui, format!("Landed {}", angling.creel().len()));
         let hint = match angling.phase() {
             Phase::Ready => "Click the water to cast.",
             Phase::Waiting { .. } => "Strike (click or Space) when the float goes under.",
@@ -188,11 +184,11 @@ impl HillApp {
             _ => "",
         };
         if !hint.is_empty() {
-            ui.label(egui::RichText::new(hint).strong());
+            paper::hint(ui, hint);
         }
         let leaving = matches!(angling.phase(), Phase::Leaving { .. } | Phase::Over);
         if ui
-            .add_enabled(!leaving, egui::Button::new("Head home"))
+            .add(paper::Button::new("Head home").enabled(!leaving))
             .clicked()
             && let Some((ground, angling)) = &mut self.woods.fishing
         {

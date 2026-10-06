@@ -921,7 +921,7 @@ impl Hunt {
         }
     }
 
-    /// The direction of a way at the fork the party is at, for the bar.
+    /// The direction of a way at the fork the party is at, for the tray.
     pub fn way_dir(&self, way: usize) -> Option<Dir> {
         let fork: &Fork = self.route.forks.get(self.fork()?)?;
         fork.ways.get(way).copied()

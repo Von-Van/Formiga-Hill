@@ -2,8 +2,8 @@
 //! moving them about, and the journal of everything the Woods has turned up. Building is in
 //! `plans`.
 
-use super::HillApp;
 use super::departures::grown_since;
+use super::{Card, HillApp, paper};
 use crate::audio::Cue;
 use crate::finds::{self, CATALOGUE, Kind, growing, plans};
 use crate::hilltop::{self, Arrangement, SPOTS, Standing};
@@ -208,7 +208,7 @@ impl HillApp {
         Some((label, (x, top - 6.0)))
     }
 
-    pub(super) fn hilltop_bar(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn hilltop_tray(&mut self, ui: &mut egui::Ui) {
         let colony = self.memories.colony();
         match self.placing.clone() {
             Some(Placing::FromSatchel(id)) => {
@@ -219,24 +219,30 @@ impl HillApp {
                     Some(find) => format!("Choose a spot for {}.", find.piece.to_lowercase()),
                     None => "Choose a spot.".to_owned(),
                 };
-                ui.label(line);
-                if ui.button("Cancel").clicked() {
+                paper::slip(ui, line);
+                if paper::button(ui, "Cancel").clicked() {
                     self.placing = None;
                 }
             }
             Some(Placing::Lifted(standing)) => {
-                ui.label(format!(
-                    "Choose a spot to plant {} again.",
-                    standing.name().to_lowercase()
-                ));
-                if ui.button("Cancel").clicked() {
+                paper::slip(
+                    ui,
+                    format!(
+                        "Choose a spot to plant {} again.",
+                        standing.name().to_lowercase()
+                    ),
+                );
+                if paper::button(ui, "Cancel").clicked() {
                     self.placing = None;
                 }
             }
             Some(Placing::Plan(plan)) => {
                 let name = plans::plan(plan).map_or("it", |plan| plan.name);
-                ui.label(format!("Choose a spot to build {}.", name.to_lowercase()));
-                if ui.button("Cancel").clicked() {
+                paper::slip(
+                    ui,
+                    format!("Choose a spot to build {}.", name.to_lowercase()),
+                );
+                if paper::button(ui, "Cancel").clicked() {
                     self.placing = None;
                 }
             }
@@ -244,19 +250,22 @@ impl HillApp {
                 let standing = colony.hilltop.get(&spot);
                 let name = standing.map_or("", Standing::name);
                 let built = standing.is_some_and(|standing| standing.plan().is_some());
-                ui.label(format!("Moving {}: choose a spot.", name.to_lowercase()));
+                paper::slip(
+                    ui,
+                    format!("Moving {}: choose a spot.", name.to_lowercase()),
+                );
                 if built {
-                    if ui.button("Take apart").clicked() {
+                    if paper::button(ui, "Take apart").clicked() {
                         self.placing = None;
                         let now = self.now();
                         self.take_apart(spot, now);
                     }
-                } else if ui.button("Back in the satchel").clicked() {
+                } else if paper::button(ui, "Back in the satchel").clicked() {
                     self.memories.pick_up(spot);
                     self.placing = None;
                     self.refresh_hilltop();
                 }
-                if ui.button("Cancel").clicked() {
+                if paper::button(ui, "Cancel").clicked() {
                     self.placing = None;
                 }
             }
@@ -268,36 +277,34 @@ impl HillApp {
                     .collect();
                 let lifted = colony.lifted.clone();
                 let count = satchel.iter().map(|(_, n)| n).sum::<u32>() + lifted.len() as u32;
-                let mut chosen = None;
-                ui.add_enabled_ui(count > 0, |ui| {
-                    egui::ComboBox::from_id_salt("satchel")
-                        .selected_text(format!("Satchel ({count})"))
-                        .show_ui(ui, |ui| {
-                            for (id, count) in &satchel {
-                                let (name, becomes) = in_the_satchel(id);
-                                let label = if *count > 1 {
-                                    format!("{name} \u{d7}{count}")
-                                } else {
-                                    name
-                                };
-                                let row = ui.selectable_label(false, label).on_hover_text(becomes);
-                                if row.clicked() {
-                                    chosen = Some(Placing::FromSatchel(id.clone()));
-                                }
-                            }
-                            for standing in &lifted {
-                                let label = format!("{}, lifted", standing.name());
-                                let row = ui.selectable_label(false, label).on_hover_text(
-                                    "Lifted from the Hilltop as far as it had grown, to plant again",
-                                );
-                                if row.clicked() {
-                                    chosen = Some(Placing::Lifted(standing.clone()));
-                                }
-                            }
-                        });
+                let satchel_button =
+                    paper::Button::new(format!("Satchel ({count}) \u{25b4}")).enabled(count > 0);
+                let (_, chosen) = paper::menu(ui, satchel_button, false, |ui| {
+                    let mut chosen = None;
+                    for (id, count) in &satchel {
+                        let (name, becomes) = in_the_satchel(id);
+                        let label = if *count > 1 {
+                            format!("{name} \u{d7}{count}")
+                        } else {
+                            name
+                        };
+                        let row = paper::button(ui, label);
+                        if paper::explain(ui, row, &becomes).clicked() {
+                            chosen = Some(Placing::FromSatchel(id.clone()));
+                        }
+                    }
+                    for standing in &lifted {
+                        let row = paper::button(ui, format!("{}, lifted", standing.name()));
+                        let about =
+                            "Lifted from the Hilltop as far as it had grown, to plant again";
+                        if paper::explain(ui, row, about).clicked() {
+                            chosen = Some(Placing::Lifted(standing.clone()));
+                        }
+                    }
+                    chosen
                 });
-                if chosen.is_some() {
-                    self.placing = chosen;
+                if let Some(Some(chosen)) = chosen {
+                    self.placing = Some(chosen);
                 }
                 let hint = if count == 0 && colony.hilltop.is_empty() {
                     "Finds from the Woods can stand up here."
@@ -307,7 +314,7 @@ impl HillApp {
                     ""
                 };
                 if !hint.is_empty() {
-                    ui.label(egui::RichText::new(hint).italics());
+                    paper::hint(ui, hint);
                 }
             }
         }
@@ -319,21 +326,23 @@ impl HillApp {
             } else {
                 "Plans".to_owned()
             };
-            if ui.selectable_label(self.crafting.open, plans).clicked() {
-                self.crafting.open = !self.crafting.open;
+            if ui
+                .add(paper::Button::new(plans).selected(self.showing(Card::Plans)))
+                .clicked()
+            {
+                self.toggle(Card::Plans);
             }
-        }
-        if ui.button("Journal").clicked() {
-            self.journal = !self.journal;
         }
     }
 
     /// Everything the Woods can turn up: what has been found, by whom, and hints of the rest.
     pub(super) fn journal_window(&mut self, ctx: &egui::Context) {
-        if !self.journal {
-            return;
-        }
-        let mut open = true;
+        self.show_card(ctx, Card::Journal, "Journal", 0.5, |app, ui| {
+            app.journal_page(ui)
+        });
+    }
+
+    fn journal_page(&self, ui: &mut egui::Ui) {
         let colony = self.memories.colony();
         let cast = &self.arrival.cast;
         let who = |id: &str| {
@@ -345,49 +354,66 @@ impl HillApp {
                     |member| member.name.clone(),
                 )
         };
-        egui::Window::new("Journal")
-            .open(&mut open)
-            .default_width(360.0)
-            .default_height(420.0)
-            .show(ctx, |ui| {
-                ui.label(format!(
-                    "{} of {} found \u{b7} {} outing{} to the Woods",
-                    CATALOGUE.iter().filter(|find| colony.finds.contains_key(find.id)).count(),
-                    CATALOGUE.len(),
-                    colony.outings,
-                    if colony.outings == 1 { "" } else { "s" }
-                ));
-                egui::ScrollArea::vertical().show(ui, |ui| {
+        {
+            {
+                paper::words(
+                    ui,
+                    format!(
+                        "{} of {} found \u{b7} {} outing{} to the Woods",
+                        CATALOGUE
+                            .iter()
+                            .filter(|find| colony.finds.contains_key(find.id))
+                            .count(),
+                        CATALOGUE.len(),
+                        colony.outings,
+                        if colony.outings == 1 { "" } else { "s" }
+                    ),
+                );
+                {
                     for kind in Kind::ALL {
-                        let of_kind: Vec<_> = CATALOGUE.iter().filter(|find| find.kind == kind).collect();
-                        let found = of_kind.iter().filter(|find| colony.finds.contains_key(find.id)).count();
+                        let of_kind: Vec<_> =
+                            CATALOGUE.iter().filter(|find| find.kind == kind).collect();
+                        let found = of_kind
+                            .iter()
+                            .filter(|find| colony.finds.contains_key(find.id))
+                            .count();
                         ui.add_space(6.0);
-                        ui.strong(format!("Found {} ({found} of {})", kind.whereabouts(), of_kind.len()));
+                        paper::heading(
+                            ui,
+                            format!(
+                                "Found {} ({found} of {})",
+                                kind.whereabouts(),
+                                of_kind.len()
+                            ),
+                        );
                         for find in of_kind {
                             match colony.finds.get(find.id) {
                                 Some(record) => {
-                                    let becomes = if growing::growth(find.id).is_some() { "Grows into" } else { "Becomes" };
-                                    ui.label(egui::RichText::new(find.name).strong());
-                                    ui.label(egui::RichText::new(find.blurb).small());
-                                    ui.label(
-                                        egui::RichText::new(format!(
+                                    let becomes = if growing::growth(find.id).is_some() {
+                                        "Grows into"
+                                    } else {
+                                        "Becomes"
+                                    };
+                                    paper::name(ui, find.name);
+                                    paper::words(ui, find.blurb);
+                                    paper::aside(
+                                        ui,
+                                        format!(
                                             "{becomes} {} \u{b7} brought home {}\u{d7} \u{b7} first found with {}",
                                             find.piece.to_lowercase(),
                                             record.count,
                                             who(&record.first_by)
-                                        ))
-                                        .small()
-                                        .italics(),
+                                        ),
                                     );
                                 }
                                 None => {
-                                    ui.label(
-                                        egui::RichText::new(format!(
+                                    paper::faint(
+                                        ui,
+                                        format!(
                                             "??? \u{b7} something {} {}",
                                             find.tier.label(),
                                             kind.whereabouts()
-                                        ))
-                                        .weak(),
+                                        ),
                                     );
                                 }
                             }
@@ -400,99 +426,114 @@ impl HillApp {
                         .collect();
                     if !relics.is_empty() {
                         ui.add_space(6.0);
-                        ui.strong("Relics");
+                        paper::heading(ui, "Relics");
                         for relic in relics {
-                            ui.label(egui::RichText::new(relic.name).strong());
-                            ui.label(egui::RichText::new(relic.blurb).small());
-                            ui.label(
-                                egui::RichText::new(format!("Becomes {}", relic.piece.to_lowercase()))
-                                    .small()
-                                    .italics(),
-                            );
+                            paper::name(ui, relic.name);
+                            paper::words(ui, relic.blurb);
+                            paper::aside(ui, format!("Becomes {}", relic.piece.to_lowercase()));
                         }
                     }
                     // What is planted and still coming up, on the Hilltop or lifted into the satchel.
                     let planted = colony.hilltop.values().map(|standing| (standing, true));
                     let lifted = colony.lifted.iter().map(|standing| (standing, false));
-                    let growing: Vec<_> = planted.chain(lifted).filter(|(standing, _)| standing.growing()).collect();
+                    let growing: Vec<_> = planted
+                        .chain(lifted)
+                        .filter(|(standing, _)| standing.growing())
+                        .collect();
                     if !growing.is_empty() {
                         ui.add_space(6.0);
-                        ui.strong("Growing");
+                        paper::heading(ui, "Growing");
                         for (standing, up) in growing {
                             let Some(find) = finds::find(standing.id()) else {
                                 continue;
                             };
                             let line = if up {
-                                format!("Grows a little with every visit, into {}", find.piece.to_lowercase())
+                                format!(
+                                    "Grows a little with every visit, into {}",
+                                    find.piece.to_lowercase()
+                                )
                             } else {
-                                format!("Lifted into the satchel; it grows on into {} once it is planted again", find.piece.to_lowercase())
+                                format!(
+                                    "Lifted into the satchel; it grows on into {} once it is planted again",
+                                    find.piece.to_lowercase()
+                                )
                             };
-                            ui.label(egui::RichText::new(standing.name()).strong());
-                            ui.label(egui::RichText::new(line).small().italics());
+                            paper::name(ui, standing.name());
+                            paper::aside(ui, line);
                         }
                     }
                     self.journal_plans(ui);
                     let fish = &crate::fishing::fish::CATALOGUE;
-                    let caught = fish.iter().filter(|kind| colony.fish.contains_key(kind.id)).count();
+                    let caught = fish
+                        .iter()
+                        .filter(|kind| colony.fish.contains_key(kind.id))
+                        .count();
                     ui.add_space(6.0);
-                    ui.strong(format!("Caught at the pool ({caught} of {})", fish.len()));
+                    paper::heading(
+                        ui,
+                        format!("Caught at the pool ({caught} of {})", fish.len()),
+                    );
                     for kind in fish {
                         match colony.fish.get(kind.id) {
                             Some(record) => {
-                                ui.label(egui::RichText::new(kind.name).strong());
-                                ui.label(egui::RichText::new(kind.blurb).small());
-                                ui.label(
-                                    egui::RichText::new(format!(
+                                paper::name(ui, kind.name);
+                                paper::words(ui, kind.blurb);
+                                paper::aside(
+                                    ui,
+                                    format!(
                                         "Landed {}\u{d7}, longest {:.1} cm \u{b7} first caught by {}",
                                         record.count,
                                         record.longest,
                                         who(&record.first_by)
-                                    ))
-                                    .small()
-                                    .italics(),
+                                    ),
                                 );
                             }
                             None => {
-                                ui.label(
-                                    egui::RichText::new(format!(
+                                paper::faint(
+                                    ui,
+                                    format!(
                                         "??? \u{b7} something {} in {}",
                                         kind.tier.label(),
                                         kind.haunt.name()
-                                    ))
-                                    .weak(),
+                                    ),
                                 );
                             }
                         }
                     }
                     let bugs = &crate::meadow::bugs::CATALOGUE;
-                    let caught = bugs.iter().filter(|kind| colony.bugs.contains_key(kind.id)).count();
+                    let caught = bugs
+                        .iter()
+                        .filter(|kind| colony.bugs.contains_key(kind.id))
+                        .count();
                     ui.add_space(6.0);
-                    ui.strong(format!("Caught in the meadow ({caught} of {})", bugs.len()));
+                    paper::heading(
+                        ui,
+                        format!("Caught in the meadow ({caught} of {})", bugs.len()),
+                    );
                     for kind in bugs {
                         match colony.bugs.get(kind.id) {
                             Some(record) => {
-                                ui.label(egui::RichText::new(kind.name).strong());
-                                ui.label(egui::RichText::new(kind.blurb).small());
-                                ui.label(
-                                    egui::RichText::new(format!(
+                                paper::name(ui, kind.name);
+                                paper::words(ui, kind.blurb);
+                                paper::aside(
+                                    ui,
+                                    format!(
                                         "Caught {}\u{d7}, biggest {:.0} mm across \u{b7} first caught by {}",
                                         record.count,
                                         record.biggest,
                                         who(&record.first_by)
-                                    ))
-                                    .small()
-                                    .italics(),
+                                    ),
                                 );
                             }
                             None => {
                                 let when = if kind.dusk { " at dusk" } else { "" };
-                                ui.label(
-                                    egui::RichText::new(format!(
+                                paper::faint(
+                                    ui,
+                                    format!(
                                         "??? \u{b7} something {} in {}{when}",
                                         kind.tier.label(),
                                         kind.haunt.name()
-                                    ))
-                                    .weak(),
+                                    ),
                                 );
                             }
                         }
@@ -502,13 +543,13 @@ impl HillApp {
                     super::scavenging::journal(ui, colony, &who);
                     if !colony.outings_by.is_empty() {
                         ui.add_space(6.0);
-                        ui.strong("Who has been");
+                        paper::heading(ui, "Who has been");
                         for (id, count) in &colony.outings_by {
-                            ui.label(format!("{}: {count}", who(id)));
+                            paper::words(ui, format!("{}: {count}", who(id)));
                         }
                     }
-                });
-            });
-        self.journal = open;
+                }
+            }
+        }
     }
 }
