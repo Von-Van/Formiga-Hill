@@ -6,6 +6,7 @@
 
 use crate::materials::{CLOUD, SKY_LOW, SKY_TOP};
 use crate::paint::{Ramp, chance, ellipse, mix, put, rgb};
+use crate::photos::png;
 use formiga_art::{Canvas, Rgba};
 
 /// How big the drawing is, in pixels each way.
@@ -184,27 +185,6 @@ pub fn at(size: u32) -> Canvas {
     out
 }
 
-/// A picture as PNG bytes.
-pub fn png(canvas: &Canvas) -> Vec<u8> {
-    let (width, height) = (canvas.width(), canvas.height());
-    let mut data = Vec::with_capacity((width * height * 4) as usize);
-    for y in 0..height as i32 {
-        for x in 0..width as i32 {
-            let pixel = canvas.get(x, y);
-            data.extend([pixel.r, pixel.g, pixel.b, pixel.a]);
-        }
-    }
-    let mut bytes = Vec::new();
-    let mut encoder = png::Encoder::new(&mut bytes, width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
-    // Writing into memory cannot fail but for a mismatch in size, which this never makes.
-    if let Ok(mut writer) = encoder.write_header() {
-        let _ = writer.write_image_data(&data);
-    }
-    bytes
-}
-
 /// A macOS `.icns`: each size as a PNG, under the type codes macOS reads PNGs from.
 pub fn icns() -> Vec<u8> {
     // Each size at 1x and 2x, as an `.iconset` makes them.
@@ -222,7 +202,7 @@ pub fn icns() -> Vec<u8> {
     ];
     let mut body = Vec::new();
     for (code, size) in entries {
-        let data = png(&at(size));
+        let data = png(&at(size), 1);
         body.extend_from_slice(code);
         body.extend_from_slice(&(data.len() as u32 + 8).to_be_bytes());
         body.extend_from_slice(&data);
@@ -238,7 +218,7 @@ pub fn icns() -> Vec<u8> {
 pub fn ico() -> Vec<u8> {
     // Only sizes made from the drawing by whole pixels; Windows scales between them.
     let sizes = [16u32, 32, 64, 128, 256];
-    let images: Vec<Vec<u8>> = sizes.iter().map(|size| png(&at(*size))).collect();
+    let images: Vec<Vec<u8>> = sizes.iter().map(|size| png(&at(*size), 1)).collect();
     let mut out = Vec::new();
     out.extend_from_slice(&0u16.to_le_bytes());
     out.extend_from_slice(&1u16.to_le_bytes());

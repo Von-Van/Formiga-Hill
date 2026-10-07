@@ -419,7 +419,7 @@ impl HillApp {
                     formiga_art::Rgba::new(r, g, b, a),
                 );
             }
-            match crate::write_png(&snap.path, &canvas, 1) {
+            match crate::photos::write(&snap.path, &canvas, 1) {
                 Ok(()) => println!("Pictured the window to {}", snap.path.display()),
                 Err(error) => {
                     let _ = SNAP_FAILED.set(format!(
