@@ -9,8 +9,8 @@ use crate::hilltop::{Arrangement, Tint, Vista, skyline};
 use crate::kit::{bush, roof};
 use crate::materials::*;
 use crate::paint::{
-    Ramp, bevel, blit, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb, rgba,
-    vline,
+    Ramp, bevel, blit, chance, ellipse, hline, line, mix, noise, patches, pick, polygon, put, rect,
+    rgb, rgba, vline,
 };
 use formiga_art::{Canvas, Rgba};
 use std::f32::consts::TAU;
@@ -170,24 +170,6 @@ pub fn foreground() -> Canvas {
 // ---------------------------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------------------------
-
-/// Smooth noise in 0..1 that changes over cells of `size`: broad patches rather than speckle.
-/// Cells are found with `div_euclid`, so they keep their size either side of zero.
-fn patches(x: i32, y: i32, size: (i32, i32), salt: u32) -> f32 {
-    let (cell_x, cell_y) = (x.div_euclid(size.0), y.div_euclid(size.1));
-    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
-    let sx = smooth(x.rem_euclid(size.0) as f32 / size.0 as f32);
-    let sy = smooth(y.rem_euclid(size.1) as f32 / size.1 as f32);
-    let corner = |dx: i32, dy: i32| (noise(cell_x + dx, cell_y + dy, salt) % 1024) as f32 / 1023.0;
-    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * sx;
-    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * sx;
-    top + (bottom - top) * sy
-}
-
-/// A number from the hash in `0..n`.
-fn pick(index: i32, axis: i32, salt: u32, n: i32) -> i32 {
-    (noise(index, axis, salt) % n.max(1) as u32) as i32
-}
 
 // ---------------------------------------------------------------------------------------------
 // Beyond the gap

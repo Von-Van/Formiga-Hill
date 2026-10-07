@@ -9,7 +9,7 @@
 //! their own, and the stage where everyone stands is left plain.
 
 use super::{GROUND, SCENE_HEIGHT, SCENE_WIDTH};
-use crate::paint::{Ramp, blit, chance, ellipse, line, mix, noise, polygon, put, rgb, rgba};
+use crate::paint::{Ramp, blit, chance, ellipse, line, mix, noise, pick, polygon, put, rgb, rgba};
 use formiga_art::{Canvas, Rgba};
 use std::f32::consts::TAU;
 use std::ops::Range;
@@ -157,11 +157,6 @@ pub fn foreground() -> Canvas {
 // ---------------------------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------------------------
-
-/// A number from the hash in `0..n`.
-fn pick(index: i32, axis: i32, salt: u32, n: i32) -> i32 {
-    (noise(index, axis, salt) % n.max(1) as u32) as i32
-}
 
 /// The ordered-dither threshold for a pixel, in 0..1: gradients are laid down in bands of the
 /// palette, crossing from one to the next in an even pattern, as pixel skies are.

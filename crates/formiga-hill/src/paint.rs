@@ -215,6 +215,78 @@ pub fn blit(canvas: &mut Canvas, sprite: &Canvas, x: i32, y: i32) {
     }
 }
 
+/// A number from the hash in `0..n`.
+pub fn pick(index: i32, axis: i32, salt: u32, n: i32) -> i32 {
+    (noise(index, axis, salt) % n.max(1) as u32) as i32
+}
+
+/// Smooth noise in 0..1 that changes over cells of `size`: patches rather than speckle.
+pub fn patches(x: i32, y: i32, size: (i32, i32), salt: u32) -> f32 {
+    let (cell_x, cell_y) = (x.div_euclid(size.0), y.div_euclid(size.1));
+    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
+    let sx = smooth(x.rem_euclid(size.0) as f32 / size.0 as f32);
+    let sy = smooth(y.rem_euclid(size.1) as f32 / size.1 as f32);
+    let corner = |dx: i32, dy: i32| (noise(cell_x + dx, cell_y + dy, salt) % 1024) as f32 / 1023.0;
+    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * sx;
+    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * sx;
+    top + (bottom - top) * sy
+}
+
+/// Noise that rolls smoothly between whole-numbered points, for soft patches rather than
+/// speckle.
+pub fn smooth_noise(x: f32, y: f32, salt: u32) -> f32 {
+    let (ix, iy) = (x.floor() as i32, y.floor() as i32);
+    let ease = |t: f32| t * t * (3.0 - 2.0 * t);
+    let (fx, fy) = (ease(x - ix as f32), ease(y - iy as f32));
+    let corner = |dx: i32, dy: i32| (noise(ix + dx, iy + dy, salt) % 1000) as f32 / 999.0;
+    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * fx;
+    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * fx;
+    top + (bottom - top) * fy
+}
+
+/// Smooth noise in 0..1 along a loop `period` long, for things that go all the way round.
+pub fn looped(t: f32, period: i32, salt: u32) -> f32 {
+    let cell = t.floor() as i32;
+    let f = t - cell as f32;
+    let ease = f * f * (3.0 - 2.0 * f);
+    let at = |c: i32| (noise(c.rem_euclid(period), 0, salt) % 1024) as f32 / 1023.0;
+    at(cell) + (at(cell + 1) - at(cell)) * ease
+}
+
+/// A ramp's tone by level, 0 its edge and 4 its shine.
+pub fn tone(ramp: Ramp, level: i32) -> Rgba {
+    match level {
+        ..=0 => ramp.edge,
+        1 => ramp.shadow,
+        2 => ramp.base,
+        3 => ramp.light,
+        _ => ramp.shine,
+    }
+}
+
+/// A point along a smooth curve through `points`, `t` of the way from the first to the last.
+pub fn along(points: &[(f32, f32)], t: f32) -> (f32, f32) {
+    let spans = (points.len() - 1) as f32;
+    let at = (t * spans).clamp(0.0, spans - 0.001);
+    let index = at.floor() as usize;
+    let local = at - index as f32;
+    let get = |i: isize| points[i.clamp(0, points.len() as isize - 1) as usize];
+    let (p0, p1, p2, p3) = (
+        get(index as isize - 1),
+        get(index as isize),
+        get(index as isize + 1),
+        get(index as isize + 2),
+    );
+    // Catmull-Rom, so the curve passes through every point.
+    let blend = |a: f32, b: f32, c: f32, d: f32| {
+        0.5 * (2.0 * b
+            + (c - a) * local
+            + (2.0 * a - 5.0 * b + 4.0 * c - d) * local * local
+            + (3.0 * b - a - 3.0 * c + d) * local * local * local)
+    };
+    (blend(p0.0, p1.0, p2.0, p3.0), blend(p0.1, p1.1, p2.1, p3.1))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

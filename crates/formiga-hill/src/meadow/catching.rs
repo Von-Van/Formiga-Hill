@@ -26,6 +26,7 @@ use crate::dice::Dice;
 use crate::finds::{self, Find, Kind, Tier};
 use crate::paint::{ellipse, line, put, rgb, rgba};
 use crate::playground::{Playground, Prop, distance};
+use crate::track::crew;
 use crate::woods::rummage::{delighted, dim};
 use formiga_art::{Canvas, ExpressionKind};
 use formiga_core::{Gesture, TemperamentKind};
@@ -353,7 +354,7 @@ impl Hunt {
             .map(|c| c.axes.playfulness)
             .fold(0.0, f32::max)
             * 0.4;
-        let little = netter.is_some_and(|c| c.parent.is_some());
+        let little = netter.is_some_and(crew::little);
         let dozer = party
             .iter()
             .zip(&characters)
@@ -1345,7 +1346,7 @@ fn mirrored(sprite: &Canvas) -> Canvas {
 
 /// What a companion is like with a net, for choosing who to bring.
 pub fn netter(character: &Character) -> &'static str {
-    if character.parent.is_some() {
+    if crew::little(character) {
         "Small enough to creep right into the brambles."
     } else if character.kind == TemperamentKind::Lazybones || character.axes.energy < 0.25 {
         "Keeps so still that things land on it."

@@ -10,6 +10,7 @@ use crate::expedition::{self, BASKET, Droughts, Ending, Event, Expedition, Known
 use crate::finds::{self, AFAR, Tier};
 use crate::memories::{ColonyMemories, Homecoming};
 use crate::playground::distance;
+use crate::track::crew;
 use crate::{falls, fishing, hedgerow, meadow, track, woods};
 use eframe::egui;
 use formiga_art::Canvas;
@@ -1003,10 +1004,10 @@ pub(super) fn expeditioner_hint(colony: &ColonyMemories, id: Id, character: &Cha
     if map::explorer(character) {
         ways.push("knows a deer track");
     }
-    if character.parent.is_some() {
+    if crew::little(character) {
         ways.push("fits through the gap in the hedge");
     }
-    if map::bold(character) {
+    if crew::bold(character) {
         ways.push("takes the steep way");
     }
     if map::reader(character) {

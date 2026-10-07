@@ -25,17 +25,17 @@ use crate::cast::Id;
 use crate::character::{Beat, Character, Cue};
 use crate::dice::Dice;
 use crate::finds::{self, Tier, art};
-use crate::paint::{blit, mix, put, rect, rgb, rgba};
+use crate::paint::{blit, put, rect, rgb, rgba};
 use crate::playground::{Playground, Prop, distance};
 use crate::woods::Influence;
-use crate::woods::rummage::{delighted, dim};
+use crate::woods::rummage::{self, delighted, dim};
 use formiga_art::{Canvas, ExpressionKind, Rgba};
 use formiga_core::{ActionKind, Gesture, HabitCue, TemperamentKind};
 
 /// The light an outing starts with, before the Hilltop lends any.
 pub const LIGHT: f32 = 100.0;
-/// How many finds the basket holds.
-pub const BASKET: usize = 6;
+/// How many finds the basket holds, as every Woods basket does.
+pub const BASKET: usize = rummage::BASKET;
 /// What walking costs per pixel, for a middling companion; and lifting, easing something out,
 /// yanking, peeking and squeezing in. Pulling something out from under others costs as much
 /// again for everything on it, pulled against, and a yank half as much; only easing it out
@@ -1116,40 +1116,15 @@ impl Scavenge {
         self.draw_basket(scene);
     }
 
-    /// Where each of the basket's slots is drawn: left, top, and the size of one.
-    fn basket_frame(&self, width: u32) -> (i32, i32, i32) {
-        const SLOT: i32 = 11;
-        let across = SLOT * BASKET as i32 + 3;
-        (width as i32 - across - 4, 4, SLOT)
-    }
-
     /// The basket's slot under a point in the scene, for putting something back.
     pub fn basket_slot_at(&self, x: f32, y: f32, width: u32) -> Option<usize> {
-        let (left, top, slot) = self.basket_frame(width);
-        let (x, y) = (x as i32 - left - 2, y as i32 - top - 2);
-        if x < 0 || y < 0 || y >= slot {
-            return None;
-        }
-        let index = (x / slot) as usize;
-        (index < self.basket.len()).then_some(index)
+        rummage::basket_slot_at(x, y, width, self.basket.len())
     }
 
     /// The basket in the top right corner, the light left under it, and any maps found beside it.
     fn draw_basket(&self, scene: &mut Canvas) {
-        let (left, top, slot) = self.basket_frame(scene.width());
-        let width = slot * BASKET as i32 + 3;
-        rect(scene, left, top, width, slot + 7, rgba(0x2a2018, 150));
-        for index in 0..BASKET as i32 {
-            let (x, y) = (left + 2 + index * slot, top + 2);
-            rect(scene, x, y, slot - 1, slot - 1, rgba(0xf6eed8, 60));
-            if let Some(id) = self.basket.get(index as usize) {
-                blit(scene, &art::icon(id), x, y);
-            }
-        }
-        let share = self.light_left();
-        let bar = ((width - 4) as f32 * share) as i32;
-        let gold = mix(rgb(0x6a5a9a), rgb(0xf5d25e), share);
-        scene.fill_rect(left + 2, top + slot + 2, bar, 2, gold);
+        rummage::draw_basket(scene, &self.basket, self.light_left());
+        let (left, top, slot) = rummage::basket_frame(scene.width());
         for (index, _) in self.maps.iter().enumerate() {
             let x = left - 13 - index as i32 * 11;
             rect(scene, x - 1, top, 11, slot + 1, rgba(0x2a2018, 150));

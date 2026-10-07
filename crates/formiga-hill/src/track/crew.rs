@@ -41,6 +41,11 @@ pub fn little(character: &Character) -> bool {
     character.parent.is_some()
 }
 
+/// Bold enough to climb for the high branches, or take the steep way.
+pub fn bold(character: &Character) -> bool {
+    character.axes.boldness >= 0.65
+}
+
 /// Looks things over: into every sack, crate and tin.
 pub fn inspector(character: &Character) -> bool {
     character.habits.contains(&Habit::LooksFoodOver)

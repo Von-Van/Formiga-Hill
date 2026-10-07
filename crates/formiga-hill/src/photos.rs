@@ -136,7 +136,8 @@ fn safe(colony: &str) -> String {
     }
 }
 
-fn write(path: &Path, picture: &Canvas, scale: u32) -> Result<()> {
+/// `picture` as PNG bytes, `scale` times as big each way.
+pub fn png(picture: &Canvas, scale: u32) -> Vec<u8> {
     let (width, height) = (picture.width() * scale, picture.height() * scale);
     let mut data = Vec::with_capacity((width * height * 4) as usize);
     for y in 0..height {
@@ -145,13 +146,21 @@ fn write(path: &Path, picture: &Canvas, scale: u32) -> Result<()> {
             data.extend([pixel.r, pixel.g, pixel.b, pixel.a]);
         }
     }
-    let file =
-        fs::File::create(path).with_context(|| format!("could not create {}", path.display()))?;
-    let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), width, height);
+    let mut bytes = Vec::new();
+    let mut encoder = png::Encoder::new(&mut bytes, width, height);
     encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
-    encoder.write_header()?.write_image_data(&data)?;
-    Ok(())
+    // Writing into memory cannot fail but for a mismatch in size, which this never makes.
+    if let Ok(mut writer) = encoder.write_header() {
+        let _ = writer.write_image_data(&data);
+    }
+    bytes
+}
+
+/// `picture` saved at `path` as a PNG, `scale` times as big each way.
+pub fn write(path: &Path, picture: &Canvas, scale: u32) -> Result<()> {
+    fs::write(path, png(picture, scale))
+        .with_context(|| format!("could not create {}", path.display()))
 }
 
 /// A photo read back, refusing anything that isn't one of Hill's own: too big, or not plain

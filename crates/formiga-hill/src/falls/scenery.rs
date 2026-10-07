@@ -10,7 +10,9 @@
 //! tinted towards dusk as the day's light runs out.
 
 use super::{EDDY, FOOT, LIP};
-use crate::paint::{Ramp, chance, ellipse, hline, line, mix, noise, put, rgb, rgba};
+use crate::paint::{
+    Ramp, chance, ellipse, hline, line, looped, mix, noise, patches, pick, put, rgb, rgba, tone,
+};
 use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 use formiga_art::{Canvas, Rgba};
 use std::f32::consts::{PI, TAU};
@@ -136,43 +138,6 @@ pub fn night_sky(painted: &Canvas) -> Canvas {
 // ---------------------------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------------------------
-
-/// A number from the hash in `0..n`.
-fn pick(index: i32, axis: i32, salt: u32, n: i32) -> i32 {
-    (noise(index, axis, salt) % n.max(1) as u32) as i32
-}
-
-/// Smooth noise in 0..1 that changes over cells of `size`: patches rather than speckle.
-fn patches(x: i32, y: i32, size: (i32, i32), salt: u32) -> f32 {
-    let (cell_x, cell_y) = (x.div_euclid(size.0), y.div_euclid(size.1));
-    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
-    let sx = smooth(x.rem_euclid(size.0) as f32 / size.0 as f32);
-    let sy = smooth(y.rem_euclid(size.1) as f32 / size.1 as f32);
-    let corner = |dx: i32, dy: i32| (noise(cell_x + dx, cell_y + dy, salt) % 1024) as f32 / 1023.0;
-    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * sx;
-    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * sx;
-    top + (bottom - top) * sy
-}
-
-/// Smooth noise along one line, repeating every `period`.
-fn looped(t: f32, period: i32, salt: u32) -> f32 {
-    let cell = t.floor() as i32;
-    let f = t - cell as f32;
-    let ease = f * f * (3.0 - 2.0 * f);
-    let at = |c: i32| (noise(c.rem_euclid(period), 0, salt) % 1024) as f32 / 1023.0;
-    at(cell) + (at(cell + 1) - at(cell)) * ease
-}
-
-/// A ramp's tone by level, 0 its edge and 4 its shine.
-fn tone(ramp: Ramp, level: i32) -> Rgba {
-    match level {
-        ..=0 => ramp.edge,
-        1 => ramp.shadow,
-        2 => ramp.base,
-        3 => ramp.light,
-        _ => ramp.shine,
-    }
-}
 
 /// The broken outline of an ellipse, for ripples and rings of foam.
 fn ring(scene: &mut Canvas, (cx, cy): (i32, i32), (rx, ry): (i32, i32), color: Rgba, salt: u32) {

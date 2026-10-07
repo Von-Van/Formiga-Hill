@@ -13,8 +13,11 @@
 //! to the same woods.
 
 use crate::hilltop::{Arrangement, Tint, Vista, skyline};
+use crate::kit::{self, cloud};
 use crate::materials::{FAR_HILL, PATH, SKY_LOW};
-use crate::paint::{Ramp, blit, chance, ellipse, hline, line, mix, noise, put, rgb, rgba, vline};
+use crate::paint::{
+    Ramp, chance, ellipse, hline, line, mix, noise, patches, pick, put, rgb, rgba, tone, vline,
+};
 use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 use formiga_art::{Canvas, Rgba};
 use std::f32::consts::TAU;
@@ -40,7 +43,6 @@ const MAPLE: Ramp = Ramp::new(0x2a4420, 0x3e602a, 0x567c34, 0x709840, 0x92b454);
 const HAZEL_LEAF: Ramp = Ramp::new(0x29441f, 0x3a5c2a, 0x4f7834, 0x6a9442, 0x8cb058);
 const SWARD: Ramp = Ramp::new(0x34502a, 0x4a6c34, 0x618a3e, 0x7ca64a, 0x9cc05e);
 const CAMPION: Ramp = Ramp::new(0x7a2448, 0xa8345e, 0xcc4a74, 0xe06a8e, 0xf096ae);
-const CLOUDS: Ramp = Ramp::new(0xc9d7e2, 0xdfe7ee, 0xf4f4f1, 0xfdfbf5, 0xffffff);
 // The hedgerow's own.
 const ELDER_LEAF: Ramp = Ramp::new(0x2c4a1e, 0x40662a, 0x568436, 0x70a044, 0x96c060);
 /// The dog rose's leaves: small, dark and close, quieter than the hawthorn's, so its hips and the
@@ -165,34 +167,6 @@ pub fn backdrop(hilltop: &Arrangement) -> Canvas {
 // Tools
 // ---------------------------------------------------------------------------------------------
 
-/// Smooth noise in 0..1 that changes over cells of `size`: patches rather than speckle.
-fn patches(x: i32, y: i32, size: (i32, i32), salt: u32) -> f32 {
-    let (cell_x, cell_y) = (x.div_euclid(size.0), y.div_euclid(size.1));
-    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
-    let sx = smooth(x.rem_euclid(size.0) as f32 / size.0 as f32);
-    let sy = smooth(y.rem_euclid(size.1) as f32 / size.1 as f32);
-    let corner = |dx: i32, dy: i32| (noise(cell_x + dx, cell_y + dy, salt) % 1024) as f32 / 1023.0;
-    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * sx;
-    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * sx;
-    top + (bottom - top) * sy
-}
-
-/// A number from the hash in `0..n`.
-fn pick(index: i32, axis: i32, salt: u32, n: i32) -> i32 {
-    (noise(index, axis, salt) % n.max(1) as u32) as i32
-}
-
-/// A ramp's tone by level, 0 its edge and 4 its shine.
-fn tone(ramp: Ramp, level: i32) -> Rgba {
-    match level {
-        ..=0 => ramp.edge,
-        1 => ramp.shadow,
-        2 => ramp.base,
-        3 => ramp.light,
-        _ => ramp.shine,
-    }
-}
-
 /// `color` as seen through `amount` of the distance.
 fn hazed(color: Rgba, amount: f32) -> Rgba {
     mix(color, DISTANCE, amount)
@@ -211,73 +185,14 @@ fn curve(from: (i32, i32), bend: (i32, i32), to: (i32, i32), t: f32) -> (i32, i3
 /// in the distance by `haze`.
 fn clump(
     scene: &mut Canvas,
-    (cx, cy): (i32, i32),
+    centre: (i32, i32),
     radius: i32,
     (ramp, haze): (Ramp, f32),
     salt: u32,
 ) {
-    let ry = ((radius as f32 * 0.8) as i32).max(1);
-    let rim = radius * 3;
-    let bumps: Vec<(i32, i32, i32, f32)> = (0..rim)
-        .map(|step| {
-            let angle = step as f32 / rim as f32 * TAU;
-            let reach = radius as f32 - 1.0 + pick(step, 0, salt, 3) as f32;
-            let size = 1 + pick(step, 1, salt, 2) + radius / 9;
-            (
-                cx + (angle.cos() * reach).round() as i32,
-                cy + (angle.sin() * reach * 0.8).round() as i32,
-                size,
-                angle.cos() + angle.sin(),
-            )
-        })
-        .collect();
-    for &(x, y, size, _) in &bumps {
-        ellipse(scene, x, y, size + 1, size + 1, hazed(ramp.edge, haze));
-    }
-    for y in cy - ry..=cy + ry {
-        for x in cx - radius..=cx + radius {
-            let (dx, dy) = ((x - cx) as f32 / radius as f32, (y - cy) as f32 / ry as f32);
-            if dx * dx + dy * dy > 1.0 {
-                continue;
-            }
-            let light = dx + dy;
-            let cell = noise(x.div_euclid(2), y.div_euclid(2), salt + 7) % 8;
-            let color = if light < -0.6 {
-                match cell {
-                    0 => ramp.shine,
-                    1..=4 => ramp.light,
-                    _ => ramp.base,
-                }
-            } else if light < 0.2 {
-                match cell {
-                    0 | 1 => ramp.light,
-                    2..=5 => ramp.base,
-                    _ => ramp.shadow,
-                }
-            } else if light < 0.8 {
-                if cell < 2 { ramp.base } else { ramp.shadow }
-            } else if cell < 3 {
-                ramp.shadow
-            } else {
-                ramp.edge
-            };
-            put(scene, x, y, hazed(color, haze));
-        }
-    }
-    for &(x, y, size, light) in &bumps {
-        let (x, y) = (x - (x - cx).signum(), y - (y - cy).signum());
-        let color = if light < -0.5 {
-            ramp.light
-        } else if light < 0.6 {
-            ramp.base
-        } else {
-            ramp.shadow
-        };
-        ellipse(scene, x, y, size, size, hazed(color, haze));
-        if light < -0.9 {
-            put(scene, x - 1, y - 1, hazed(ramp.shine, haze));
-        }
-    }
+    kit::clump(scene, centre, radius, ramp, salt, |color, _| {
+        hazed(color, haze)
+    });
 }
 
 /// A tree's crown from the side: a rounded mass of leaves, its rim scalloped and outlined in its
@@ -456,55 +371,6 @@ pub fn sky(scene: &mut Canvas) {
     );
     cloud(scene, (196, 26), &[(-7, 0, 3), (0, -3, 5), (7, -1, 3)]);
     cloud(scene, (238, 10), &[(-5, 0, 3), (1, -2, 4), (7, 0, 2)]);
-}
-
-/// A heaped cloud from round puffs `(dx, dy, radius)`: flat underneath, sunlit on top and to the
-/// left, cool grey below, and edged only along its underside.
-fn cloud(scene: &mut Canvas, (cx, cy): (i32, i32), puffs: &[(i32, i32, i32)]) {
-    let mut layer = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
-    let floor = cy + 3;
-    for &(dx, dy, radius) in puffs {
-        let (px, py) = (cx + dx, cy + dy);
-        for y in py - radius..=(py + radius).min(floor) {
-            for x in px - radius * 3 / 2..=px + radius * 3 / 2 {
-                let (ex, ey) = (
-                    (x - px) as f32 / (radius as f32 * 1.4),
-                    (y - py) as f32 / radius as f32,
-                );
-                let reach = ex * ex + ey * ey;
-                if reach > 1.0 {
-                    continue;
-                }
-                let toward = ex * 0.7 + ey;
-                let low = (y - (floor - radius / 2)) as f32 / (radius as f32 / 2.0 + 1.0);
-                let color = if low > 0.5 {
-                    CLOUDS.shadow
-                } else if toward < -0.55 && reach > 0.35 {
-                    CLOUDS.shine
-                } else if toward > 0.45 || low > 0.0 {
-                    CLOUDS.base
-                } else {
-                    CLOUDS.light
-                };
-                let here = layer.get(x, y);
-                if here.a == 0 || brightness(color) > brightness(here) {
-                    layer.set(x, y, color);
-                }
-            }
-        }
-    }
-    for x in cx - 60..cx + 60 {
-        for y in cy - 30..=floor {
-            if layer.get(x, y).a > 0 && layer.get(x, y + 1).a == 0 {
-                layer.set(x, y, CLOUDS.edge);
-            }
-        }
-    }
-    blit(scene, &layer, 0, 0);
-}
-
-fn brightness(color: Rgba) -> u32 {
-    u32::from(color.r) + u32::from(color.g) + u32::from(color.b)
 }
 
 /// `color` as the Hill's distance leaves it.

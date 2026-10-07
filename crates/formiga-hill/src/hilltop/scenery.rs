@@ -9,8 +9,11 @@
 //! flattened places in the turf where whatever the person brings back from the Woods will stand.
 
 use super::{SPOTS, TREE};
+use crate::kit::cloud;
 use crate::materials::*;
-use crate::paint::{Ramp, blit, chance, ellipse, line, mix, noise, put, rgb, rgba, vline};
+use crate::paint::{
+    Ramp, along, blit, chance, ellipse, line, mix, noise, put, rgb, rgba, smooth_noise, vline,
+};
 use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 use formiga_art::{Canvas, Rgba};
 
@@ -32,7 +35,6 @@ const TURF: Ramp = Ramp::new(0x55814c, 0x72a569, 0x86bb7c, 0x9ccb8b, 0xbadca4);
 const BARK: Ramp = Ramp::new(0x3e2c22, 0x5a4230, 0x7a5a3a, 0x93714f, 0xae8d68);
 const CROWN: Ramp = Ramp::new(0x2b4f31, 0x3f7143, 0x5d9a5a, 0x78b46a, 0x9dcf85);
 const EARTH: Ramp = Ramp::new(0x8e7553, 0xb39a6f, 0xcdb688, 0xdcc89a, 0xece0bb);
-const CLOUDS: Ramp = Ramp::new(0xc9d7e2, 0xdfe7ee, 0xf4f4f1, 0xfdfbf5, 0xffffff);
 const HEDGE: Ramp = Ramp::new(0x2f5733, 0x3f6e40, 0x4f8250, 0x67995e, 0x85b277);
 const HAZE: Rgba = rgb(0xcfe1dc);
 const SHADE: Rgba = rgba(0x2c4a2e, 70);
@@ -129,57 +131,6 @@ fn sky(scene: &mut Canvas) {
             }
         }
     }
-}
-
-/// A heaped cloud from round puffs `(dx, dy, radius)`: flat underneath, sunlit on top and to the
-/// left, cool grey below, and edged only along its underside, which is the only hard edge a cloud
-/// has.
-fn cloud(scene: &mut Canvas, (cx, cy): (i32, i32), puffs: &[(i32, i32, i32)]) {
-    let mut layer = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
-    let floor = cy + 3;
-    for &(dx, dy, radius) in puffs {
-        let (px, py) = (cx + dx, cy + dy);
-        for y in py - radius..=(py + radius).min(floor) {
-            for x in px - radius * 3 / 2..=px + radius * 3 / 2 {
-                let (ex, ey) = (
-                    (x - px) as f32 / (radius as f32 * 1.4),
-                    (y - py) as f32 / radius as f32,
-                );
-                let reach = ex * ex + ey * ey;
-                if reach > 1.0 {
-                    continue;
-                }
-                // Lit towards the upper left of each puff, shaded towards the flat base.
-                let toward = ex * 0.7 + ey;
-                let low = (y - (floor - radius / 2)) as f32 / (radius as f32 / 2.0 + 1.0);
-                let color = if low > 0.5 {
-                    CLOUDS.shadow
-                } else if toward < -0.55 && reach > 0.35 {
-                    CLOUDS.shine
-                } else if toward > 0.45 || low > 0.0 {
-                    CLOUDS.base
-                } else {
-                    CLOUDS.light
-                };
-                if layer.get(x, y).a == 0 || color_rank(color) > color_rank(layer.get(x, y)) {
-                    layer.set(x, y, color);
-                }
-            }
-        }
-    }
-    for x in cx - 60..cx + 60 {
-        for y in cy - 30..=floor {
-            if layer.get(x, y).a > 0 && layer.get(x, y + 1).a == 0 {
-                layer.set(x, y, CLOUDS.edge);
-            }
-        }
-    }
-    blit(scene, &layer, 0, 0);
-}
-
-/// How light a cloud tone is, so overlapping puffs keep their lit sides.
-fn color_rank(color: Rgba) -> u32 {
-    u32::from(color.r) + u32::from(color.g) + u32::from(color.b)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -342,29 +293,6 @@ fn far_hills(scene: &mut Canvas) {
             }
         }
     }
-}
-
-/// A point along a smooth curve through `points`, `t` of the way from the first to the last.
-fn along(points: &[(f32, f32)], t: f32) -> (f32, f32) {
-    let spans = (points.len() - 1) as f32;
-    let at = (t * spans).clamp(0.0, spans - 0.001);
-    let index = at.floor() as usize;
-    let local = at - index as f32;
-    let get = |i: isize| points[i.clamp(0, points.len() as isize - 1) as usize];
-    let (p0, p1, p2, p3) = (
-        get(index as isize - 1),
-        get(index as isize),
-        get(index as isize + 1),
-        get(index as isize + 2),
-    );
-    // Catmull-Rom, so the curve passes through every point.
-    let blend = |a: f32, b: f32, c: f32, d: f32| {
-        0.5 * (2.0 * b
-            + (c - a) * local
-            + (2.0 * a - 5.0 * b + 4.0 * c - d) * local * local
-            + (3.0 * b - a - 3.0 * c + d) * local * local * local)
-    };
-    (blend(p0.0, p1.0, p2.0, p3.0), blend(p0.1, p1.1, p2.1, p3.1))
 }
 
 /// The lane down on the plain, winding from the foot of the Hill past the station and through
@@ -662,18 +590,6 @@ fn light(x: i32, y: i32) -> f32 {
 fn turf_ground(x: i32, y: i32) -> (f32, f32) {
     let from_eye = (y.max(60) - 52) as f32;
     ((x - 192) as f32 * 48.0 / from_eye, 48.0 * from_eye.ln())
-}
-
-/// Noise that rolls smoothly between whole-numbered points, for soft patches rather than
-/// speckle.
-fn smooth_noise(x: f32, y: f32, salt: u32) -> f32 {
-    let (ix, iy) = (x.floor() as i32, y.floor() as i32);
-    let ease = |t: f32| t * t * (3.0 - 2.0 * t);
-    let (fx, fy) = (ease(x - ix as f32), ease(y - iy as f32));
-    let corner = |dx: i32, dy: i32| (noise(ix + dx, iy + dy, salt) % 1000) as f32 / 999.0;
-    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * fx;
-    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * fx;
-    top + (bottom - top) * fy
 }
 
 /// How far down the summit a row is, 0 at the brow and 1 at the front.
