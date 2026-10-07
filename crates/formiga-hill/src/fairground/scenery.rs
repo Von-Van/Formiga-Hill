@@ -20,7 +20,8 @@ use crate::materials::{
     TRUNK,
 };
 use crate::paint::{
-    Ramp, bevel, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb, rgba, vline,
+    Ramp, bevel, chance, ellipse, hline, line, mix, noise, patches, pick, polygon, put, rect, rgb,
+    rgba, vline,
 };
 use crate::playground::Prop;
 use formiga_art::{Canvas, Rgba};
@@ -2355,23 +2356,6 @@ fn counter(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
 // ---------------------------------------------------------------------------------------------
 // Brushwork, after the finds' (see `finds::art::brush`)
 // ---------------------------------------------------------------------------------------------
-
-/// A number from the hash in `0..n`.
-fn pick(index: i32, axis: i32, salt: u32, n: i32) -> i32 {
-    (noise(index, axis, salt) % n.max(1) as u32) as i32
-}
-
-/// Smooth noise in 0..1 that changes over cells of `size`: patches rather than speckle.
-fn patches(x: i32, y: i32, size: (i32, i32), salt: u32) -> f32 {
-    let (cell_x, cell_y) = (x.div_euclid(size.0), y.div_euclid(size.1));
-    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
-    let sx = smooth(x.rem_euclid(size.0) as f32 / size.0 as f32);
-    let sy = smooth(y.rem_euclid(size.1) as f32 / size.1 as f32);
-    let corner = |dx: i32, dy: i32| (noise(cell_x + dx, cell_y + dy, salt) % 1024) as f32 / 1023.0;
-    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * sx;
-    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * sx;
-    top + (bottom - top) * sy
-}
 
 /// Whether `(x, y)` is inside the ellipse, measured a little generously so that small ones come
 /// out round.

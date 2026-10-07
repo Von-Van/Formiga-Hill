@@ -13,7 +13,7 @@ use super::map::{
 };
 use crate::font::{GLYPH_WIDTH, draw_text};
 use crate::paint::{
-    Ramp, chance, ellipse, hline, line, mix, noise, polygon, put, rgb, rgba, vline,
+    Ramp, chance, ellipse, hline, line, mix, noise, patches, pick, polygon, put, rgb, rgba, vline,
 };
 use crate::playground::distance;
 use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
@@ -126,23 +126,6 @@ pub fn map(shown: &Shown) -> Canvas {
 // ---------------------------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------------------------
-
-/// A number from the hash in `0..n`.
-fn pick(index: i32, axis: i32, salt: u32, n: i32) -> i32 {
-    (noise(index, axis, salt) % n.max(1) as u32) as i32
-}
-
-/// Smooth noise in 0..1 that changes over cells of `size`: patches rather than speckle.
-fn patches(x: i32, y: i32, size: (i32, i32), salt: u32) -> f32 {
-    let (cell_x, cell_y) = (x.div_euclid(size.0), y.div_euclid(size.1));
-    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
-    let sx = smooth(x.rem_euclid(size.0) as f32 / size.0 as f32);
-    let sy = smooth(y.rem_euclid(size.1) as f32 / size.1 as f32);
-    let corner = |dx: i32, dy: i32| (noise(cell_x + dx, cell_y + dy, salt) % 1024) as f32 / 1023.0;
-    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * sx;
-    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * sx;
-    top + (bottom - top) * sy
-}
 
 /// How far a point is from a line drawn through `points`.
 fn from_line(at: (f32, f32), points: &[(f32, f32)]) -> f32 {

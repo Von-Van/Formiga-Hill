@@ -1,12 +1,15 @@
 //! The pieces areas are built from: plastered walls in timber frames, tiled roofs, glazed
-//! windows, window boxes, dressed stone, and bushes. Each is painted the same way wherever it
-//! stands, so the Hill reads as one place.
+//! windows, window boxes, dressed stone, bushes, clumps of leaves and clouds. Each is painted the
+//! same way wherever it stands, so the Hill reads as one place.
 
 use crate::materials::*;
 use crate::paint::{
-    bevel, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgba, vline,
+    Ramp, bevel, blit, chance, ellipse, hline, line, mix, noise, pick, polygon, put, rect, rgba,
+    vline,
 };
-use formiga_art::Canvas;
+use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
+use formiga_art::{Canvas, Rgba};
+use std::f32::consts::TAU;
 
 pub fn bush(scene: &mut Canvas, cx: i32, cy: i32, radius: i32, salt: u32) {
     ellipse(scene, cx, cy + 1, radius, radius - 1, LEAF.edge);
@@ -203,4 +206,130 @@ pub fn stonework(scene: &mut Canvas, area: (i32, i32, i32, i32), courses: Course
             scene.set(x, y, color);
         }
     }
+}
+
+/// A clump of leaves, its rim scalloped into smaller clusters and lit from the upper left. `haze`
+/// gives each colour as it is seen at its row, so a clump far off is lost in the distance.
+pub fn clump(
+    scene: &mut Canvas,
+    (cx, cy): (i32, i32),
+    radius: i32,
+    ramp: Ramp,
+    salt: u32,
+    haze: impl Fn(Rgba, i32) -> Rgba,
+) {
+    let ry = ((radius as f32 * 0.8) as i32).max(1);
+    let rim = radius * 3;
+    let bumps: Vec<(i32, i32, i32, f32)> = (0..rim)
+        .map(|step| {
+            let angle = step as f32 / rim as f32 * TAU;
+            let reach = radius as f32 - 1.0 + pick(step, 0, salt, 3) as f32;
+            let size = 1 + pick(step, 1, salt, 2) + radius / 9;
+            (
+                cx + (angle.cos() * reach).round() as i32,
+                cy + (angle.sin() * reach * 0.8).round() as i32,
+                size,
+                angle.cos() + angle.sin(),
+            )
+        })
+        .collect();
+    for &(x, y, size, _) in &bumps {
+        ellipse(scene, x, y, size + 1, size + 1, haze(ramp.edge, y));
+    }
+    for y in cy - ry..=cy + ry {
+        for x in cx - radius..=cx + radius {
+            let (dx, dy) = ((x - cx) as f32 / radius as f32, (y - cy) as f32 / ry as f32);
+            if dx * dx + dy * dy > 1.0 {
+                continue;
+            }
+            let light = dx + dy;
+            let cell = noise(x.div_euclid(2), y.div_euclid(2), salt + 7) % 8;
+            let color = if light < -0.6 {
+                match cell {
+                    0 => ramp.shine,
+                    1..=4 => ramp.light,
+                    _ => ramp.base,
+                }
+            } else if light < 0.2 {
+                match cell {
+                    0 | 1 => ramp.light,
+                    2..=5 => ramp.base,
+                    _ => ramp.shadow,
+                }
+            } else if light < 0.8 {
+                if cell < 2 { ramp.base } else { ramp.shadow }
+            } else if cell < 3 {
+                ramp.shadow
+            } else {
+                ramp.edge
+            };
+            put(scene, x, y, haze(color, y));
+        }
+    }
+    for &(x, y, size, light) in &bumps {
+        let (x, y) = (x - (x - cx).signum(), y - (y - cy).signum());
+        let color = if light < -0.5 {
+            ramp.light
+        } else if light < 0.6 {
+            ramp.base
+        } else {
+            ramp.shadow
+        };
+        ellipse(scene, x, y, size, size, haze(color, y));
+        if light < -0.9 {
+            put(scene, x - 1, y - 1, haze(ramp.shine, y));
+        }
+    }
+}
+
+const CLOUDS: Ramp = Ramp::new(0xc9d7e2, 0xdfe7ee, 0xf4f4f1, 0xfdfbf5, 0xffffff);
+
+/// A heaped cloud from round puffs `(dx, dy, radius)`: flat underneath, sunlit on top and to the
+/// left, cool grey below, and edged only along its underside.
+pub fn cloud(scene: &mut Canvas, (cx, cy): (i32, i32), puffs: &[(i32, i32, i32)]) {
+    let mut layer = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+    let floor = cy + 3;
+    for &(dx, dy, radius) in puffs {
+        let (px, py) = (cx + dx, cy + dy);
+        for y in py - radius..=(py + radius).min(floor) {
+            for x in px - radius * 3 / 2..=px + radius * 3 / 2 {
+                let (ex, ey) = (
+                    (x - px) as f32 / (radius as f32 * 1.4),
+                    (y - py) as f32 / radius as f32,
+                );
+                let reach = ex * ex + ey * ey;
+                if reach > 1.0 {
+                    continue;
+                }
+                let toward = ex * 0.7 + ey;
+                let low = (y - (floor - radius / 2)) as f32 / (radius as f32 / 2.0 + 1.0);
+                let color = if low > 0.5 {
+                    CLOUDS.shadow
+                } else if toward < -0.55 && reach > 0.35 {
+                    CLOUDS.shine
+                } else if toward > 0.45 || low > 0.0 {
+                    CLOUDS.base
+                } else {
+                    CLOUDS.light
+                };
+                let here = layer.get(x, y);
+                if here.a == 0 || brightness(color) > brightness(here) {
+                    layer.set(x, y, color);
+                }
+            }
+        }
+    }
+    for x in cx - 60..cx + 60 {
+        for y in cy - 30..=floor {
+            if layer.get(x, y).a > 0 && layer.get(x, y + 1).a == 0 {
+                layer.set(x, y, CLOUDS.edge);
+            }
+        }
+    }
+    blit(scene, &layer, 0, 0);
+}
+
+/// How light a colour is, so overlapping puffs keep their lit sides.
+fn brightness(color: Rgba) -> u32 {
+    u32::from(color.r) + u32::from(color.g) + u32::from(color.b)
 }

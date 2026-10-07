@@ -11,9 +11,11 @@
 //! it can be tinted towards dusk with the rest.
 
 use super::{Haunt, NET, PLACES, SEAT, WATER};
+use crate::kit;
 use crate::materials::LEATHER;
 use crate::paint::{
-    Ramp, chance, ellipse, hline, line, mix, noise, polygon, put, rgb, rgba, vline,
+    Ramp, chance, ellipse, hline, line, looped, mix, noise, patches, pick, polygon, put, rgb, rgba,
+    tone, vline,
 };
 use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 use formiga_art::{Canvas, Rgba};
@@ -117,8 +119,8 @@ pub fn foreground() -> Canvas {
 // Tools
 // ---------------------------------------------------------------------------------------------
 
-// The air, patches, clumps, fronds and leaves are drawn as the glade draws them, so the pool
-// matches the woods round it; they are the glade's own, kept private there.
+// The air, fronds and leaves are drawn as the glade draws them, so the pool matches the woods
+// round it; they are the glade's own, kept private there.
 
 /// The air between the trees at height `y`: shade under the canopy, brightening to a haze just
 /// above the far bank, where the woods go out of sight.
@@ -144,43 +146,6 @@ fn air(y: i32) -> Rgba {
 /// `color` as seen through `depth` of the haze (0 is nearby, 1 lost in it).
 fn hazed(color: Rgba, y: i32, depth: f32) -> Rgba {
     mix(color, air(y), depth)
-}
-
-/// Smooth noise in 0..1 that changes over cells of `size`: patches rather than speckle.
-fn patches(x: i32, y: i32, size: (i32, i32), salt: u32) -> f32 {
-    let (cell_x, cell_y) = (x.div_euclid(size.0), y.div_euclid(size.1));
-    let smooth = |t: f32| t * t * (3.0 - 2.0 * t);
-    let sx = smooth(x.rem_euclid(size.0) as f32 / size.0 as f32);
-    let sy = smooth(y.rem_euclid(size.1) as f32 / size.1 as f32);
-    let corner = |dx: i32, dy: i32| (noise(cell_x + dx, cell_y + dy, salt) % 1024) as f32 / 1023.0;
-    let top = corner(0, 0) + (corner(1, 0) - corner(0, 0)) * sx;
-    let bottom = corner(0, 1) + (corner(1, 1) - corner(0, 1)) * sx;
-    top + (bottom - top) * sy
-}
-
-/// Smooth noise in 0..1 along a loop `period` long, for things that go all the way round.
-fn looped(t: f32, period: i32, salt: u32) -> f32 {
-    let cell = t.floor() as i32;
-    let f = t - cell as f32;
-    let ease = f * f * (3.0 - 2.0 * f);
-    let at = |c: i32| (noise(c.rem_euclid(period), 0, salt) % 1024) as f32 / 1023.0;
-    at(cell) + (at(cell + 1) - at(cell)) * ease
-}
-
-/// A number from the hash in `0..n`.
-fn pick(index: i32, axis: i32, salt: u32, n: i32) -> i32 {
-    (noise(index, axis, salt) % n.max(1) as u32) as i32
-}
-
-/// A ramp's tone by level, 0 its edge and 4 its shine.
-fn tone(ramp: Ramp, level: i32) -> Rgba {
-    match level {
-        ..=0 => ramp.edge,
-        1 => ramp.shadow,
-        2 => ramp.base,
-        3 => ramp.light,
-        _ => ramp.shine,
-    }
 }
 
 /// A ramp's tone at a level that may fall between two of its steps, mixed in proportion.
@@ -216,69 +181,10 @@ fn ring(scene: &mut Canvas, (cx, cy): (i32, i32), (rx, ry): (i32, i32), color: R
 
 /// A clump of leaves, its rim scalloped into smaller clusters, lit from the upper left and lost
 /// in the haze by `depth`.
-fn clump(scene: &mut Canvas, (cx, cy): (i32, i32), radius: i32, ramp: Ramp, depth: f32, salt: u32) {
-    let ry = ((radius as f32 * 0.8) as i32).max(1);
-    let rim = radius * 3;
-    let bumps: Vec<(i32, i32, i32, f32)> = (0..rim)
-        .map(|step| {
-            let angle = step as f32 / rim as f32 * TAU;
-            let reach = radius as f32 - 1.0 + pick(step, 0, salt, 3) as f32;
-            let size = 1 + pick(step, 1, salt, 2) + radius / 9;
-            (
-                cx + (angle.cos() * reach).round() as i32,
-                cy + (angle.sin() * reach * 0.8).round() as i32,
-                size,
-                angle.cos() + angle.sin(),
-            )
-        })
-        .collect();
-    for &(x, y, size, _) in &bumps {
-        ellipse(scene, x, y, size + 1, size + 1, hazed(ramp.edge, y, depth));
-    }
-    for y in cy - ry..=cy + ry {
-        for x in cx - radius..=cx + radius {
-            let (dx, dy) = ((x - cx) as f32 / radius as f32, (y - cy) as f32 / ry as f32);
-            if dx * dx + dy * dy > 1.0 {
-                continue;
-            }
-            let light = dx + dy;
-            let cell = noise(x.div_euclid(2), y.div_euclid(2), salt + 7) % 8;
-            let color = if light < -0.6 {
-                match cell {
-                    0 => ramp.shine,
-                    1..=4 => ramp.light,
-                    _ => ramp.base,
-                }
-            } else if light < 0.2 {
-                match cell {
-                    0 | 1 => ramp.light,
-                    2..=5 => ramp.base,
-                    _ => ramp.shadow,
-                }
-            } else if light < 0.8 {
-                if cell < 2 { ramp.base } else { ramp.shadow }
-            } else if cell < 3 {
-                ramp.shadow
-            } else {
-                ramp.edge
-            };
-            put(scene, x, y, hazed(color, y, depth));
-        }
-    }
-    for &(x, y, size, light) in &bumps {
-        let (x, y) = (x - (x - cx).signum(), y - (y - cy).signum());
-        let color = if light < -0.5 {
-            ramp.light
-        } else if light < 0.6 {
-            ramp.base
-        } else {
-            ramp.shadow
-        };
-        ellipse(scene, x, y, size, size, hazed(color, y, depth));
-        if light < -0.9 {
-            put(scene, x - 1, y - 1, hazed(ramp.shine, y, depth));
-        }
-    }
+fn clump(scene: &mut Canvas, centre: (i32, i32), radius: i32, ramp: Ramp, depth: f32, salt: u32) {
+    kit::clump(scene, centre, radius, ramp, salt, |color, y| {
+        hazed(color, y, depth)
+    });
 }
 
 /// A stone lit from the upper left, its outline a little lumpy and flat underneath where it sits.
