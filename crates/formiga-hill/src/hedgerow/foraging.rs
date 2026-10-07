@@ -562,13 +562,12 @@ impl Foray {
     /// The thing growing under a point, nearest first: only what can be seen, and what this
     /// party can get at.
     pub fn item_at(&self, x: f32, y: f32) -> Option<usize> {
-        let gone = self.gone();
         self.items
             .iter()
             .enumerate()
             .filter(|(_, item)| item.revealed && item.growing())
             .map(|(index, item)| {
-                let middle = middle(item, gone);
+                let middle = middle(item);
                 (index, distance((x, y), middle))
             })
             .filter(|(_, off)| *off <= 7.0)
@@ -1209,7 +1208,7 @@ impl Foray {
             } else {
                 rgba(0xfdfbf5, 220)
             };
-            brackets(scene, middle(item, self.gone()), 5, color);
+            brackets(scene, middle(item), 5, color);
         }
         if let Some((index, since)) = self.shown
             && let Some(item) = self.items.get(index)
@@ -1435,7 +1434,7 @@ fn beside(ground: &Playground, stand: (f32, f32), face: f32) -> (f32, f32) {
 }
 
 /// The middle of something as drawn, for pointing at it.
-fn middle(item: &Item, _gone: f32) -> (f32, f32) {
+fn middle(item: &Item) -> (f32, f32) {
     let (x, y) = item.slot.at;
     let (_, ay) = produce::anchor(item.slot.plant);
     if item.gift {
