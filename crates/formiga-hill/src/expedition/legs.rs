@@ -808,11 +808,11 @@ pub fn players(stop: Stop, party: &[(Id, Character)]) -> Vec<Id> {
     // board, an explorer's badger sett, a bold one's high branches, a curious one's peek.
     let opens = |character: &Character| match stop {
         Stop::Rummage => {
-            character.parent.is_some()
+            crew::little(character)
                 || character.kind == formiga_core::TemperamentKind::Explorer
                 || character.axes.curiosity >= 0.8
         }
-        Stop::Forage => character.parent.is_some() || character.axes.boldness >= 0.65,
+        Stop::Forage => crew::little(character) || crew::bold(character),
         Stop::Scavenge => crew::little(character) || crew::curious(character),
         _ => false,
     };

@@ -28,17 +28,18 @@ use crate::cast::Id;
 use crate::character::{Beat, Character, Cue};
 use crate::dice::Dice;
 use crate::finds::{self, DROUGHT, FORAGED, Find, NOVELTY, Tier, drawn_to};
-use crate::paint::{blit, mix, put, rect, rgb, rgba};
+use crate::paint::{blit, put, rect, rgb, rgba};
 use crate::playground::{Playground, Prop, distance};
+use crate::track::crew::{bold, curious, little};
 use crate::woods::Influence;
-use crate::woods::rummage::{delighted, dim};
+use crate::woods::rummage::{self, delighted, dim};
 use formiga_art::{Canvas, ExpressionKind, Rgba};
 use formiga_core::{ActionKind, Gesture, Habit, TemperamentKind};
 
 /// The light an outing starts with, before the Hilltop lends any.
 pub const LIGHT: f32 = 100.0;
-/// How many things the basket holds.
-pub const BASKET: usize = 6;
+/// How many things the basket holds, as every Woods basket does.
+pub const BASKET: usize = rummage::BASKET;
 /// How much light goes each second, each pixel walked by a middling companion, each picking, and
 /// each climb into the high branches.
 const LIGHT_PER_SEC: f32 = 0.4;
@@ -330,7 +331,7 @@ impl Foray {
                 .find(|(_, c)| test(c))
                 .map(|(id, _)| *id)
         };
-        let little = with(&|c| c.parent.is_some());
+        let little = with(&little);
         let climber = party
             .iter()
             .zip(&characters)
@@ -1231,43 +1232,12 @@ impl Foray {
                 }
             }
         }
-        self.draw_basket(scene);
-    }
-
-    /// Where each of the basket's slots is drawn: left, top, and the size of one.
-    fn basket_frame(&self, width: u32) -> (i32, i32, i32) {
-        const SLOT: i32 = 11;
-        let across = SLOT * BASKET as i32 + 3;
-        (width as i32 - across - 4, 4, SLOT)
+        rummage::draw_basket(scene, &self.basket, self.light_left());
     }
 
     /// The basket's slot under a point in the scene, for putting something back.
     pub fn basket_slot_at(&self, x: f32, y: f32, width: u32) -> Option<usize> {
-        let (left, top, slot) = self.basket_frame(width);
-        let (x, y) = (x as i32 - left - 2, y as i32 - top - 2);
-        if x < 0 || y < 0 || y >= slot {
-            return None;
-        }
-        let index = (x / slot) as usize;
-        (index < self.basket.len()).then_some(index)
-    }
-
-    /// The basket in the top right corner: a slot for each thing it holds, and the light left.
-    fn draw_basket(&self, scene: &mut Canvas) {
-        let (left, top, slot) = self.basket_frame(scene.width());
-        let width = slot * BASKET as i32 + 3;
-        rect(scene, left, top, width, slot + 7, rgba(0x2a2018, 150));
-        for index in 0..BASKET as i32 {
-            let (x, y) = (left + 2 + index * slot, top + 2);
-            rect(scene, x, y, slot - 1, slot - 1, rgba(0xf6eed8, 60));
-            if let Some(id) = self.basket.get(index as usize) {
-                blit(scene, &finds::art::icon(id), x, y);
-            }
-        }
-        let share = self.light_left();
-        let bar = ((width - 4) as f32 * share) as i32;
-        let gold = mix(rgb(0x6a5a9a), rgb(0xf5d25e), share);
-        scene.fill_rect(left + 2, top + slot + 2, bar, 2, gold);
+        rummage::basket_slot_at(x, y, width, self.basket.len())
     }
 }
 
@@ -1385,16 +1355,6 @@ fn stock(
     items
 }
 
-/// Whether a companion will climb for the high branches.
-fn bold(character: &Character) -> bool {
-    character.axes.boldness >= 0.65
-}
-
-/// Whether a companion notices what is hiding, and says when something rare is nearly ripe.
-fn curious(character: &Character) -> bool {
-    character.kind == TemperamentKind::Explorer || character.axes.curiosity >= 0.6
-}
-
 /// Whether a companion would leave the ripe things for the birds.
 fn sweet(character: &Character) -> bool {
     character.kind == TemperamentKind::Sweetheart || character.axes.affection >= 0.85
@@ -1489,7 +1449,7 @@ fn robin(at: (f32, f32), base: f32, now: f32, reduce_motion: bool) -> Prop {
 /// does that others don't, from who it is.
 pub fn forager(character: &Character) -> String {
     let mut ways: Vec<&str> = Vec::new();
-    if character.parent.is_some() {
+    if little(character) {
         ways.push("small enough for the tucked-away ones");
     }
     if bold(character) {
@@ -1729,7 +1689,7 @@ mod tests {
         dice: &mut Dice,
     ) -> Vec<Item> {
         let open = Openers {
-            tucked: character.parent.is_some(),
+            tucked: little(character),
             high: bold(character),
         };
         stock(&[character], &found, drought, open, 0.0, dice)

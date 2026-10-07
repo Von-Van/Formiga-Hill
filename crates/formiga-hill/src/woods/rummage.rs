@@ -23,6 +23,7 @@ use crate::dice::Dice;
 use crate::finds::{self, Find, Kind, Tier, art};
 use crate::paint::{blit, mix, put, rect, rgb, rgba};
 use crate::playground::{Playground, Prop, distance};
+use crate::track::crew;
 use formiga_art::{Canvas, ExpressionKind, Rgba};
 use formiga_core::{ActionKind, Gesture, TemperamentKind};
 use std::f32::consts::{PI, TAU};
@@ -224,7 +225,7 @@ pub struct Rummage {
 /// How much a companion widens the arc for one kind of spot, read from its temperament.
 pub fn knack(character: &Character, kind: Kind) -> f32 {
     let a = character.axes;
-    let little = f32::from(u8::from(character.parent.is_some()));
+    let little = f32::from(u8::from(crew::little(character)));
     let score = match kind {
         Kind::Dig => 0.5 * a.energy + 0.5 * a.feistiness,
         // Small paws for small holes.
@@ -821,31 +822,46 @@ impl Rummage {
             }
             _ => {}
         }
-        self.draw_basket(scene);
+        draw_basket(scene, &self.basket, self.light_left());
     }
+}
 
-    /// The basket in the top right corner: a slot for each find it holds, and the light left.
-    fn draw_basket(&self, scene: &mut Canvas) {
-        const SLOT: i32 = 11;
-        let width = SLOT * BASKET as i32 + 3;
-        let (left, top) = (scene.width() as i32 - width - 4, 4);
-        rect(scene, left, top, width, SLOT + 7, rgba(0x2a2018, 150));
-        for slot in 0..BASKET as i32 {
-            let (x, y) = (left + 2 + slot * SLOT, top + 2);
-            rect(scene, x, y, SLOT - 1, SLOT - 1, rgba(0xf6eed8, 60));
-            if let Some(id) = self.basket.get(slot as usize) {
-                blit(scene, &art::icon(id), x, y);
-            }
-        }
-        // The light left, gold going to dusk.
-        let bar = ((width - 4) as f32 * (self.light / self.full).clamp(0.0, 1.0)) as i32;
-        let gold = mix(
-            rgb(0x6a5a9a),
-            rgb(0xf5d25e),
-            (self.light / self.full).clamp(0.0, 1.0),
-        );
-        scene.fill_rect(left + 2, top + SLOT + 2, bar, 2, gold);
+/// Where the basket's slots are drawn in a scene `width` wide: left, top, and the size of one.
+/// Every Woods basket is drawn here, in the top right corner.
+pub fn basket_frame(width: u32) -> (i32, i32, i32) {
+    const SLOT: i32 = 11;
+    let across = SLOT * BASKET as i32 + 3;
+    (width as i32 - across - 4, 4, SLOT)
+}
+
+/// The slot under a point in a scene `width` wide, of a basket holding `held`, for putting
+/// something back.
+pub fn basket_slot_at(x: f32, y: f32, width: u32, held: usize) -> Option<usize> {
+    let (left, top, slot) = basket_frame(width);
+    let (x, y) = (x as i32 - left - 2, y as i32 - top - 2);
+    if x < 0 || y < 0 || y >= slot {
+        return None;
     }
+    let index = (x / slot) as usize;
+    (index < held).then_some(index)
+}
+
+/// A basket in the top right corner: a slot for each find it holds, and under them the light
+/// left, `light_left` of it, gold going to dusk.
+pub fn draw_basket(scene: &mut Canvas, basket: &[&str], light_left: f32) {
+    let (left, top, slot) = basket_frame(scene.width());
+    let width = slot * BASKET as i32 + 3;
+    rect(scene, left, top, width, slot + 7, rgba(0x2a2018, 150));
+    for index in 0..BASKET as i32 {
+        let (x, y) = (left + 2 + index * slot, top + 2);
+        rect(scene, x, y, slot - 1, slot - 1, rgba(0xf6eed8, 60));
+        if let Some(id) = basket.get(index as usize) {
+            blit(scene, &art::icon(id), x, y);
+        }
+    }
+    let bar = ((width - 4) as f32 * light_left) as i32;
+    let gold = mix(rgb(0x6a5a9a), rgb(0xf5d25e), light_left);
+    scene.fill_rect(left + 2, top + slot + 2, bar, 2, gold);
 }
 
 /// Where a second companion stands to help at a spot: towards the middle of the glade, unless the
@@ -870,7 +886,7 @@ fn opener(party: &[Id], characters: &[Character], opener: Opener, close_pair: bo
         Opener::Explorer => {
             with(&|c| c.kind == TemperamentKind::Explorer || c.axes.curiosity >= 0.8)
         }
-        Opener::LittleOne => with(&|c| c.parent.is_some()),
+        Opener::LittleOne => with(&crew::little),
         Opener::ClosePair => close_pair.then(|| party.first().copied()).flatten(),
     }
 }

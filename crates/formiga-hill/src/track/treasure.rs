@@ -24,10 +24,10 @@ use crate::cast::Id;
 use crate::character::{Beat, Character, Cue};
 use crate::dice::Dice;
 use crate::finds::{DROUGHT, Find, NOVELTY, SCAVENGED, Tier, art, drawn_to};
-use crate::paint::{blit, mix, put, rect, rgb, rgba};
+use crate::paint::{blit, put, rect, rgb, rgba};
 use crate::playground::{Playground, Prop, distance};
 use crate::woods::Influence;
-use crate::woods::rummage::{delighted, dim};
+use crate::woods::rummage::{self, delighted, dim};
 use formiga_art::{Canvas, ExpressionKind};
 use formiga_core::{Gesture, TemperamentKind};
 
@@ -842,26 +842,7 @@ impl Hunt {
     /// The basket in the top right corner and the light under it, as on a scavenge, and the chest
     /// slot beside it.
     fn draw_basket(&self, scene: &mut Canvas) {
-        const SLOT: i32 = 11;
-        let width = SLOT * BASKET as i32 + 3;
-        let (left, top) = (scene.width() as i32 - width - 4, 4);
-        rect(scene, left, top, width, SLOT + 7, rgba(0x2a2018, 150));
-        for index in 0..BASKET as i32 {
-            let (x, y) = (left + 2 + index * SLOT, top + 2);
-            rect(scene, x, y, SLOT - 1, SLOT - 1, rgba(0xf6eed8, 60));
-            if let Some(id) = self.basket.get(index as usize) {
-                blit(scene, &art::icon(id), x, y);
-            }
-        }
-        let share = self.light_left();
-        let bar = ((width - 4) as f32 * share) as i32;
-        scene.fill_rect(
-            left + 2,
-            top + SLOT + 2,
-            bar,
-            2,
-            mix(rgb(0x6a5a9a), rgb(0xf5d25e), share),
-        );
+        rummage::draw_basket(scene, &self.basket, self.light_left());
         self.draw_chest_slot(scene);
     }
 

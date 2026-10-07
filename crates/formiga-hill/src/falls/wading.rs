@@ -19,18 +19,17 @@ use crate::cast::Id;
 use crate::character::{Beat, Character, Cue};
 use crate::dice::Dice;
 use crate::finds::{Find, Kind, Tier, afar, art};
-use crate::paint::{blit, mix, put, rect, rgb, rgba};
+use crate::paint::{blit, put, rect, rgb, rgba};
 use crate::playground::Playground;
+use crate::track::crew;
 use crate::woods::Influence;
-use crate::woods::rummage::{delighted, dim, knack};
+use crate::woods::rummage::{delighted, dim, draw_basket, knack};
 use formiga_art::{Canvas, ExpressionKind};
 use formiga_core::{ActionKind, Gesture, TemperamentKind};
 use std::f32::consts::{PI, TAU};
 
 /// The light a visit starts with, on its own; an expedition starts it partway through its day.
 pub const LIGHT: f32 = 100.0;
-/// How many finds the basket holds, as every Woods basket does.
-pub const BASKET: usize = crate::woods::rummage::BASKET;
 /// How many things the falls bring down on one visit.
 pub const COMING: usize = 2;
 /// What a try costs, and how much light goes each second.
@@ -204,7 +203,7 @@ impl Wading {
             _ if close_pair => 1.3,
             _ => 1.15,
         };
-        let bold = if characters.iter().any(|c| c.axes.boldness >= 0.65) {
+        let bold = if characters.iter().any(crew::bold) {
             1.1
         } else {
             1.0
@@ -500,9 +499,7 @@ impl Wading {
         };
         self.spotted = None;
         for (id, character) in self.party.iter().zip(&self.characters) {
-            let curious =
-                character.kind == TemperamentKind::Explorer || character.axes.curiosity >= 0.6;
-            if curious && self.dice.chance(0.4 + 0.5 * character.axes.curiosity) {
+            if crew::curious(character) && self.dice.chance(0.4 + 0.5 * character.axes.curiosity) {
                 self.spotted = Some(*id);
                 let mut point = Beat::new(Gesture::Reach, ExpressionKind::Curious, 0.9);
                 point.cue = Some(Cue::Exclaim);
@@ -599,26 +596,7 @@ impl Wading {
             }
             _ => {}
         }
-        self.draw_basket(scene);
-    }
-
-    /// The basket in the top right corner, as every Woods basket is drawn, and the light left.
-    fn draw_basket(&self, scene: &mut Canvas) {
-        const SLOT: i32 = 11;
-        let width = SLOT * BASKET as i32 + 3;
-        let (left, top) = (scene.width() as i32 - width - 4, 4);
-        rect(scene, left, top, width, SLOT + 7, rgba(0x2a2018, 150));
-        for slot in 0..BASKET as i32 {
-            let (x, y) = (left + 2 + slot * SLOT, top + 2);
-            rect(scene, x, y, SLOT - 1, SLOT - 1, rgba(0xf6eed8, 60));
-            if let Some(id) = self.basket.get(slot as usize) {
-                blit(scene, &art::icon(id), x, y);
-            }
-        }
-        let share = self.light_left();
-        let bar = ((width - 4) as f32 * share) as i32;
-        let gold = mix(rgb(0x6a5a9a), rgb(0xf5d25e), share);
-        scene.fill_rect(left + 2, top + SLOT + 2, bar, 2, gold);
+        draw_basket(scene, &self.basket, self.light_left());
     }
 }
 

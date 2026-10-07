@@ -31,7 +31,7 @@ use crate::paint::{blit, mix, put, rect, rgb, rgba};
 use crate::playground::{Layout, Patch, Playground, distance};
 use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 use crate::woods::Influence;
-use crate::woods::rummage::dim;
+use crate::woods::rummage::{basket_frame, dim};
 use formiga_art::{Canvas, ExpressionKind};
 use formiga_core::{Gesture, TemperamentKind};
 use formiga_travel::Band;
@@ -898,7 +898,7 @@ impl Expedition {
     /// The basket's slot under a point on the map, for leaving something behind: one in the
     /// basket, or one waiting beside it.
     pub fn basket_slot_at(&self, x: f32, y: f32) -> Option<usize> {
-        let (_, _, slot) = basket_frame();
+        let (_, _, slot) = basket_frame(SCENE_WIDTH);
         let (x, y) = (x as i32, y as i32);
         (0..self.basket.len()).find(|&index| {
             let (left, top) = slot_corner(index);
@@ -939,7 +939,7 @@ impl Expedition {
     /// The basket in the top right corner, and the day's light under it, as every Woods basket
     /// is drawn; anything over what it holds is shown waiting beside it.
     fn draw_basket(&self, scene: &mut Canvas) {
-        let (left, top, slot) = basket_frame();
+        let (left, top, slot) = basket_frame(SCENE_WIDTH);
         let width = slot * BASKET as i32 + 3;
         rect(scene, left, top, width, slot + 7, rgba(0x2a2018, 150));
         for index in 0..BASKET.max(self.basket.len()) as i32 {
@@ -1028,20 +1028,13 @@ fn carried(before: &[Carried], now: &[&'static str], leader: Id) -> Vec<Carried>
 /// Where a basket slot is drawn: in the basket, or, past what it holds, waiting to its left,
 /// the first nearest.
 fn slot_corner(index: usize) -> (i32, i32) {
-    let (left, top, slot) = basket_frame();
+    let (left, top, slot) = basket_frame(SCENE_WIDTH);
     let index = index as i32;
     if index >= BASKET as i32 {
         (left - 2 - (index - BASKET as i32 + 1) * slot, top + 2)
     } else {
         (left + 2 + index * slot, top + 2)
     }
-}
-
-/// Where the basket is drawn: left, top, and the size of a slot.
-fn basket_frame() -> (i32, i32, i32) {
-    const SLOT: i32 = 11;
-    let across = SLOT * BASKET as i32 + 3;
-    (SCENE_WIDTH as i32 - across - 4, 4, SLOT)
 }
 
 /// Where anyone can stand on the map: anywhere on the paper.
@@ -2029,7 +2022,7 @@ mod tests {
                 by: finder,
             })
             .collect();
-        let (_, _, slot) = basket_frame();
+        let (_, _, slot) = basket_frame(SCENE_WIDTH);
         for index in 0..trip.basket.len() {
             let (left, top) = slot_corner(index);
             let middle = ((left + slot / 2) as f32, (top + slot / 2) as f32);

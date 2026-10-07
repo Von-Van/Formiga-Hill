@@ -13,6 +13,7 @@
 use crate::cast::Id;
 use crate::character::Character;
 use crate::finds::Leaning;
+use crate::track::crew::{bold, little};
 use formiga_core::TemperamentKind;
 
 /// What there is to do at a place.
@@ -348,11 +349,6 @@ pub fn explorer(character: &Character) -> bool {
     character.kind == TemperamentKind::Explorer || character.axes.curiosity >= 0.8
 }
 
-/// Whether a companion takes the steep way.
-pub fn bold(character: &Character) -> bool {
-    character.axes.boldness >= 0.65
-}
-
 /// Whether a companion reads old things: a scholar, or anyone with as much of an eye for them.
 pub fn reader(character: &Character) -> bool {
     Leaning::Old.pull(character) >= 0.65
@@ -376,7 +372,7 @@ impl Company {
         });
         Self {
             explorer: first(&explorer),
-            little_one: first(&|character| character.parent.is_some()),
+            little_one: first(&little),
             close_pair,
             bold: first(&bold),
             reader: first(&reader),
