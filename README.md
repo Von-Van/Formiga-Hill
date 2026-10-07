@@ -173,7 +173,7 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 
 ## Where things stand
 
-Version 0.1.1 is current, and a fair amount is still open. The music and sounds are
+Version 0.67.3 is current, and a fair amount is still open. The music and sounds are
 placeholders. Hill's own text is in English only. Community packages can add stories, but not yet
 anything else, such as new games or places, and it is not yet clear what the right shape for those
 would be. The [changelog](CHANGELOG.md) keeps track of what changes from one version to the next.

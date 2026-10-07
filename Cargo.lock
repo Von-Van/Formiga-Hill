@@ -1270,8 +1270,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.67.1"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.1#90b651afb16c10a9aae1c67460b20fa2e96ab152"
+version = "0.67.3"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1283,8 +1283,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.67.1"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.1#90b651afb16c10a9aae1c67460b20fa2e96ab152"
+version = "0.67.3"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1298,8 +1298,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "formiga-expansion-rulebook"
+version = "0.67.3"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
+dependencies = [
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "formiga-hill"
-version = "0.1.1"
+version = "0.67.3"
 dependencies = [
  "anyhow",
  "directories",
@@ -1318,12 +1330,12 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.67.1"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.1#90b651afb16c10a9aae1c67460b20fa2e96ab152"
+version = "0.67.3"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.67.3#e7e68e4003df1486ae1f3666512448f876ba47bf"
 dependencies = [
  "formiga-art",
  "formiga-core",
- "getrandom 0.4.3",
+ "formiga-expansion-rulebook",
  "serde",
  "serde_json",
  "sha2",
