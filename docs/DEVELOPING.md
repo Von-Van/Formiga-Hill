@@ -136,8 +136,8 @@ packaging/, scripts/ the macOS app and the Windows installer
 docs/
 ```
 
-Everything is in one crate for now. The original design splits it into `formiga-hill-runtime` and
-`formiga-hill-ui`, and that split will probably happen once there is enough of each to justify it.
+Everything is in one crate for now. It will probably split into a runtime crate and a window crate
+once there is enough of each to justify it.
 
 ## Formiga Desktop's crates
 
