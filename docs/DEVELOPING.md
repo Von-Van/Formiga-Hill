@@ -143,7 +143,7 @@ once there is enough of each to justify it.
 
 `formiga-core`, `formiga-art` and `formiga-travel` all come from Formiga Desktop. They come from a
 single source so that their types agree, and that source is a release tag on GitHub, currently
-`v0.67.3` (travel version 4). Moving to a newer release means changing the tag on all three in the
+`v0.67.5` (travel version 4). Moving to a newer release means changing the tag on all three in the
 root `Cargo.toml` together, which `scripts/set-version.sh <version> <tag>` does along with Hill's own
 version and `Cargo.lock`. Because the train and the souvenirs are drawn by `formiga-art`, they
 look the same in both apps.
