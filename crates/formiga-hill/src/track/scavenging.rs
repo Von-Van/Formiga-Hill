@@ -1512,21 +1512,9 @@ fn crack(scene: &mut Canvas, (x, y): (i32, i32), t: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
+    use crate::cast::{Cast, named, sample};
     use crate::station::SCENE_WIDTH;
     use crate::track;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
-
-    fn named(cast: &Cast, name: &str) -> Id {
-        cast.members
-            .iter()
-            .find(|member| member.name == name)
-            .unwrap_or_else(|| panic!("no {name} in the sample"))
-            .id
-    }
 
     fn outing(cast: &Cast, names: &[&str], close_pair: bool, seed: u64) -> (Playground, Scavenge) {
         let party: Vec<Id> = names.iter().map(|name| named(cast, name)).collect();

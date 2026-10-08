@@ -1026,14 +1026,11 @@ mod tests {
             "already groomed"
         );
     }
+    use crate::cast::sample;
     use crate::green;
     use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
     use formiga_art::BodyClip;
     use formiga_core::{ActionKind, Gesture};
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     /// Runs a playground from `from` to `to` seconds, thirty ticks a second.
     pub fn run(playground: &mut Playground, cast: &Cast, from: f32, to: f32) {

@@ -1485,25 +1485,13 @@ pub fn forager(character: &Character) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
+    use crate::cast::{Cast, named, sample};
     use crate::finds::CATALOGUE;
     use crate::hedgerow;
     use crate::station::SCENE_WIDTH;
     use std::collections::{BTreeMap, BTreeSet};
 
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
-
     /// A member of the sample colony by name.
-    fn named(cast: &Cast, name: &str) -> Id {
-        cast.members
-            .iter()
-            .find(|member| member.name == name)
-            .unwrap_or_else(|| panic!("no {name} in the sample"))
-            .id
-    }
-
     fn outing_with(
         cast: &Cast,
         party: Vec<Id>,

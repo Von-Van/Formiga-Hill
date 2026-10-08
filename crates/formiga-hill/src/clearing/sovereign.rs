@@ -844,11 +844,8 @@ fn standing() -> Beat {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cast::sample;
     use crate::clearing;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     /// Plays the encounter through, always choosing the first thing offered and reading on at
     /// once. Returns how many choices it took.

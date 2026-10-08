@@ -426,11 +426,8 @@ fn shadow(scene: &mut Canvas, center_x: i32, foot_y: i32, half_width: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cast::sample;
     use formiga_travel::{TravelSnapshot, TravelerId};
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     /// The sample, with copies of its first traveller added until there are `count`.
     fn crowd(count: usize) -> Cast {

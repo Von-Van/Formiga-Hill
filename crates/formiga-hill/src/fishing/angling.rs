@@ -1160,12 +1160,8 @@ fn draw_strain(scene: &mut Canvas, strain: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
+    use crate::cast::{Cast, sample};
     use crate::fishing;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     fn trip(cast: &Cast, party: Vec<Id>) -> (Playground, Angling) {
         let mut ground = fishing::open(cast, &party, 0.0);

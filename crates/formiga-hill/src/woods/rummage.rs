@@ -1168,12 +1168,8 @@ fn draw_ring(scene: &mut Canvas, catch: &Catch, at: (f32, f32), now: f32, reduce
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
+    use crate::cast::{Cast, sample};
     use crate::woods;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     fn outing(cast: &Cast, party: Vec<Id>) -> (Playground, Rummage) {
         let mut ground = woods::open(cast, &party, 0.0);

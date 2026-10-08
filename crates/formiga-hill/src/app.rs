@@ -1427,6 +1427,7 @@ fn plural(count: usize) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cast::sample;
 
     #[test]
     fn words_read_as_they_would_in_a_sentence() {
@@ -1458,10 +1459,6 @@ mod tests {
         let rect = scene_rect(available, 2.0);
         assert_eq!(rect.width() * 2.0 % SCENE_WIDTH as f32, 0.0);
         assert!(available.contains_rect(rect));
-    }
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
     }
 
     #[test]
