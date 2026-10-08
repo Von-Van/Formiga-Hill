@@ -1380,9 +1380,77 @@ fn describe(cast: &Cast, id: Id) -> Vec<String> {
     lines
 }
 
+/// A list as it reads in a sentence: "Pip", "Pip and Moss", "Pip, Moss and Fern".
+fn listed<S: std::borrow::Borrow<str>>(items: &[S]) -> String {
+    match items {
+        [] => String::new(),
+        [only] => only.borrow().to_owned(),
+        [rest @ .., last] => format!("{} and {}", rest.join(", "), last.borrow()),
+    }
+}
+
+/// A name as it reads mid-sentence: "a smooth pebble", from "A smooth pebble".
+fn lower(name: &str) -> String {
+    let mut name = name.to_owned();
+    if let Some(first) = name.get_mut(0..1) {
+        first.make_ascii_lowercase();
+    }
+    name
+}
+
+/// A phrase as it starts a sentence.
+fn capital(text: &str) -> String {
+    let mut text = text.to_owned();
+    if let Some(first) = text.get_mut(0..1) {
+        first.make_ascii_uppercase();
+    }
+    text
+}
+
+/// "1st", "2nd", "11th", "23rd".
+fn ordinal(n: usize) -> String {
+    let suffix = match (n % 10, n % 100) {
+        (_, 11..=13) => "th",
+        (1, _) => "st",
+        (2, _) => "nd",
+        (3, _) => "rd",
+        _ => "th",
+    };
+    format!("{n}{suffix}")
+}
+
+/// The "s" a count of more or less than one needs.
+fn plural(count: usize) -> &'static str {
+    if count == 1 { "" } else { "s" }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn words_read_as_they_would_in_a_sentence() {
+        assert_eq!(listed::<&str>(&[]), "");
+        assert_eq!(listed(&["Pip"]), "Pip");
+        assert_eq!(
+            listed(&["Pip".to_owned(), "Moss".to_owned()]),
+            "Pip and Moss"
+        );
+        assert_eq!(listed(&["Pip", "Moss", "Fern"]), "Pip, Moss and Fern");
+        let ordinals: Vec<String> = [1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 111]
+            .map(ordinal)
+            .into();
+        assert_eq!(
+            ordinals,
+            [
+                "1st", "2nd", "3rd", "4th", "11th", "12th", "13th", "21st", "22nd", "23rd", "111th"
+            ]
+        );
+        assert_eq!((plural(0), plural(1), plural(2)), ("s", "", "s"));
+        assert_eq!(lower("A smooth pebble"), "a smooth pebble");
+        assert_eq!(capital("the old signpost"), "The old signpost");
+        assert_eq!((lower(""), capital("")), (String::new(), String::new()));
+    }
 
     #[test]
     fn the_scene_scales_by_whole_pixels_and_fits() {

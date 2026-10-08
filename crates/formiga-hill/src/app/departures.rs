@@ -5,7 +5,7 @@
 //! time away.
 
 use super::games::{reached, rings_rung};
-use super::{Area, Card, HillApp, Visit, clock, paper};
+use super::{Area, Card, HillApp, Visit, clock, listed, ordinal, paper};
 use crate::character::Character;
 use crate::hilltop::Standing;
 use crate::station::Fixture;
@@ -216,27 +216,6 @@ fn grown_names(grown: &[(u8, Standing)]) -> Vec<String> {
         .collect()
 }
 
-/// "Pip", "Pip and Moss", "Pip, Moss and Fern".
-fn listed(names: &[&str]) -> String {
-    match names {
-        [] => String::new(),
-        [only] => (*only).to_owned(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
-    }
-}
-
-/// "1st", "2nd", "11th", "23rd".
-fn ordinal(n: u32) -> String {
-    let suffix = match (n % 10, n % 100) {
-        (_, 11..=13) => "th",
-        (1, _) => "st",
-        (2, _) => "nd",
-        (3, _) => "rd",
-        _ => "th",
-    };
-    format!("{n}{suffix}")
-}
-
 fn plural(n: usize, one: &str, many: &str) -> String {
     if n == 1 {
         format!("1 {one}")
@@ -259,7 +238,7 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
             "Welcome back",
             format!(
                 "The colony's {} visit. Everything is where it was left.",
-                ordinal(board.visits)
+                ordinal(board.visits as usize)
             ),
         )
     }];

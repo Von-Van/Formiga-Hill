@@ -69,13 +69,7 @@ impl HillApp {
                 .map_or("Someone", |member| member.name.as_str())
         };
         let kind = |id: &str| bugs::bug(id).map_or("a bug", |bug| bug.name);
-        let lower = |id: &str| {
-            let mut name = kind(id).to_owned();
-            if let Some(first) = name.get_mut(0..1) {
-                first.make_ascii_lowercase();
-            }
-            name
-        };
+        let lower = |id: &str| super::lower(kind(id));
         for event in hunt.take_events() {
             if let Some(cue) = super::sound::hunted(&event) {
                 self.sound.play(cue);
