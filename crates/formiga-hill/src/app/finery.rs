@@ -2,7 +2,7 @@
 //! dress-up box, and carrying what everyone has on, who shines, and whatever was won at hoopla,
 //! from place to place for the rest of the visit. None of it goes home.
 
-use super::{Area, Card, HillApp, paper};
+use super::{Area, Card, HillApp, lower, paper};
 use crate::audio::Cue;
 use crate::cast::Id;
 use crate::character::{Brushing, Offer};
@@ -83,7 +83,7 @@ impl HillApp {
                 self.costumes.insert(id, piece);
                 self.sound.play(Cue::Costume);
                 let called = costume::piece(piece).map_or("something", |piece| piece.name);
-                format!("{name} is wearing {}.", lower_first(called))
+                format!("{name} is wearing {}.", lower(called))
             }
             Pick::TakeOff => {
                 if self.costumes.remove(&id).is_none() {
@@ -172,11 +172,4 @@ impl HillApp {
             }
         });
     }
-}
-
-fn lower_first(text: &str) -> String {
-    let mut chars = text.chars();
-    chars.next().map_or_else(String::new, |first| {
-        first.to_lowercase().chain(chars).collect()
-    })
 }

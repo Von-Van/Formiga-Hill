@@ -230,12 +230,8 @@ fn sentence(ways: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
+    use crate::cast::{Cast, sample};
     use std::collections::BTreeSet;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     fn crew(cast: &Cast, names: &[&str], close_pair: bool) -> Crew {
         let members: Vec<_> = names

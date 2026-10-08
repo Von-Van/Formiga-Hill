@@ -88,12 +88,9 @@ fn choose(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cast::sample;
     use crate::story::lines::Lines;
     use crate::story::script::parse_story;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     /// A trait nobody in the sample colony has, for a selector that finds no one.
     fn nobodys_trait(cast: &Cast) -> String {

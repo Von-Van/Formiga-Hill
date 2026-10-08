@@ -1,7 +1,7 @@
 //! Foraging along the hedgerow, in the window: setting off, choosing where to go and what to
 //! pick, putting things back to make room, and bringing the basket home.
 
-use super::{HillApp, paper};
+use super::{HillApp, lower, paper, plural};
 use crate::cast::Id;
 use crate::finds::{self, FORAGED};
 use crate::hedgerow::foraging::{BASKET, Ending, Event, Foray, Outset, Phase};
@@ -159,7 +159,7 @@ impl HillApp {
                 Event::ForTheBirds { who, count } => format!(
                     "{} leaves the ripe one{} for the birds.",
                     name(who),
-                    if count == 1 { "" } else { "s" }
+                    plural(count as usize)
                 ),
                 Event::Thanked { who, item } => format!(
                     "A robin has brought {} {} for leaving them so much!",
@@ -193,12 +193,12 @@ impl HillApp {
             (count, 0) => format!(
                 "Home from the hedgerow with {count} thing{} picked. They're in the satchel, \
                  for the Hilltop.",
-                if count == 1 { "" } else { "s" }
+                plural(count)
             ),
             (count, fresh) => format!(
                 "Home from the hedgerow with {count} thing{} picked, {fresh} new to the \
                  journal. They're in the satchel, for the Hilltop.",
-                if count == 1 { "" } else { "s" }
+                plural(count)
             ),
         };
         self.notice = Some((line, now));
@@ -323,7 +323,7 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
             "Picked at the hedgerow ({picked} of {}) \u{b7} {} foray{}",
             FORAGED.len(),
             colony.forays,
-            if colony.forays == 1 { "" } else { "s" }
+            plural(colony.forays as usize)
         ),
     );
     for find in &FORAGED {
@@ -385,13 +385,4 @@ pub(super) fn forager_hint(
         count => format!("{count} forays so far."),
     };
     format!("{} {been}", crate::hedgerow::foraging::forager(character))
-}
-
-/// A find's name as it reads mid-sentence.
-fn lower(name: &str) -> String {
-    let mut name = name.to_owned();
-    if let Some(first) = name.get_mut(0..1) {
-        first.make_ascii_lowercase();
-    }
-    name
 }

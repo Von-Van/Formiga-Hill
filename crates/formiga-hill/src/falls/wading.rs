@@ -712,12 +712,8 @@ fn draw_eddy(scene: &mut Canvas, circle: &Circle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
+    use crate::cast::{Cast, sample};
     use crate::falls;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     fn visit(cast: &Cast, party: Vec<Id>, seed: u64) -> (Playground, Wading) {
         let mut ground = falls::open(cast, &party, 0.0);

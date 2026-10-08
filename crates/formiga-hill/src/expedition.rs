@@ -1121,22 +1121,11 @@ pub(crate) fn draw_carried(scene: &mut Canvas, carried: &[&'static str], added: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cast::{named, sample};
     use crate::finds;
     use crate::hilltop::Standing;
     use legs::Play;
     use map::{FAR_FALLS, GLADE, LOG, OLD_TRACK, POOL};
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
-
-    fn named(cast: &Cast, name: &str) -> Id {
-        cast.members
-            .iter()
-            .find(|member| member.name == name)
-            .unwrap_or_else(|| panic!("no {name} in the sample"))
-            .id
-    }
 
     fn setting_off(cast: &Cast, party: Vec<Id>, known: Known) -> Expedition {
         let outset = Outset {

@@ -1,7 +1,7 @@
 //! Expeditions in the window: planning one on the map, choosing the way, the stops along it,
 //! making room in the basket, and the day's page in the journal.
 
-use super::{HillApp, paper};
+use super::{HillApp, capital, listed, lower, paper, plural};
 use crate::cast::Id;
 use crate::character::Character;
 use crate::expedition::legs::{Input, LegEvent, Play};
@@ -925,7 +925,7 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
             ui,
             format!(
                 "The furthest yet: {place}, first reached by {}",
-                listed(&party)
+                who_went(&party)
             ),
         );
     }
@@ -968,7 +968,7 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
             .map(|id| map::place(id).map_or("somewhere", |place| PLACES[place].name))
             .collect();
         let party: Vec<String> = page.party.iter().map(|id| who(id)).collect();
-        paper::name(ui, format!("With {}", listed(&party)));
+        paper::name(ui, format!("With {}", who_went(&party)));
         paper::words(ui, capital(&route.join(" \u{2192} ")));
         if !page.found.is_empty() {
             let found: Vec<String> = page
@@ -1029,37 +1029,15 @@ pub(super) fn expeditioner_hint(colony: &ColonyMemories, id: Id, character: &Cha
     format!(
         "{said}. {} expedition{} so far.",
         been,
-        if been == 1 { "" } else { "s" }
+        plural(been as usize)
     )
 }
 
-fn plural(count: usize) -> &'static str {
-    if count == 1 { "" } else { "s" }
-}
-
-/// A list as it reads in a sentence: "Mochi, Pip and Fig".
-fn listed(items: &[String]) -> String {
-    match items {
-        [] => "nobody".to_owned(),
-        [only] => only.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
+/// Who went, as it reads in a sentence, or "nobody" if a record names no one.
+fn who_went(party: &[String]) -> String {
+    if party.is_empty() {
+        "nobody".to_owned()
+    } else {
+        listed(party)
     }
-}
-
-/// A name as it reads mid-sentence.
-fn lower(name: &str) -> String {
-    let mut name = name.to_owned();
-    if let Some(first) = name.get_mut(0..1) {
-        first.make_ascii_lowercase();
-    }
-    name
-}
-
-/// A phrase as it starts a sentence.
-fn capital(text: &str) -> String {
-    let mut text = text.to_owned();
-    if let Some(first) = text.get_mut(0..1) {
-        first.make_ascii_uppercase();
-    }
-    text
 }

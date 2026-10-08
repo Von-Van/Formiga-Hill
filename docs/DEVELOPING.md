@@ -48,7 +48,7 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 
 | Option | Draws |
 | --- | --- |
-| `--render-station` | The station; `--at` seconds into the arrival, or settled |
+| `--render-station` | The station; `--at` seconds into the arrival, or settled; `--sample-hilltop` puts a sample Hilltop on its skyline |
 | `--render-green`, `--render-clubhouse`, `--render-fairground` | The place, `--at` seconds into free play |
 | `--render-hide-and-seek`, `--render-sack-race`, `--render-high-striker`, `--render-hoopla`, `--render-tug-of-war` | A game at the Fairground, `--at` seconds in |
 | `--render-woods`, `--render-fishing`, `--render-bug-hunt` | A Woods outing, `--at` seconds in |
@@ -60,7 +60,7 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | `--render-track` | A scavenge along the old track, `--at` seconds in |
 | `--render-treasure` | A treasure hunt off the old track, `--at` seconds in |
 | `--render-landmarks` | Every landmark a map can name, near and far, and the dig |
-| `--render-hilltop` | The Hilltop; `--sample-hilltop` fills it |
+| `--render-hilltop` | The Hilltop, with a sample of finds on it |
 | `--render-building` | The colony building on the Hilltop, `--at` seconds in |
 | `--render-story` | A story, `--at` seconds in |
 | `--render-sovereign` | The secret, `--at` seconds in |
@@ -92,7 +92,8 @@ into what it actually does. Nothing anywhere is written for one particular creat
 
 ```text
 crates/formiga-hill/src/
-  main.rs            arguments, the window, and the renders
+  main.rs            arguments, and opening the window
+  render.rs          the `--render-*` review pictures, drawn without a window
   app.rs, app/       the window: one module per place's controls and cards, and `paper.rs`,
                      the paper buttons, cards, trays and speech they are all made of
   lettering.rs       the pixel lettering everything in the window is written in
@@ -108,7 +109,7 @@ crates/formiga-hill/src/
   green/             the Village Green
   clubhouse/         the Clubhouse and its fire
   fairground/        the Fairground and its games
-  woods/             the glade, and rummaging there
+  woods/             the glade, rummaging there, and the basket other outings draw with it
   fishing/           the pool, its fish, and angling
   meadow/            the meadow, its bugs, and catching them
   hedgerow/          the hedgerow, what ripens there, and foraging
@@ -135,8 +136,8 @@ packaging/, scripts/ the macOS app and the Windows installer
 docs/
 ```
 
-Everything is in one crate for now. The original design splits it into `formiga-hill-runtime` and
-`formiga-hill-ui`, and that split will probably happen once there is enough of each to justify it.
+Everything is in one crate for now. It will probably split into a runtime crate and a window crate
+once there is enough of each to justify it.
 
 ## Formiga Desktop's crates
 

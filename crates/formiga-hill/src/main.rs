@@ -116,6 +116,41 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --story                  With --snap in the Clubhouse: begin the first story on the shelves
 ";
 
+/// Each `--render-*` option, and what it draws.
+const RENDERS: [(&str, Area); 31] = [
+    ("--render-station", Area::Station),
+    ("--render-green", Area::Green),
+    ("--render-clubhouse", Area::Clubhouse),
+    ("--render-fairground", Area::Fairground),
+    ("--render-hide-and-seek", Area::HideAndSeek),
+    ("--render-sack-race", Area::SackRace),
+    ("--render-high-striker", Area::HighStriker),
+    ("--render-hoopla", Area::Hoopla),
+    ("--render-tug-of-war", Area::TugOfWar),
+    ("--render-woods", Area::Woods),
+    ("--render-hilltop", Area::Hilltop),
+    ("--render-finds", Area::Finds),
+    ("--render-growing", Area::Growing),
+    ("--render-plans", Area::Plans),
+    ("--render-building", Area::Building),
+    ("--render-fishing", Area::Fishing),
+    ("--render-fish", Area::Fish),
+    ("--render-meadow", Area::Meadow),
+    ("--render-bugs", Area::Bugs),
+    ("--render-bug-hunt", Area::BugHunt),
+    ("--render-hedgerow", Area::Hedgerow),
+    ("--render-produce", Area::Produce),
+    ("--render-expedition", Area::Expedition),
+    ("--render-falls", Area::Falls),
+    ("--render-track", Area::Track),
+    ("--render-treasure", Area::Treasure),
+    ("--render-landmarks", Area::Landmarks),
+    ("--render-sovereign", Area::Sovereign),
+    ("--render-story", Area::Story),
+    ("--render-reactions", Area::Reactions),
+    ("--render-costumes", Area::Costumes),
+];
+
 enum Source {
     Sample,
     Trip(PathBuf),
@@ -296,83 +331,14 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 .map(PathBuf::from)
                 .with_context(|| format!("{flag} needs a value"))
         };
+        if let Some(&(flag, area)) = RENDERS.iter().find(|(flag, _)| arg == *flag) {
+            render = Some((area, value(flag)?));
+            continue;
+        }
         match arg.to_str() {
             Some("--sample") => set_source(Source::Sample)?,
             Some(LAUNCH_ARGUMENT) => set_source(Source::Trip(value(LAUNCH_ARGUMENT)?))?,
             Some("--from-save") => set_source(Source::Save(value("--from-save")?))?,
-            Some("--render-station") => {
-                render = Some((Area::Station, value("--render-station")?));
-            }
-            Some("--render-green") => render = Some((Area::Green, value("--render-green")?)),
-            Some("--render-clubhouse") => {
-                render = Some((Area::Clubhouse, value("--render-clubhouse")?));
-            }
-            Some("--render-fairground") => {
-                render = Some((Area::Fairground, value("--render-fairground")?));
-            }
-            Some("--render-hide-and-seek") => {
-                render = Some((Area::HideAndSeek, value("--render-hide-and-seek")?));
-            }
-            Some("--render-sack-race") => {
-                render = Some((Area::SackRace, value("--render-sack-race")?));
-            }
-            Some("--render-high-striker") => {
-                render = Some((Area::HighStriker, value("--render-high-striker")?));
-            }
-            Some("--render-hoopla") => render = Some((Area::Hoopla, value("--render-hoopla")?)),
-            Some("--render-tug-of-war") => {
-                render = Some((Area::TugOfWar, value("--render-tug-of-war")?));
-            }
-            Some("--render-woods") => render = Some((Area::Woods, value("--render-woods")?)),
-            Some("--render-hilltop") => {
-                render = Some((Area::Hilltop, value("--render-hilltop")?));
-            }
-            Some("--render-finds") => render = Some((Area::Finds, value("--render-finds")?)),
-            Some("--render-growing") => {
-                render = Some((Area::Growing, value("--render-growing")?));
-            }
-            Some("--render-plans") => render = Some((Area::Plans, value("--render-plans")?)),
-            Some("--render-building") => {
-                render = Some((Area::Building, value("--render-building")?));
-            }
-            Some("--render-fishing") => {
-                render = Some((Area::Fishing, value("--render-fishing")?));
-            }
-            Some("--render-fish") => render = Some((Area::Fish, value("--render-fish")?)),
-            Some("--render-meadow") => {
-                render = Some((Area::Meadow, value("--render-meadow")?));
-            }
-            Some("--render-bugs") => render = Some((Area::Bugs, value("--render-bugs")?)),
-            Some("--render-bug-hunt") => {
-                render = Some((Area::BugHunt, value("--render-bug-hunt")?));
-            }
-            Some("--render-hedgerow") => {
-                render = Some((Area::Hedgerow, value("--render-hedgerow")?));
-            }
-            Some("--render-produce") => {
-                render = Some((Area::Produce, value("--render-produce")?));
-            }
-            Some("--render-expedition") => {
-                render = Some((Area::Expedition, value("--render-expedition")?));
-            }
-            Some("--render-falls") => render = Some((Area::Falls, value("--render-falls")?)),
-            Some("--render-track") => render = Some((Area::Track, value("--render-track")?)),
-            Some("--render-treasure") => {
-                render = Some((Area::Treasure, value("--render-treasure")?));
-            }
-            Some("--render-landmarks") => {
-                render = Some((Area::Landmarks, value("--render-landmarks")?));
-            }
-            Some("--render-sovereign") => {
-                render = Some((Area::Sovereign, value("--render-sovereign")?));
-            }
-            Some("--render-story") => render = Some((Area::Story, value("--render-story")?)),
-            Some("--render-reactions") => {
-                render = Some((Area::Reactions, value("--render-reactions")?));
-            }
-            Some("--render-costumes") => {
-                render = Some((Area::Costumes, value("--render-costumes")?));
-            }
             Some("--render-sounds") => sounds = Some(value("--render-sounds")?),
             Some("--snap") => snap = Some(value("--snap")?),
             Some("--place") => {
@@ -664,6 +630,22 @@ mod tests {
             Some((Area::TugOfWar, PathBuf::from("tug.png")))
         );
         assert_eq!(args.at, Some(8.0));
+    }
+
+    #[test]
+    fn every_render_has_its_own_option_and_is_in_the_help() {
+        for (i, (flag, area)) in RENDERS.iter().enumerate() {
+            assert!(
+                USAGE.contains(&format!("  {flag} <PNG>")),
+                "{flag} is not in the help"
+            );
+            assert!(
+                RENDERS[..i].iter().all(|(f, a)| f != flag && a != area),
+                "{flag} is named twice"
+            );
+            let args = parse(&[flag, "out.png"]).unwrap().unwrap();
+            assert_eq!(args.render, Some((*area, PathBuf::from("out.png"))));
+        }
     }
 
     #[test]

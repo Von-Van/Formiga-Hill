@@ -177,6 +177,22 @@ impl Cast {
     }
 }
 
+/// Desktop's sample colony, ready to play: where most tests start.
+#[cfg(test)]
+pub fn sample() -> Cast {
+    Cast::new(formiga_travel::sample::snapshot()).unwrap()
+}
+
+/// The traveller called `name`, for a test that needs a particular one of the sample.
+#[cfg(test)]
+pub fn named(cast: &Cast, name: &str) -> Id {
+    cast.members
+        .iter()
+        .find(|member| member.name == name)
+        .unwrap_or_else(|| panic!("no {name} in the sample"))
+        .id
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

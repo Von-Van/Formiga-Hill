@@ -877,12 +877,8 @@ fn found_reaction(style: Style, asleep: bool, character: Option<&Character>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
+    use crate::cast::{Cast, sample};
     use crate::fairground;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
 
     /// Runs the game until `to`, gathering what happened.
     fn play(

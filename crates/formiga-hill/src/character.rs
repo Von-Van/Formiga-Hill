@@ -697,11 +697,7 @@ impl Character {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
+    use crate::cast::sample;
 
     fn with(kind: TemperamentKind, tune: impl FnOnce(&mut Axes)) -> Character {
         let mut character = Character::of(&sample().members[0]);
