@@ -1028,33 +1028,37 @@ fn toy_chest(scene: &mut Canvas, left: i32, base: i32) {
         3,
         SHADOW,
     );
-    // The lid, open behind.
-    polygon(
+    let back = base - front - top;
+    // The lid, open behind and leaning away, so a little narrower at its far edge, outlined in
+    // its own darkest plank.
+    let lid = [
+        (left + 1, back),
+        (left + 2, back - 9),
+        (left + width - 3, back - 9),
+        (left + width - 2, back),
+    ];
+    polygon(scene, &lid, |_, y| {
+        Some(if y < back - 6 {
+            PLANK.light
+        } else {
+            PLANK.shadow
+        })
+    });
+    for (from, to) in [(lid[0], lid[1]), (lid[1], lid[2]), (lid[2], lid[3])] {
+        line(scene, from, to, PLANK.edge);
+    }
+    // The top, seen from above, square over the front: the walls' tops round a dark inside,
+    // with a ball, a block and a boat's mast in it.
+    rect(scene, left, back, width, top, rgb(0x2e2626));
+    hline(scene, left, back, width, PLANK.light);
+    vline(scene, left, back, top, PLANK.light);
+    vline(scene, left + width - 1, back, top, PLANK.base);
+    hline(
         scene,
-        &[
-            (left + 2, base - front - top),
-            (left + 4, base - front - top - 9),
-            (left + width + 4, base - front - top - 9),
-            (left + width + 2, base - front - top),
-        ],
-        |_, y| {
-            Some(if y < base - front - top - 6 {
-                PLANK.light
-            } else {
-                PLANK.shadow
-            })
-        },
-    );
-    // The top, seen from above: dark inside, with a ball, a block and a boat's mast.
-    polygon(
-        scene,
-        &[
-            (left, base - front),
-            (left + 2, base - front - top),
-            (left + width + 2, base - front - top),
-            (left + width, base - front),
-        ],
-        |_, _| Some(rgb(0x2e2626)),
+        left + 1,
+        back + 1,
+        width - 2,
+        mix(PLANK.shadow, rgb(0x2e2626), 0.5),
     );
     ellipse(scene, left + 8, base - front - 3, 3, 2, rgb(0xc74a3e));
     put(scene, left + 7, base - front - 4, rgb(0xf29a88));
@@ -1153,7 +1157,7 @@ fn dress_up_box(scene: &mut Canvas) {
         ],
         |x, y| {
             let wall_left = left + 2 - (y - back) * 2 / deep;
-            let wall_right = wall_left + width - 1;
+            let wall_right = wall_left + width;
             Some(if y == back || x == wall_left {
                 PAINT.light
             } else if x == wall_right {
@@ -1388,15 +1392,16 @@ fn oak(scene: &mut Canvas) {
         }
     }
     bevel(scene, 112, 106, 22, 3, PLANK);
-    // The trunk: flared at the foot into roots across the grass, lit on its left.
+    // The trunk: flared at the foot into roots across the grass, lit on its left, and down to
+    // the row its shade lies on, so no grass shows between the bark and the ground.
     polygon(
         scene,
-        &[(34, 116), (46, 98), (66, 98), (80, 116)],
+        &[(33, 117), (46, 98), (66, 98), (81, 117)],
         |_, _| Some(BARK.base),
     );
     rect(scene, 46, 56, 20, 44, BARK.base);
-    for x in 34..80 {
-        for y in 56..116 {
+    for x in 33..81 {
+        for y in 56..117 {
             if scene.get(x, y) != BARK.base {
                 continue;
             }

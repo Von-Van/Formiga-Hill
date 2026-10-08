@@ -456,14 +456,15 @@ fn on_crag(x: i32, y: i32, left: bool) -> bool {
 }
 
 /// The wall of wet rock at the back of the gorge, behind the falls: dark, glistening, mossy where
-/// the spray reaches.
+/// the spray reaches. It starts below the lip, so the stream under the arch runs right up to the
+/// falls without a band of rock across it.
 fn back_wall(scene: &mut Canvas) {
     let behind = |x: i32, y: i32| {
-        (ARCH_SPRING - 2..POOL_BACK + 2).contains(&y)
+        (ARCH_SPRING + 1..POOL_BACK + 2).contains(&y)
             && !on_crag(x, y, true)
             && !on_crag(x, y, false)
     };
-    for y in ARCH_SPRING - 2..POOL_BACK + 2 {
+    for y in ARCH_SPRING + 1..POOL_BACK + 2 {
         for x in 100..290 {
             if behind(x, y) {
                 let color = if chance(x, y, 1731, 50) {

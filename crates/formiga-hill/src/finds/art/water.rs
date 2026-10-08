@@ -439,8 +439,23 @@ const BOTTLE: [&str; 9] = [
 
 /// A bare branching stick with coloured glass bottles on the ends of its branches.
 pub(super) fn bottle_tree() -> Piece {
+    bottle_tree_bare(&[])
+}
+
+/// Where the bottle tree's trunk meets the ground, in its own pixels: its anchor.
+pub(super) const BOTTLE_TREE_FOOT: (i32, i32) = (17, 47);
+
+/// Where a branch of the bottle tree ends, in the tree's own pixels: where its bottle hangs.
+pub(super) fn branch_tip(branch: usize) -> (i32, i32) {
+    let (path, _) = BRANCHES[branch];
+    path[path.len() - 1]
+}
+
+/// The bottle tree with the branches in `bare` left without their bottles, so something else
+/// can hang from their tips without a bottle sitting on top of it.
+pub(super) fn bottle_tree_bare(bare: &[usize]) -> Piece {
     let mut s = Canvas::new(34, 50);
-    let (cx, ground) = (17, 47);
+    let (cx, ground) = BOTTLE_TREE_FOOT;
     ellipse(&mut s, cx, ground, 10, 2, SHADOW);
     // Twigs that never got a bottle, behind the rest.
     bough(&mut s, &[(16, 34), (13, 32), (12, 30)], DRIFTWOOD);
@@ -460,7 +475,10 @@ pub(super) fn bottle_tree() -> Piece {
         };
         (left..=right).contains(&x)
     });
-    for &(path, ramp) in &BRANCHES {
+    for (branch, &(path, ramp)) in BRANCHES.iter().enumerate() {
+        if bare.contains(&branch) {
+            continue;
+        }
         if let Some(&tip) = path.last() {
             stamp(
                 &mut s,

@@ -39,6 +39,11 @@ const BREAST: (i32, i32) = (100, 184);
 const FIREBOX: (i32, i32, i32, i32) = (142, 19, 60, 94);
 /// The bookshelf: left, top, width, height.
 const SHELF: (i32, i32, i32, i32) = (22, 14, 50, 82);
+/// Where the lamp hangs from the beam: far enough from the window that its shade stays clear of
+/// the curtain rod's end.
+const LAMP_X: i32 = 192;
+/// How tall the bookshelf's plinth is, taller than the skirting so their lines never meet.
+const PLINTH: i32 = 9;
 /// How many pictures the fire has, flickering between them.
 pub const FLICKERS: usize = 4;
 
@@ -249,7 +254,7 @@ fn sprig(scene: &mut Canvas, x: i32, y: i32) {
 
 /// The lamp hanging from the beam between the hearth and the window, and its glow on the paper.
 fn lamp(scene: &mut Canvas) {
-    let cx = 196;
+    let cx = LAMP_X;
     for (radius, alpha) in [(34, 14), (24, 18), (14, 24)] {
         ellipse(scene, cx, 22, radius, radius * 3 / 4, rgba(0xffe2a0, alpha));
     }
@@ -282,19 +287,22 @@ fn bookshelf(scene: &mut Canvas) {
     let (left, top, width, height) = SHELF;
     let right = left + width;
     let foot = top + height;
-    // The case: dark inside, sides and crown in timber.
+    // The case: dark inside, sides and crown in timber, standing on a plinth as wide as the
+    // crown. The plinth is taller than the skirting behind it, so none of the skirting's lines
+    // run on through the case's foot, and its top is the bottom shelf.
+    let plinth = foot - PLINTH;
     rect(scene, left, top, width, height, rgb(0x2a1c16));
     bevel(scene, left - 2, top - 3, width + 4, 5, TIMBER);
     for side in [left - 1, right - 3] {
-        rect(scene, side, top, 4, height, TIMBER.base);
-        vline(scene, side, top, height, TIMBER.edge);
-        vline(scene, side + 1, top, height, TIMBER.light);
-        vline(scene, side + 3, top, height, TIMBER.shadow);
+        rect(scene, side, top, 4, plinth - top, TIMBER.base);
+        vline(scene, side, top, plinth - top, TIMBER.edge);
+        vline(scene, side + 1, top, plinth - top, TIMBER.light);
+        vline(scene, side + 3, top, plinth - top, TIMBER.shadow);
     }
-    rect(scene, left - 1, foot - 6, width + 2, 6, TIMBER.shadow);
-    hline(scene, left - 1, foot - 6, width + 2, TIMBER.light);
-    hline(scene, left - 1, foot - 1, width + 2, TIMBER.edge);
-    let shelves = [top + 18, top + 37, top + 56, foot - 6];
+    bevel(scene, left - 2, plinth, width + 4, PLINTH, TIMBER);
+    hline(scene, left - 1, plinth + 1, width + 2, TIMBER.shine);
+    hline(scene, left - 1, plinth + 2, width + 2, TIMBER.shadow);
+    let shelves = [top + 18, top + 37, top + 56, plinth];
     let mut floor_of = top + 2;
     for (index, &board) in shelves.iter().enumerate() {
         let inside_top = floor_of;
@@ -329,6 +337,9 @@ fn bookshelf(scene: &mut Canvas) {
             }
             vline(scene, jx, board - 7, 7, rgba(0xffffff, 120));
         }
+        if board == plinth {
+            break;
+        }
         // The board itself, lit along its lip.
         rect(scene, left + 2, board, width - 4, 3, TIMBER.base);
         hline(scene, left + 2, board, width - 4, TIMBER.shine);
@@ -337,8 +348,15 @@ fn bookshelf(scene: &mut Canvas) {
         floor_of = board + 3;
     }
     // A fern on top, and the case's shadow on the paper to its right.
-    vline(scene, right + 1, top - 2, height + 2, rgba(0x1e2418, 50));
-    vline(scene, right + 2, top, height, rgba(0x1e2418, 25));
+    vline(
+        scene,
+        right + 1,
+        top - 2,
+        plinth - top + 2,
+        rgba(0x1e2418, 50),
+    );
+    vline(scene, right + 2, top, plinth - top, rgba(0x1e2418, 25));
+    vline(scene, right + 3, plinth + 1, PLINTH - 1, rgba(0x1e2418, 50));
     potted_fern(scene, left + 12, top - 3, 5);
 }
 
@@ -494,25 +512,30 @@ fn painting(scene: &mut Canvas, x: i32, y: i32) {
     let (wide, tall) = (42, 24);
     bevel(scene, x, y, wide, tall, BRASS);
     rect(scene, x + 1, y + 1, wide - 2, tall - 2, BRASS.base);
+    // The picture is painted on its own canvas the size of the opening, so its hills end at
+    // the frame instead of spilling over it.
     let (ix, iy, iw, ih) = (x + 3, y + 3, wide - 6, tall - 6);
-    for py in iy..iy + ih {
-        let band = mix(SKY_TOP, SKY_LOW, (py - iy) as f32 / ih as f32);
-        hline(scene, ix, py, iw, band);
+    let mut picture = Canvas::new(iw as u32, ih as u32);
+    let canvas = &mut picture;
+    for py in 0..ih {
+        let band = mix(SKY_TOP, SKY_LOW, py as f32 / ih as f32);
+        hline(canvas, 0, py, iw, band);
     }
-    ellipse(scene, ix + 22, iy + ih + 4, 18, 12, HILL);
-    ellipse(scene, ix + 28, iy + ih + 5, 12, 9, HILL_SHADE);
-    ellipse(scene, ix + 6, iy + ih + 3, 12, 6, FAR_HILL);
-    rect(scene, ix + 21, iy + 2, 1, 3, TRUNK);
-    ellipse(scene, ix + 21, iy + 2, 2, 2, LEAVES);
+    ellipse(canvas, 22, ih + 4, 18, 12, HILL);
+    ellipse(canvas, 28, ih + 5, 12, 9, HILL_SHADE);
+    ellipse(canvas, 6, ih + 3, 12, 6, FAR_HILL);
+    rect(canvas, 21, 2, 1, 3, TRUNK);
+    ellipse(canvas, 21, 2, 2, 2, LEAVES);
     // The train along the bottom, with a puff of steam.
-    hline(scene, ix, iy + ih - 2, iw, rgb(0x6b625d));
-    rect(scene, ix + 6, iy + ih - 6, 7, 4, ENAMEL);
-    rect(scene, ix + 11, iy + ih - 8, 2, 2, ENAMEL_DEEP);
-    rect(scene, ix + 14, iy + ih - 5, 6, 3, rgb(0xb05445));
-    put(scene, ix + 7, iy + ih - 2, rgb(0x2b2b2b));
-    put(scene, ix + 11, iy + ih - 2, rgb(0x2b2b2b));
-    ellipse(scene, ix + 11, iy + ih - 11, 2, 1, CLOUD);
-    ellipse(scene, ix + 8, iy + ih - 13, 2, 1, rgba(0xfdfbf5, 180));
+    hline(canvas, 0, ih - 2, iw, rgb(0x6b625d));
+    rect(canvas, 6, ih - 6, 7, 4, ENAMEL);
+    rect(canvas, 11, ih - 8, 2, 2, ENAMEL_DEEP);
+    rect(canvas, 14, ih - 5, 6, 3, rgb(0xb05445));
+    put(canvas, 7, ih - 2, rgb(0x2b2b2b));
+    put(canvas, 11, ih - 2, rgb(0x2b2b2b));
+    ellipse(canvas, 11, ih - 11, 2, 1, CLOUD);
+    ellipse(canvas, 8, ih - 13, 2, 1, rgba(0xfdfbf5, 180));
+    blit(scene, &picture, ix, iy);
     // The frame's shadow on the stone.
     hline(scene, x + 1, y + tall, wide, rgba(0x1e140e, 70));
     vline(scene, x + wide, y + 1, tall, rgba(0x1e140e, 70));
@@ -1078,12 +1101,15 @@ fn rug(scene: &mut Canvas) {
 
 /// A wicker basket of split logs by the hearth.
 fn log_basket(scene: &mut Canvas, x: i32, foot: i32) {
-    for (dx, dy) in [(1, -12), (4, -14), (7, -13), (10, -12)] {
+    // Ten rows of wicker, so the rim stands above the skirting's top edge instead of running on
+    // along it.
+    let rim = foot - 10;
+    for (dx, dy) in [(1, -14), (4, -16), (7, -15), (10, -14)] {
         rect(scene, x + dx, foot + dy, 3, 6, BARK.base);
         put(scene, x + dx, foot + dy, PLANK.light);
         put(scene, x + dx + 2, foot + dy + 5, BARK.edge);
     }
-    for y in foot - 8..foot {
+    for y in rim..foot {
         for px in x..x + 15 {
             let weave = (px + y).rem_euclid(3) == 0;
             put(
@@ -1096,7 +1122,7 @@ fn log_basket(scene: &mut Canvas, x: i32, foot: i32) {
         put(scene, x, y, rgb(0x6b4a24));
         put(scene, x + 14, y, rgb(0x6b4a24));
     }
-    hline(scene, x, foot - 8, 15, rgb(0xd8b26a));
+    hline(scene, x, rim, 15, rgb(0xd8b26a));
     hline(scene, x, foot - 1, 15, rgb(0x6b4a24));
 }
 
@@ -1138,45 +1164,50 @@ fn armchair(cloth: Ramp, throw: bool) -> Canvas {
             put(&mut chair, bx + 1, by + 1, cloth.shadow);
         }
     }
-    // Arms rolled over at the front.
-    for (left, light) in [(0, true), (wide - 9, false)] {
-        for y in 12..31 {
-            for x in left..left + 9 {
-                let edge = x == left || x == left + 8;
-                let color = if edge {
-                    cloth.edge
-                } else if light {
-                    if x < left + 3 {
-                        cloth.shine
-                    } else {
-                        cloth.light
-                    }
-                } else if x > left + 5 {
-                    cloth.edge
-                } else {
-                    cloth.shadow
-                };
-                put(&mut chair, x, y, color);
-            }
-        }
-        ellipse(
-            &mut chair,
-            left + 4,
-            13,
-            4,
-            2,
-            if light { cloth.light } else { cloth.base },
-        );
-        put(&mut chair, left + 3, 12, cloth.shine);
-    }
-    // The seat cushion, and the skirt below it.
+    // The seat cushion, and the skirt below it, between the arms.
     rect(&mut chair, 9, 20, wide - 18, 7, cloth.base);
     hline(&mut chair, 9, 20, wide - 18, cloth.shine);
     hline(&mut chair, 9, 21, wide - 18, cloth.light);
     hline(&mut chair, 9, 26, wide - 18, cloth.shadow);
-    rect(&mut chair, 2, 27, wide - 4, 5, cloth.shadow);
-    hline(&mut chair, 2, 27, wide - 4, cloth.base);
-    hline(&mut chair, 2, 31, wide - 4, cloth.edge);
+    rect(&mut chair, 9, 27, wide - 18, 5, cloth.shadow);
+    hline(&mut chair, 9, 27, wide - 18, cloth.base);
+    // Arms rolled over at the top and running down to the floor in one piece, over the seat's
+    // ends, so nothing crosses them: the lit arm faces the light, the far one is in shade. Only
+    // the side against the seat is drawn in, the outline does the rest.
+    for (left, lit) in [(0, true), (wide - 9, false)] {
+        let (roll, face, crease) = if lit {
+            (cloth.light, cloth.light, cloth.base)
+        } else {
+            (cloth.base, cloth.shadow, cloth.edge)
+        };
+        let inner = if lit { left + 8 } else { left };
+        for y in 12..32 {
+            for x in left..left + 9 {
+                // The roll's top corners are left off, so the outline rounds them.
+                if y == 12 && (x == left || x == left + 8) {
+                    continue;
+                }
+                let color = if x == inner {
+                    cloth.edge
+                } else if y < 15 {
+                    roll
+                } else if y == 15 {
+                    crease
+                } else if lit && x < left + 3 {
+                    cloth.shine
+                } else {
+                    face
+                };
+                put(&mut chair, x, y, color);
+            }
+        }
+        put(
+            &mut chair,
+            left + 2,
+            12,
+            if lit { cloth.shine } else { cloth.light },
+        );
+    }
     // A cushion of the other colour, plumped against the back.
     let pillow = if throw { ROSE } else { MUSTARD };
     ellipse(&mut chair, 20, 16, 6, 4, pillow.base);
@@ -1341,8 +1372,9 @@ fn toy_box() -> Canvas {
     );
     // The box.
     bevel(&mut chest, 0, 10, wide, tall - 12, TOYBOX);
-    hline(&mut chest, 1, 13, wide - 2, TOYBOX.shadow);
-    hline(&mut chest, 1, 14, wide - 2, TOYBOX.shine);
+    // The band under the rim stops at the box's lit and shaded sides, so they run unbroken.
+    hline(&mut chest, 2, 13, wide - 4, TOYBOX.shadow);
+    hline(&mut chest, 2, 14, wide - 4, TOYBOX.shine);
     // Painted stars along the front.
     for (sx, color) in [(7, 0xf5d25e), (16, 0xfbf6ee), (25, 0xf19bb0)] {
         let sy = 19;
@@ -1424,7 +1456,7 @@ fn outline(sprite: &mut Canvas, color: Rgba) {
 /// firelight on the floor before it, and the candles on the mantel.
 pub fn lamplight() -> Canvas {
     let mut lights = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
-    glow(&mut lights, (196, 24), 56, rgb(0xffdc96));
+    glow(&mut lights, (LAMP_X, 24), 56, rgb(0xffdc96));
     glow(&mut lights, (FIREBOX.0, FIREBOX.3 - 12), 70, rgb(0xffa04a));
     glow(
         &mut lights,

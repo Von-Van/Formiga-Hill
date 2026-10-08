@@ -110,6 +110,9 @@ const HANDCART: (i32, i32) = (338, 176);
 const PRIZE_SACK: (i32, i32) = (342, 100);
 /// The hoopla counter's left edge, and the row its top is on.
 pub const COUNTER: (i32, i32) = (278, 104);
+/// The hoopla stall's left edge and width: the counter in front runs the whole width of it, so
+/// none of the back wall stands bare to the ground and the counter stops at the corner post.
+const STALL: (i32, i32) = (266, 72);
 /// The high striker, between the big top and the carousel: the middle of its tower, and the row
 /// its plinth stands on.
 pub const STRIKER: (i32, i32) = (129, 117);
@@ -118,8 +121,9 @@ pub const STRIKER: (i32, i32) = (129, 117);
 pub const PUCK_RAIL: (i32, i32) = (104, 61);
 /// The pad the mallet comes down on: its middle, and its top row.
 pub const PAD: (i32, i32) = (129, 117);
-/// The bell on top of the striker: its middle, and the row of its rim.
-pub const BELL: (i32, i32) = (129, 55);
+/// The bell on top of the striker: its middle, and the row of its rim, which rests on the cap
+/// at the top of the rail.
+pub const BELL: (i32, i32) = (129, PUCK_RAIL.1 - 1);
 
 /// Everything behind the colony and its hiding places, by day.
 pub fn backdrop(hilltop: &Arrangement) -> Canvas {
@@ -156,7 +160,7 @@ fn paint(scene: &mut Canvas, lamps: &mut Canvas, hilltop: &Arrangement) {
     ground(scene, lamps);
     big_top(scene, lamps, BIG_TOP.0, BIG_TOP.1);
     carousel(scene, lamps, 196);
-    hoopla_stall(scene, lamps, 266);
+    hoopla_stall(scene, lamps, STALL.0);
     caravan(scene, lamps, 336);
     festoons(scene, lamps);
     high_striker(scene, lamps);
@@ -278,7 +282,11 @@ pub fn props() -> (Vec<Prop>, Vec<HidingPlace>) {
     add("the barrel", barrel(BARREL.0, BARREL.1), 20.0);
     add("the prize sack", sack(PRIZE_SACK.0, PRIZE_SACK.1), 18.0);
     add("the handcart", handcart(HANDCART.0, HANDCART.1), 16.0);
-    add("the hoopla counter", counter(COUNTER.0, COUNTER.1), 22.0);
+    add(
+        "the hoopla counter",
+        counter(STALL.0, COUNTER.1, STALL.1),
+        22.0,
+    );
     add(
         "the straw bale",
         straw_bale(STRAW_BALE.0, STRAW_BALE.1),
@@ -1076,10 +1084,12 @@ fn carousel(scene: &mut Canvas, lamps: &mut Canvas, centre: i32) {
         stud(scene, lamps, sx, sy, index);
     }
     // The far side, in the shade under the canopy: poles and horses going the other way, dim
-    // beyond the middle.
+    // beyond the middle. The shade thins out towards either end, where the far side comes round
+    // to meet the near, so it has no hard edge of its own.
     for x in centre - half..=centre + half {
+        let alpha = (90.0 * arc(x, centre, half).sqrt()) as u8;
         for y in far_rim(x) + 2..far_deck(x) {
-            put(scene, x, y, Rgba { a: 90, ..INSIDE });
+            put(scene, x, y, Rgba { a: alpha, ..INSIDE });
         }
     }
     for (offset, rise, horse_kind) in [(-30, 3, 4), (30, 0, 5)] {
@@ -1329,7 +1339,7 @@ fn horse(
 /// and a sign framed in bulbs, which light it all after dark. Its counter is a prop, so someone
 /// can hide behind it.
 fn hoopla_stall(scene: &mut Canvas, lamps: &mut Canvas, left: i32) {
-    let (width, roof, base) = (72, 66, 104);
+    let (width, roof, base) = (STALL.1, 66, 104);
     let opening = roof + 10;
     let middle = left + width / 2;
     ellipse(scene, middle + 6, base + 2, width / 2 + 4, 4, SHADOW);
@@ -1798,7 +1808,8 @@ fn high_striker(scene: &mut Canvas, lamps: &mut Canvas) {
     let (left, right) = (cx - 4, cx + 4);
     let (rest, bell) = PUCK_RAIL;
     let foot = base - 9;
-    let top = bell - 1;
+    // The board starts under the cap, so none of it shows above.
+    let top = bell;
     let band = (rest + 2 - bell) as f32 / 10.0;
     ellipse(scene, cx + 3, base, 13, 2, SHADOW);
     // The board, one stripe to each mark, each stripe shaded in its own colour.
@@ -1857,8 +1868,8 @@ fn high_striker(scene: &mut Canvas, lamps: &mut Canvas) {
     );
     hline(scene, cx - 1, rest + 3, 3, IRON.base);
     hline(scene, cx - 1, rest + 4, 3, IRON.edge);
-    // A star at the top mark, for the bell.
-    let star = top + 2;
+    // A star at the top mark, under the cap's shade, for the bell.
+    let star = bell + 6;
     put(scene, cx - 2, star + 1, GOLD.light);
     put(scene, cx + 2, star + 1, GOLD.base);
     put(scene, cx - 1, star, GOLD.shine);
@@ -2153,8 +2164,18 @@ fn barrel(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
                 continue;
             }
             let rim = !in_ellipse(x, y, (8, h + 3), (7, 1));
+            // The rim's outer edge is outlined all the way round, the far half too, so the head
+            // has an edge against the sawdust; only the inner ring of the far half catches the
+            // light.
+            let outer = [(-1, 0), (1, 0), (0, -1)]
+                .iter()
+                .any(|&(dx, dy)| !in_ellipse(x + dx, y + dy, (8, h + 3), (8, 2)));
             let color = if rim {
-                if y <= h + 3 { OAK.light } else { OAK.edge }
+                if y <= h + 3 && !outer {
+                    OAK.light
+                } else {
+                    OAK.edge
+                }
             } else if (x - 2) % 4 == 0 {
                 OAK.base
             } else if x < 8 {
@@ -2297,16 +2318,16 @@ fn handcart(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
 
 /// The hoopla stall's counter, at the front of the stall: its top is where the game's pegs, prizes
 /// and rings are set out.
-fn counter(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
+fn counter(left: i32, top: i32, width: i32) -> (Canvas, (i32, i32), f32) {
     /// Room above the counter's top, where the game's gear stands.
     const HEADROOM: i32 = 4;
     let h = HEADROOM;
-    let mut s = Canvas::new(62, (16 + h + 2) as u32);
-    ellipse(&mut s, 31, h + 16, 31, 1, SHADOW);
+    let mut s = Canvas::new(width as u32, (16 + h + 2) as u32);
+    ellipse(&mut s, width / 2, h + 16, width / 2, 1, SHADOW);
     // The skirt: blue and cream cloth hanging in folds, darker towards the ground.
     for y in h + 3..h + 16 {
         let down = (y - h - 3) as f32 / 13.0;
-        for x in 0..62 {
+        for x in 0..width {
             let stripe = x / 6;
             let ramp = if stripe % 2 == 0 {
                 AWNING_BLUE
@@ -2318,7 +2339,7 @@ fn counter(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
                 5 => ramp.shadow,
                 _ => ramp.base,
             };
-            if x == 0 || x == 61 || y == h + 15 {
+            if x == 0 || x == width - 1 || y == h + 15 {
                 color = ramp.edge;
             } else if down > 0.6 {
                 color = mix(color, ramp.shadow, (down - 0.6) * 1.5);
@@ -2327,7 +2348,7 @@ fn counter(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
         }
     }
     // A gilt valance along the top of the skirt.
-    for x in 0..62 {
+    for x in 0..width {
         let drop = if (1..4).contains(&(x % 4)) { 2 } else { 1 };
         for dy in 0..drop {
             put(
@@ -2343,8 +2364,8 @@ fn counter(left: i32, top: i32) -> (Canvas, (i32, i32), f32) {
         }
     }
     // The counter top: a lit plank with its grain.
-    bevel(&mut s, 0, h, 62, 3, PLANK);
-    for x in 2..60 {
+    bevel(&mut s, 0, h, width, 3, PLANK);
+    for x in 2..width - 2 {
         if noise(x / 3, 0, 731).is_multiple_of(4) {
             put(&mut s, x, h + 1, PLANK.base);
         }

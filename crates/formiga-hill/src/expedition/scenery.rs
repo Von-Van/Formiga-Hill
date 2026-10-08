@@ -677,13 +677,14 @@ fn mark(scene: &mut Canvas, opener: Opener, (x, y): (i32, i32), points: &[(f32, 
 /// a stile in the hedge and the first trees.
 fn edge(scene: &mut Canvas) {
     let (x, y) = (PLACES[EDGE].at.0 as i32, PLACES[EDGE].at.1 as i32);
-    // The Hill, small in the margin, with the Hilltop's old tree.
+    // The Hill, small in the margin, with the Hilltop's old tree: the whole of its curve, and an
+    // edge along its foot.
     for py in 150..186 {
-        for px in 4..26 {
+        for px in 4..29 {
             let (u, v) = ((px as f32 - 8.0) / 20.0, (py as f32 - 186.0) / 30.0);
             if u * u + v * v <= 1.0 && on_paper(px, py) {
                 let lit = u * 0.6 + v * 0.4;
-                let color = if u * u + v * v > 0.86 {
+                let color = if u * u + v * v > 0.86 || py == 185 {
                     HEDGE.edge
                 } else if lit < -0.45 {
                     HEDGE.light
@@ -808,10 +809,10 @@ fn log(scene: &mut Canvas) {
             }
         }
     }
+    // Level, so its outlines run unbroken end to end, with the ring of its cut end inside them.
     let (from, to, ly) = (x - 14, x + 13, y - 12);
+    let top = ly - 2;
     for px in from..to {
-        let slope = (px - from) / 9;
-        let top = ly - 2 - slope / 2;
         put(scene, px, top, WOOD.edge);
         put(scene, px, top + 1, WOOD.light);
         put(scene, px, top + 2, WOOD.base);
@@ -822,8 +823,8 @@ fn log(scene: &mut Canvas) {
             put(scene, px, top + 1, TREE.light);
         }
     }
-    ellipse(scene, from, ly + 1, 2, 3, WOOD.edge);
-    ellipse(scene, from, ly + 1, 1, 2, WOOD.light);
+    ellipse(scene, from, ly + 1, 2, 2, WOOD.edge);
+    ellipse(scene, from, ly + 1, 1, 1, WOOD.light);
     put(scene, from, ly + 1, WOOD.shadow);
     for (dx, color) in [(4, 0xc84a3a), (8, 0xd8c8a8)] {
         put(scene, from + dx, ly - 3, rgb(color));
@@ -891,8 +892,12 @@ fn pool(scene: &mut Canvas) {
             if r > 1.0 {
                 continue;
             }
-            let color = if r > 0.8 {
+            // The rim stays open where the stream runs in and out, so neither looks walled off.
+            let stream = [WATER.base, WATER.light].contains(&scene.get(x, y));
+            let color = if r > 0.8 && !stream {
                 WATER.edge
+            } else if r > 0.8 {
+                WATER.base
             } else if v < -0.4 {
                 WATER.shadow
             } else if u + v < -0.5 {

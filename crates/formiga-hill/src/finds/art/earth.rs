@@ -808,6 +808,14 @@ fn sundial() -> Piece {
 }
 
 /// A block of dressed stone lit from the upper left, speckled.
+/// A stone chimney stack `tall` rows high under a red pot, its top left at `(x, top)`.
+pub(super) fn chimney_pot(s: &mut Canvas, x: i32, top: i32, tall: i32) {
+    stone_block(s, x, top + 2, 4, tall, 77);
+    rect(s, x, top, 4, 2, rgb(0xb05445));
+    hline(s, x - 1, top, 6, rgb(0x612a2b));
+    put(s, x, top + 1, rgb(0xe08c69));
+}
+
 pub(super) fn stone_block(s: &mut Canvas, x: i32, y: i32, width: i32, height: i32, salt: u32) {
     for py in y..y + height {
         for px in x..x + width {
@@ -839,6 +847,12 @@ pub(super) fn stone_block(s: &mut Canvas, x: i32, y: i32, width: i32, height: i3
 /// A little door in a grassy mound, for somebody very small: an arch of stones, a round window
 /// lit within, stepping stones up to the threshold and flowers all over.
 pub(super) fn hill_door() -> Piece {
+    hill_door_with(true)
+}
+
+/// The little door in its mound, with or without the chimney pot at the back: the burrow house
+/// builds its own taller chimney up through its porch roof.
+pub(super) fn hill_door_with(chimney: bool) -> Piece {
     let mut s = Canvas::new(48, 43);
     let ground = 38;
     shadow(&mut s, 24, ground, 23, 3);
@@ -887,13 +901,12 @@ pub(super) fn hill_door() -> Piece {
         }
     }
     // A chimney pot poking out of the turf at the back.
-    stone_block(&mut s, 33, 13, 4, 5, 77);
-    rect(&mut s, 33, 11, 4, 2, rgb(0xb05445));
-    hline(&mut s, 32, 11, 6, rgb(0x612a2b));
-    put(&mut s, 33, 12, rgb(0xe08c69));
-    for x in 32..38 {
-        if chance(x, 18, 78, 160) {
-            put(&mut s, x, 18, TURF.base);
+    if chimney {
+        chimney_pot(&mut s, 33, 11, 5);
+        for x in 32..38 {
+            if chance(x, 18, 78, 160) {
+                put(&mut s, x, 18, TURF.base);
+            }
         }
     }
     // A round window, lit within.
