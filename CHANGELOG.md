@@ -4,6 +4,23 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.67.5 (2026-10-08)
+
+Hill is built on Formiga Desktop 0.67.5 and still speaks travel version 4, so it takes the same
+trips as before.
+
+### On the scene
+
+- Objects whose parts did not quite meet are drawn as one piece, about 25 joins in all across the
+  Clubhouse, the Station, the Hilltop, the green, the Fairground, the Falls and the Woods map. The
+  armchairs' seat band no longer runs across their arms, the bookshelf stands clear of the
+  skirting, the painting over the mantel stays inside its frame, no bottle sits on top of a lantern
+  on the lantern tree, and the burrow house's porch post no longer runs through its round window.
+- The train at the station reads as one piece. The engine's side tank runs up to the smokebox and
+  the smokebox comes down to the running plate, and the coaches' doors and ends are lined in cream
+  above the waist and maroon below. The train is drawn by Formiga Desktop, so this comes with
+  Desktop 0.67.5.
+
 ## 0.67.3 (2026-10-06)
 
 Hill's version now matches Formiga Desktop's, so the apps released together carry one number. Hill
