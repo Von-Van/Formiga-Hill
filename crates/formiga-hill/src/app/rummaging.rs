@@ -1,7 +1,7 @@
 //! The Woods in the window: choosing who comes along, the outing's controls, and keeping what
 //! came home.
 
-use super::{HillApp, paper};
+use super::{HillApp, paper, plural};
 use crate::cast::Id;
 use crate::character::Character;
 use crate::finds;
@@ -564,8 +564,4 @@ fn angler(character: &Character) -> &'static str {
     } else {
         "Strong on the line: hard to snap."
     }
-}
-
-fn plural(count: usize) -> &'static str {
-    if count == 1 { "" } else { "s" }
 }

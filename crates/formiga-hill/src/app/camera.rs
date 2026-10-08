@@ -3,7 +3,7 @@
 //! photo of what is in it, into the colony's album. The album shows them all, and saves a copy
 //! of any wherever the person chooses. Photos are Hill's: nothing goes to Desktop.
 
-use super::{Card, HillApp, SCENE_HEIGHT, SCENE_WIDTH, paper};
+use super::{Card, HillApp, SCENE_HEIGHT, SCENE_WIDTH, paper, plural};
 use crate::audio::Cue;
 use crate::photos::{self, Album};
 use eframe::egui;
@@ -289,7 +289,7 @@ impl HillApp {
                         format!(
                             "{} photo{} \u{b7} click one to look closer",
                             album.photos.len(),
-                            if album.photos.len() == 1 { "" } else { "s" }
+                            plural(album.photos.len())
                         ),
                     );
                     ui.horizontal_wrapped(|ui| {

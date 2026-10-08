@@ -3,7 +3,7 @@
 //! `plans`.
 
 use super::departures::grown_since;
-use super::{Card, HillApp, paper};
+use super::{Card, HillApp, paper, plural};
 use crate::audio::Cue;
 use crate::finds::{self, CATALOGUE, Kind, growing, plans};
 use crate::hilltop::{self, Arrangement, SPOTS, Standing};
@@ -366,7 +366,7 @@ impl HillApp {
                             .count(),
                         CATALOGUE.len(),
                         colony.outings,
-                        if colony.outings == 1 { "" } else { "s" }
+                        plural(colony.outings as usize)
                     ),
                 );
                 {

@@ -1,7 +1,7 @@
 //! The old track in the window: setting off to scavenge or to follow a map, choosing who does
 //! what at a heap, the way at a fork and where to dig, and bringing everything home.
 
-use super::{HillApp, paper};
+use super::{HillApp, capital, lower, paper, plural};
 use crate::cast::{Cast, Id};
 use crate::character::Character;
 use crate::finds::{self, SCAVENGED, Tier};
@@ -775,27 +775,6 @@ fn the(stuff: Stuff) -> String {
 
 fn find_name(id: &str) -> &'static str {
     finds::find(id).map_or("something", |find| find.name)
-}
-
-/// A find's name as it reads mid-sentence.
-fn lower(name: &str) -> String {
-    let mut name = name.to_owned();
-    if let Some(first) = name.get_mut(0..1) {
-        first.make_ascii_lowercase();
-    }
-    name
-}
-
-fn capital(text: &str) -> String {
-    let mut letters = text.chars();
-    letters
-        .next()
-        .map(|first| first.to_uppercase().chain(letters).collect())
-        .unwrap_or_default()
-}
-
-fn plural(count: usize) -> &'static str {
-    if count == 1 { "" } else { "s" }
 }
 
 /// What sort of scavenger a companion makes, and whether it has been yet, for the person choosing

@@ -1,7 +1,7 @@
 //! The Fairground's tray: which game to watch and who plays it, the game under way, and what the
 //! person is told as it goes; and what Hill remembers of each game once it is seen through.
 
-use super::{HillApp, clock, paper, tools};
+use super::{HillApp, clock, listed, ordinal, paper, tools};
 use crate::audio::Cue;
 use crate::cast::{Cast, Id};
 use crate::fairground::tug_of_war::{self, Side};
@@ -15,32 +15,11 @@ fn name(cast: &Cast, id: Option<Id>) -> String {
         .map_or("Someone".to_owned(), |member| member.name.clone())
 }
 
-/// "Pip", "Pip and Moss", "Pip, Moss and Fern".
-fn listed(names: &[String]) -> String {
-    match names {
-        [] => String::new(),
-        [only] => only.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
-    }
-}
-
-/// "1st", "2nd", "3rd".
-fn place(n: usize) -> String {
-    let suffix = match (n % 10, n % 100) {
-        (_, 11..=13) => "th",
-        (1, _) => "st",
-        (2, _) => "nd",
-        (3, _) => "rd",
-        _ => "th",
-    };
-    format!("{n}{suffix}")
-}
-
 /// How high the puck went, as the striker's marks put it: "the 7th mark", or "the bell".
 pub(super) fn reached(height: f32) -> String {
     match high_striker::mark(height) {
         10 => "the bell".to_owned(),
-        mark => format!("the {} mark", place(mark as usize)),
+        mark => format!("the {} mark", ordinal(mark as usize)),
     }
 }
 
@@ -52,7 +31,7 @@ fn finish_order(cast: &Cast, results: &[(Id, f32)]) -> String {
         .map(|(index, (id, took))| {
             format!(
                 "{} {} {}",
-                place(index + 1),
+                ordinal(index + 1),
                 name(cast, Some(*id)),
                 clock(*took)
             )
@@ -69,7 +48,7 @@ fn standings(cast: &Cast, ranking: &[(Id, f32)]) -> String {
         .map(|(index, (id, height))| {
             format!(
                 "{} {}, {}",
-                place(index + 1),
+                ordinal(index + 1),
                 name(cast, Some(*id)),
                 reached(*height)
             )
@@ -86,7 +65,7 @@ fn rung(cast: &Cast, tally: &[(Id, u32)]) -> String {
         .map(|(index, (id, rings))| {
             format!(
                 "{} {}, {}",
-                place(index + 1),
+                ordinal(index + 1),
                 name(cast, Some(*id)),
                 rings_rung(*rings)
             )
@@ -1016,9 +995,5 @@ mod tests {
         assert_eq!(reached(0.84), "the 8th mark");
         assert_eq!(reached(0.11), "the 1st mark");
         assert_eq!(reached(0.02), "the 1st mark");
-        assert_eq!(
-            listed(&["Pip".into(), "Moss".into(), "Fern".into()]),
-            "Pip, Moss and Fern"
-        );
     }
 }

@@ -3,7 +3,7 @@
 //! something built apart again.
 
 use super::arranging::Placing;
-use super::{Card, HillApp, paper};
+use super::{Card, HillApp, listed, paper};
 use crate::audio::Cue;
 use crate::finds;
 use crate::finds::plans::{PLANS, Plan};
@@ -88,14 +88,6 @@ fn strip_article(name: &str) -> &str {
         .iter()
         .find_map(|article| name.strip_prefix(article))
         .unwrap_or(name)
-}
-
-fn listed(parts: &[String]) -> String {
-    match parts {
-        [] => String::new(),
-        [only] => only.clone(),
-        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
-    }
 }
 
 impl HillApp {

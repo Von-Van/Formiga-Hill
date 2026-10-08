@@ -963,21 +963,9 @@ fn mark(scene: &mut Canvas, (x, y): (i32, i32), color: formiga_art::Rgba) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cast::Cast;
+    use crate::cast::{Cast, named, sample};
     use crate::finds;
     use crate::track;
-
-    fn sample() -> Cast {
-        Cast::new(formiga_travel::sample::snapshot()).unwrap()
-    }
-
-    fn named(cast: &Cast, name: &str) -> Id {
-        cast.members
-            .iter()
-            .find(|member| member.name == name)
-            .unwrap_or_else(|| panic!("no {name} in the sample"))
-            .id
-    }
 
     fn setting_off(cast: &Cast, names: &[&str], map: u64, seed: u64) -> (Playground, Hunt) {
         let party: Vec<Id> = names.iter().map(|name| named(cast, name)).collect();
