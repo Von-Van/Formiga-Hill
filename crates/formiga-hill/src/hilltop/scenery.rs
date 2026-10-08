@@ -1012,8 +1012,11 @@ fn crown(scene: &mut Canvas) {
             front.push((x, y, radius, tones));
         }
     }
-    // The limbs, seen among the lowest leaves, some of which hang in front of them.
-    limbs(&mut layer);
+    // The limbs, seen among the lowest leaves, some of which hang in front of them. Each ends
+    // in a clump of its own, so no limb is cut off square on top of the leaves.
+    for (x, y) in limbs(&mut layer) {
+        clump(&mut layer, (x, y - 1, 3), clump_tones(x, y));
+    }
     for (x, y, radius, tones) in front {
         if !(38..66).contains(&x) || noise(x, y, 827).is_multiple_of(2) {
             clump(&mut layer, (x, y, radius - 1), tones);
@@ -1102,9 +1105,11 @@ fn clump(
 }
 
 /// The great limbs, forking from the top of the trunk up into the leaves, in the crown's shade.
-fn limbs(layer: &mut Canvas) {
+/// Returns where each one ends.
+fn limbs(layer: &mut Canvas) -> Vec<(i32, i32)> {
     let (foot_x, _) = trunk_foot();
     let shaded = |color| mix(color, BARK.edge, 0.3);
+    let mut tips = Vec::new();
     for (from, to, thick) in [
         ((foot_x - 4, 68), (foot_x - 24, 48), 2),
         ((foot_x + 3, 67), (foot_x + 22, 50), 2),
@@ -1126,7 +1131,9 @@ fn limbs(layer: &mut Canvas) {
                 shaded(color),
             );
         }
+        tips.push((to.0 + thick / 2, to.1));
     }
+    tips
 }
 
 // ---------------------------------------------------------------------------------------------

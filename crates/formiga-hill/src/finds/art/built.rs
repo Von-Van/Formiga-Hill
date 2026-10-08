@@ -41,7 +41,7 @@ pub fn piece(id: &str) -> Option<Piece> {
 pub fn lights(id: &str) -> Vec<(Rgba, (i32, i32))> {
     let candle = rgb(0xffcf6a);
     match id {
-        "lantern_tree" => LANTERNS
+        "lantern_tree" => lanterns()
             .iter()
             .map(|&(x, y)| (candle, (x, y + 8)))
             .collect(),
@@ -49,7 +49,7 @@ pub fn lights(id: &str) -> Vec<(Rgba, (i32, i32))> {
         "burrow_house" => vec![
             (candle, (11, 39)),
             (candle, BACK_WINDOW),
-            (candle, (31, 31)),
+            (candle, (34, 31)),
         ],
         _ => super::track::built_lights(id),
     }
@@ -448,21 +448,37 @@ fn snug_den() -> Piece {
     }
 }
 
-/// Where the lantern tree's two lanterns hang from, in its own pixels: bare twigs of the bottle
-/// tree that never had a bottle.
-const LANTERNS: [(i32, i32); 2] = [(10, 29), (32, 23)];
+/// The bottle tree's branches that carry the lantern tree's two lanterns instead of bottles.
+const LANTERN_BRANCHES: [usize; 2] = [0, 1];
+/// Where the lantern tree stands, in its own pixels.
+const LANTERN_TREE_FOOT: (i32, i32) = (20, 51);
 
-/// The lantern tree: the bottle tree with two lanterns hung on its bare twigs and a string of
-/// glass beads looped between them, all in the lanterns' warm light.
+/// Where the lantern tree's two lanterns hang from, in its own pixels: the tips of the branches
+/// left bare for them.
+fn lanterns() -> [(i32, i32); 2] {
+    let (dx, dy) = (
+        LANTERN_TREE_FOOT.0 - water::BOTTLE_TREE_FOOT.0,
+        LANTERN_TREE_FOOT.1 - water::BOTTLE_TREE_FOOT.1,
+    );
+    LANTERN_BRANCHES.map(|branch| {
+        let (x, y) = water::branch_tip(branch);
+        (x + dx, y + dy)
+    })
+}
+
+/// The lantern tree: the bottle tree with two lanterns hung where two of its bottles would be,
+/// and a string of glass beads looped between them, all in the lanterns' warm light. The
+/// lanterns take those branches' places outright, so no bottle sits on a lantern's cap.
 fn lantern_tree() -> Piece {
     let mut s = Canvas::new(40, 54);
-    let (cx, ground) = (20, 51);
+    let (cx, ground) = LANTERN_TREE_FOOT;
+    let lanterns = lanterns();
+    let tree = water::bottle_tree_bare(&LANTERN_BRANCHES);
     // The light first, so the tree is drawn in it.
-    for (x, y) in LANTERNS {
+    for (x, y) in lanterns {
         hollow::glow(&mut s, x, y + 8, 9.0, rgba(0xffe7a0, 40));
         hollow::glow(&mut s, x, y + 8, 6.0, rgba(0xffe7a0, 52));
     }
-    let tree = water::bottle_tree();
     blit(
         &mut s,
         &tree.sprite,
@@ -470,7 +486,7 @@ fn lantern_tree() -> Piece {
         ground - tree.anchor.1,
     );
     // Beads strung between the lanterns, sagging across the trunk.
-    let ((x0, y0), (x1, y1)) = (LANTERNS[0], LANTERNS[1]);
+    let ((x0, y0), (x1, y1)) = (lanterns[0], lanterns[1]);
     let from = (x0 as f32, y0 as f32 + 1.0);
     let to = (x1 as f32, y1 as f32 + 1.0);
     let sag = ((from.0 + to.0) / 2.0, (from.1 + to.1) / 2.0 + 9.0);
@@ -485,7 +501,7 @@ fn lantern_tree() -> Piece {
             put(&mut s, x, y, STRING);
         }
     }
-    for (x, y) in LANTERNS {
+    for (x, y) in lanterns {
         hollow::hung_lantern(&mut s, (x, y));
     }
     flowers(&mut s, 30, ground - 1, 3, 3, 470);
@@ -1006,7 +1022,7 @@ fn music_box(s: &mut Canvas, (x, y): (i32, i32)) {
 }
 
 /// Where the burrow house's back room has its round window, in the hump of turf behind.
-const BACK_WINDOW: (i32, i32) = (13, 21);
+const BACK_WINDOW: (i32, i32) = (10, 19);
 
 /// The burrow house: the little door in the hill, grown into a home. A back room in a second hump
 /// of turf behind, with its own round window; a porch over the door roofed in pinecone scales on
@@ -1069,15 +1085,18 @@ fn burrow_house() -> Piece {
     }
     put(&mut s, wx, wy, POST.shadow);
     // The front room: the little door's own hill, in front.
-    let door = earth::hill_door();
+    let door = earth::hill_door_with(false);
     blit(
         &mut s,
         &door.sprite,
         24 - door.anchor.0,
         ground - door.anchor.1,
     );
-    // The porch: two posts, and a roof of pinecone scales over the door.
-    for x in [13.5, 34.5] {
+    // The chimney, standing up behind the porch roof's right slope, which hides its foot.
+    earth::chimney_pot(&mut s, 33, 13, 11);
+    // The porch: two posts either side of the door's arch, clear of the round window, and a
+    // roof of pinecone scales over the door.
+    for x in [16.5, 31.5] {
         hollow::stick(
             &mut s,
             (x, 27.0),
@@ -1107,11 +1126,11 @@ fn burrow_house() -> Piece {
             put(&mut s, x, y, color);
         }
     }
-    // A little lantern hung under the porch.
-    vline(&mut s, 31, 28, 1, IRON.light);
+    // A little lantern hung from the end of the porch beam.
+    vline(&mut s, 34, 28, 1, IRON.light);
     paint_rows(
         &mut s,
-        30,
+        33,
         29,
         &[".#.", "#y#", "#f#", ".#."],
         IRON,
@@ -1128,15 +1147,9 @@ fn burrow_house() -> Piece {
         510,
     );
     // Smoke from the chimney, drifting up and away.
-    for (index, &(x, y, r)) in [
-        (35.0, 19.5, 1.4),
-        (36.0, 15.5, 2.0),
-        (35.0, 10.5, 2.4),
-        (37.0, 5.5, 2.0),
-        (38.5, 1.8, 1.4),
-    ]
-    .iter()
-    .enumerate()
+    for (index, &(x, y, r)) in [(35.0, 10.0, 1.4), (36.0, 6.5, 2.0), (37.5, 2.5, 1.8)]
+        .iter()
+        .enumerate()
     {
         let alpha = 190 - 30 * index as u8;
         let reach = (r as i32) + 1;

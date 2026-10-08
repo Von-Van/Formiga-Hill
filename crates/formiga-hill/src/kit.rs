@@ -148,24 +148,6 @@ pub fn window(scene: &mut Canvas, x: i32, y: i32, width: i32, height: i32, colum
     // The sill.
     bevel(scene, x - 2, y + height - 1, width + 4, 3, TRIM);
 }
-pub fn flower_box(scene: &mut Canvas, x: i32, y: i32, width: i32) {
-    for leaf in 0..width {
-        let tall = 2 + (noise(leaf, y, 101) % 3) as i32;
-        vline(scene, x + leaf, y - tall, tall, LEAF.base);
-        put(scene, x + leaf, y - tall, LEAF.light);
-    }
-    for index in 0..7 {
-        let fx = x + 2 + index * 3 + (noise(index, y, 102) % 2) as i32;
-        let fy = y - 3 - (noise(index, y, 103) % 2) as i32;
-        let blossom = BLOSSOMS[(index as usize * 3) % 4];
-        put(scene, fx, fy, blossom);
-        put(scene, fx + 1, fy, blossom);
-        put(scene, fx, fy + 1, mix(blossom, LEAF.shadow, 0.4));
-    }
-    bevel(scene, x, y, width, 5, TIMBER);
-    hline(scene, x + 1, y + 2, width - 2, TIMBER.shadow);
-}
-
 /// How a wall is laid: how tall each course of stone is, and how long each stone.
 #[derive(Clone, Copy)]
 pub struct Courses {

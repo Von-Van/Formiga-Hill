@@ -5,7 +5,7 @@
 
 use crate::font::{GLYPH_HEIGHT, draw_text_shadowed, text_width};
 use crate::hilltop::{Arrangement, Tint, Vista, skyline};
-use crate::kit::{Courses, bush, cloud, flower_box, plaster, ridge_tiles, roof, stonework, timber};
+use crate::kit::{Courses, bush, cloud, plaster, ridge_tiles, roof, stonework, timber};
 use crate::materials::*;
 use crate::paint::{
     Ramp, along, bevel, blit, chance, ellipse, hline, line, mix, noise, polygon, put, rect, rgb,
@@ -36,7 +36,8 @@ const CHIMNEY_TOP: (i32, i32) = (109, 52);
 /// right and bottom edges, for knowing when the pointer is over it.
 pub const CASE: (i32, i32, i32, i32) = (15, 101, 51, 134);
 /// The notice board on the wall by the door, the same way.
-pub const NOTICES: (i32, i32, i32, i32) = (84, 107, 103, 128);
+/// It reaches across the whole of the timber post at its right, so the post runs on behind it.
+pub const NOTICES: (i32, i32, i32, i32) = (84, 107, 104, 128);
 /// The departures board, hung under the canopy, the same way.
 pub const DEPARTURES: (i32, i32, i32, i32) = (182, 113, 224, 126);
 /// The most notes the notice board has room to show.
@@ -1308,7 +1309,6 @@ fn station_house(scene: &mut Canvas) {
         );
     }
 
-    flower_box(scene, 16, 136, 34);
     door(scene, 60, 106);
     notice_board(scene);
     ticket_window(scene, TICKET_WINDOW.0, TICKET_WINDOW.1);
@@ -1373,12 +1373,12 @@ fn dormer(scene: &mut Canvas, centre: i32) {
     for y in 76..96 {
         hline(scene, right, y, 4 - (y - 76) / 6, rgba(0x3a1a28, 70));
     }
-    roof(
-        scene,
-        &[(left - 3, 84), (centre, 72), (right + 3, 84)],
-        72,
-        84,
-    );
+    // The gable end is plastered like the face below it, so the bargeboards frame a wall and
+    // not a patch of roof.
+    for y in 73..84 {
+        let half = (y - 72) * 13 / 12;
+        plaster(scene, centre - half, y, half * 2 + 1, 1);
+    }
     // Timber bargeboards along the gable, lit on the left slope, shaded on the right.
     for offset in 0..2 {
         line(
@@ -1617,9 +1617,17 @@ fn display_case(scene: &mut Canvas, keepsakes: &[String]) {
     put(scene, left + width / 2, top - 1, rgb(0xc9a14e));
     put(scene, left + width / 2, top, rgb(0xf1d58a));
     bevel(scene, left - 2, sill, width + 4, 4, STONE);
-    // The frame, and the velvet behind the glass.
-    rect(scene, left, glass_top, width, sill - glass_top, IRON.base);
-    vline(scene, left, glass_top, sill - glass_top, IRON.light);
+    // The frame, and the velvet behind the glass. It reaches as far left as the cornice, up to
+    // the timber post, so no plaster shows between them.
+    rect(
+        scene,
+        left - 1,
+        glass_top,
+        width + 1,
+        sill - glass_top,
+        IRON.base,
+    );
+    vline(scene, left - 1, glass_top, sill - glass_top, IRON.light);
     vline(scene, right - 1, glass_top, sill - glass_top, IRON.edge);
     let (inner_left, inner_top) = (left + 2, glass_top + 2);
     let (inner_width, inner_height) = (width - 4, sill - glass_top - 3);
