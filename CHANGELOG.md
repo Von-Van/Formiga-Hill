@@ -4,6 +4,15 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## Unreleased
+
+### In the window
+
+- The notice that appears over the trays at the bottom of the scene keeps its width. A long
+  notice that followed a short one used to wrap to the short one's width, a column about five
+  letters wide; it now runs up to its full width, and words on any slip over the scene wrap no
+  narrower than twenty letters.
+
 ## 0.67.5 (2026-10-08)
 
 Hill is built on Formiga Desktop 0.67.5 and still speaks travel version 4, so it takes the same

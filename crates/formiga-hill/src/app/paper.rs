@@ -440,8 +440,7 @@ impl egui::Widget for Words {
             ui.available_width()
         };
         let room = grain.fit(room) - pad * 2;
-        let most = self.most.map_or(room, |most| most.min(room)).max(24);
-        let lines = lettering::wrap(&text, most);
+        let lines = lettering::wrap(&text, wrap_width(room, self.most, self.slip));
         let width = lettering::widest(&lines) + pad * 2;
         // A one-line slip is as tall as a button, to sit level beside one.
         let height = paragraph_height(lines.len()) + if self.slip { 7 } else { 0 };
@@ -463,6 +462,22 @@ impl egui::Widget for Words {
         response
     }
 }
+
+/// How wide words wrap in `room` paper pixels, held to `most` if given. Words on a slip never wrap
+/// narrower than twenty letters, even with less room: a slip floated over the scene in an area of
+/// its own may be offered only the width it took last time, and a sentence wrapped that narrow
+/// reads as a column of broken words.
+fn wrap_width(room: i32, most: Option<i32>, slip: bool) -> i32 {
+    let least = if slip {
+        lettering::width(&"n".repeat(SLIP_LETTERS))
+    } else {
+        24
+    };
+    most.map_or(room, |most| most.min(room)).max(least)
+}
+
+/// The fewest letters a line on a slip holds before it wraps.
+const SLIP_LETTERS: usize = 20;
 
 /// Words as a heading: printed capitals in forest green, with a little room above.
 pub fn heading(ui: &mut Ui, text: impl Into<String>) -> Response {
@@ -1151,6 +1166,18 @@ mod tests {
                 "at {ppp}x, {scene_pixels} a pixel"
             );
         }
+    }
+
+    #[test]
+    fn a_slip_holds_at_least_twenty_letters_a_line_however_little_room_it_is_offered() {
+        let twenty = "Pip found a cap here";
+        assert_eq!(twenty.chars().count(), SLIP_LETTERS);
+        for room in [0, 24, 60] {
+            let lines = lettering::wrap(twenty, wrap_width(room, Some(260), true));
+            assert_eq!(lines, [twenty], "in {room} pixels");
+        }
+        assert_eq!(wrap_width(400, Some(260), true), 260);
+        assert_eq!(wrap_width(30, None, false), 30);
     }
 
     #[test]

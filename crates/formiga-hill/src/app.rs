@@ -233,6 +233,9 @@ pub struct HillApp {
 /// How long a notice stays over the trays.
 const NOTICE_SECS: f32 = 8.0;
 
+/// The widest a notice runs before it wraps, in paper pixels.
+const NOTICE_WIDTH: i32 = 260;
+
 const LETTERBOX: egui::Color32 = egui::Color32::from_rgb(0x2f, 0x3b, 0x2c);
 
 impl HillApp {
@@ -766,7 +769,10 @@ impl HillApp {
                 ))
                 .constrain_to(scene)
                 .show(ctx, |ui| {
-                    ui.add(paper::Words::new(notice).slip().most(260));
+                    // An area offers only as much width as it took last time, so a long notice
+                    // after a short one would wrap a few letters wide: give it the room it has.
+                    ui.set_max_width(grain.len(NOTICE_WIDTH).min(scene.width() - grain.len(10)));
+                    ui.add(paper::Words::new(notice).slip().most(NOTICE_WIDTH));
                 });
         }
     }
