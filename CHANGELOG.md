@@ -4,7 +4,18 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
-## Unreleased
+## 0.67.6 (2026-10-12)
+
+Hill is built on Formiga Desktop 0.67.6 and reads travel version 5, so a colony in Desktop's Echo
+Fox Mode arrives as foxes. It takes the same trips as before.
+
+### On the scene
+
+- A colony that comes over while Desktop's Echo Fox Mode is on is a skulk of foxes here too: each
+  companion Desktop draws as the Echo Fox is drawn as it at the station, on the green, in the
+  Clubhouse, at the Fairground and in the Woods, and does everything it would do as itself. Its
+  name, traits and friendships are its own, and it comes over as itself on the next trip after the
+  mode is switched off.
 
 ### In the window
 
