@@ -15,6 +15,7 @@ pub use director::Director;
 pub use package::{Files, Package, PackageError, check_files, limits, load, read_folder};
 pub use script::Story;
 
+use crate::fairground::competition::Format;
 use std::path::{Path, PathBuf};
 
 /// Hill's own packages, built in. Each is a folder under `content/` loaded through the same reader
@@ -54,6 +55,15 @@ fn official() -> Vec<BuiltIn> {
             [
                 "manifest.toml",
                 "content/book-with-no-ending.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "fairground-games.formiga-hill",
+            [
+                "manifest.toml",
+                "content/fairground-five.toml",
+                "content/heats-and-a-final.toml",
                 "localization/en.toml",
             ]
         ),
@@ -145,6 +155,16 @@ impl Library {
             .iter()
             .flat_map(|package| package.stories.iter().map(move |story| (package, story)))
     }
+
+    /// Every competition for the Fairground, with the package it came from.
+    pub fn competitions(&self) -> impl Iterator<Item = (&Package, &Format)> {
+        self.packages.iter().flat_map(|package| {
+            package
+                .competitions
+                .iter()
+                .map(move |competition| (package, competition))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -157,6 +177,7 @@ mod tests {
         let library = Library::load(None, &[]);
         assert!(library.problems.is_empty(), "{:?}", library.problems);
         assert!(library.stories().count() >= 1);
+        assert!(library.competitions().count() >= 1);
     }
 
     #[test]

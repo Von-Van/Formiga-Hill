@@ -446,7 +446,9 @@ pub enum Happening {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Stage {
     /// Waiting, before the next game starts.
-    Between { until: f32 },
+    Between {
+        until: f32,
+    },
     /// A game is on.
     Playing,
     Over,
@@ -564,13 +566,15 @@ impl Contest {
                 }
                 let players = self.entrants(event, ground);
                 if players.len() < fewest(event.game) {
-                    self.happenings.push(Happening::Skipped { game: event.game });
+                    self.happenings
+                        .push(Happening::Skipped { game: event.game });
                     self.next_event(now);
                     return;
                 }
                 games.start_among(event.game, ground, cast, &players, now);
                 if games.playing() != Some(event.game) {
-                    self.happenings.push(Happening::Skipped { game: event.game });
+                    self.happenings
+                        .push(Happening::Skipped { game: event.game });
                     self.next_event(now);
                     return;
                 }
@@ -642,7 +646,12 @@ impl Contest {
             return;
         }
         self.stage = Stage::Over;
-        let top = self.scores.iter().map(|(_, points)| *points).max().unwrap_or(0);
+        let top = self
+            .scores
+            .iter()
+            .map(|(_, points)| *points)
+            .max()
+            .unwrap_or(0);
         let winners = if top == 0 {
             Vec::new()
         } else {
@@ -800,7 +809,11 @@ mod tests {
         assert!(refused("rounds = 2", "rounds = 2\ntemperament = \"grump\"").contains("unknown"));
         assert!(refused("win = ", "strength = 9\nwin = ").contains("unknown"));
         let too_many = format!("{WRITTEN}{}", "\n[[events]]\ngame = \"hoopla\"\n".repeat(6));
-        assert!(parse(&too_many, &lines("Games")).unwrap_err().contains("events"));
+        assert!(
+            parse(&too_many, &lines("Games"))
+                .unwrap_err()
+                .contains("events")
+        );
         assert!(parse(WRITTEN, &lines("Games for {winner}")).is_err());
         assert!(parse(WRITTEN, &lines(&"Long ".repeat(20))).is_err());
         assert!(parse(WRITTEN, &Lines::default()).is_err(), "no title line");
@@ -974,7 +987,9 @@ mod tests {
             .filter(|happening| matches!(happening, Happening::Scored { .. }))
             .count();
         assert_eq!(games, 1, "the first race's winner reached 5");
-        assert!(matches!(happened.last(), Some(Happening::Won { points: 5, winners }) if winners.len() == 1));
+        assert!(
+            matches!(happened.last(), Some(Happening::Won { points: 5, winners }) if winners.len() == 1)
+        );
     }
 
     #[test]
@@ -1006,7 +1021,9 @@ mod tests {
                 game: Game::TugOfWar
             })
         );
-        assert!(matches!(happened.last(), Some(Happening::Won { winners, .. }) if winners.len() == 1));
+        assert!(
+            matches!(happened.last(), Some(Happening::Won { winners, .. }) if winners.len() == 1)
+        );
 
         let mut contest = Contest::new(format, 0.0);
         contest.call_off();

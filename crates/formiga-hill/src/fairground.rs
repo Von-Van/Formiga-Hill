@@ -488,7 +488,9 @@ impl Games {
 
     /// Whether a competition is being run and is not yet over.
     pub fn contest_on(&self) -> bool {
-        self.contest.as_ref().is_some_and(|contest| !contest.is_over())
+        self.contest
+            .as_ref()
+            .is_some_and(|contest| !contest.is_over())
     }
 
     /// Runs the competition on, if one is on.

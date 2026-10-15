@@ -1,0 +1,22 @@
+# Every game once, everyone playing: 3 points for winning, 2 for second, 1 for third.
+
+[competition]
+id = "fairground-five"
+title = "fairground-five"
+points = [3, 2, 1]
+win = "most-points"
+
+[[events]]
+game = "sack-race"
+
+[[events]]
+game = "high-striker"
+
+[[events]]
+game = "hoopla"
+
+[[events]]
+game = "hide-and-seek"
+
+[[events]]
+game = "tug-of-war"
