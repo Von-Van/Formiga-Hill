@@ -73,6 +73,8 @@ pub struct Woods {
     /// expedition is one.
     pub adventure: Option<(String, String)>,
     pub playing: Option<super::adventures::Playing>,
+    /// An adventure being made on the map editor.
+    pub making: Option<super::mapmaking::Making>,
     /// The old track with nobody there, a scavenge under way, and a map being followed, and
     /// which of the colony's maps is chosen to follow.
     pub track: Option<Playground>,
@@ -278,6 +280,9 @@ impl HillApp {
     }
 
     pub(super) fn compose_woods(&mut self, now: f32) -> Canvas {
+        if let Some(scene) = self.compose_making() {
+            return scene;
+        }
         if let Some(scene) = self.compose_expedition(now) {
             return scene;
         }
@@ -335,6 +340,10 @@ impl HillApp {
     pub(super) fn woods_click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
         if self.woods.expedition.is_some() {
             self.expedition_click(pointer, now);
+            return;
+        }
+        if self.woods.making.is_some() {
+            self.making_click(pointer, now);
             return;
         }
         if self.woods.fishing.is_some() {
@@ -395,6 +404,9 @@ impl HillApp {
         if self.woods.expedition.is_some() {
             return self.expedition_hover(pointer);
         }
+        if self.woods.making.is_some() {
+            return self.making_hover(pointer);
+        }
         if self.woods.fishing.is_some() {
             return self.fishing_hover(pointer);
         }
@@ -429,6 +441,10 @@ impl HillApp {
         let mut home = false;
         if self.woods.expedition.is_some() {
             self.expedition_tray(ui, now);
+            return;
+        }
+        if self.woods.making.is_some() {
+            self.making_tray(ui, now);
             return;
         }
         if self.woods.fishing.is_some() {
@@ -470,6 +486,13 @@ impl HillApp {
                 self.map_choice(ui);
                 if self.woods.activity == Activity::Adventure {
                     self.adventure_choice(ui);
+                    self.making_choice(ui);
+                    let bring = ui.add(paper::Button::new("Open a shared one\u{2026}"));
+                    if paper::explain(ui, bring, "Look over an adventure someone shared, first")
+                        .clicked()
+                    {
+                        self.choose_shared_file(now);
+                    }
                 }
                 // Only an expedition, or an adventure, takes three.
                 let most = if matches!(

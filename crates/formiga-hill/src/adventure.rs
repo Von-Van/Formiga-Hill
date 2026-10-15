@@ -58,13 +58,6 @@ pub struct Adventure {
     pub endings: Vec<Option<Line>>,
 }
 
-impl Adventure {
-    /// The places that end it.
-    pub fn ending_places(&self) -> impl Iterator<Item = usize> + '_ {
-        (0..self.map.places.len()).filter(|index| self.map.places[*index].ending)
-    }
-}
-
 /// A line as told about whoever leads: their name in place of `{leader}`, and in the words
 /// their temperament would use, if the author wrote a version for it.
 pub fn told(line: &Line, leader: &str, kind: Option<TemperamentKind>) -> String {
@@ -138,7 +131,9 @@ pub fn opener_key(opener: Opener) -> &'static str {
 }
 
 pub fn opener_from_key(key: &str) -> Option<Opener> {
-    Opener::ALL.into_iter().find(|opener| opener_key(*opener) == key)
+    Opener::ALL
+        .into_iter()
+        .find(|opener| opener_key(*opener) == key)
 }
 
 /// Who takes a way, in a few words, for whoever is making one.
@@ -164,9 +159,9 @@ pub fn drawn_length(points: &[(f32, f32)], shortcut: bool) -> f32 {
 
 fn is_id(id: &str) -> bool {
     (1..=32).contains(&id.len())
-        && id
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_'))
+        && id.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'-' | b'_')
+        })
 }
 
 /// A line the adventure uses, which must be there, and name nobody but whoever leads.
@@ -174,11 +169,7 @@ fn line(lines: &Lines, key: &str, what: &str) -> Result<Line, String> {
     let found = lines
         .get(key)
         .ok_or_else(|| format!("{what}: there is no line \"{key}\" in the localisation file"))?;
-    if let Some(name) = found
-        .placeholders()
-        .into_iter()
-        .find(|name| name != LEADER)
-    {
+    if let Some(name) = found.placeholders().into_iter().find(|name| name != LEADER) {
         return Err(format!(
             "{what}: \"{key}\" names {{{name}}}; an adventure's lines can only name {{{LEADER}}}"
         ));
@@ -202,9 +193,7 @@ pub fn parse(text: &str, lines: &Lines) -> Result<Adventure, String> {
     let raw: RawFile = toml::from_str(text).map_err(|error| error.to_string())?;
     let header = raw.adventure;
     if !is_id(&header.id) {
-        return Err(
-            "adventure.id must be short: lowercase letters, digits, '-' and '_'".into(),
-        );
+        return Err("adventure.id must be short: lowercase letters, digits, '-' and '_'".into());
     }
     let title = name(lines, &header.title, "adventure.title")?;
     let about = match &header.about {
@@ -299,7 +288,12 @@ pub fn parse(text: &str, lines: &Lines) -> Result<Adventure, String> {
 
     let mut paths: Vec<Path> = Vec::new();
     for (number, raw) in raw.paths.iter().enumerate() {
-        let what = format!("path {} ({} to {})", number + 1, raw.between.0, raw.between.1);
+        let what = format!(
+            "path {} ({} to {})",
+            number + 1,
+            raw.between.0,
+            raw.between.1
+        );
         let a = index(&raw.between.0, &what)?;
         let b = index(&raw.between.1, &what)?;
         if a == b {
@@ -353,9 +347,7 @@ pub fn parse(text: &str, lines: &Lines) -> Result<Adventure, String> {
         let length = match raw.length {
             Some(length) if (1.0..=LONGEST).contains(&length) => length,
             Some(_) => {
-                return Err(format!(
-                    "{what}: length must be between 1 and {LONGEST}"
-                ));
+                return Err(format!("{what}: length must be between 1 and {LONGEST}"));
             }
             None => drawn_length(&points, opener.is_some()),
         };
@@ -522,16 +514,28 @@ pub(crate) mod tests {
         assert_eq!(map.title.as_deref(), Some("The Lantern Walk"));
         assert_eq!(map.places.len(), 4);
         assert_eq!(map.places[3].name, "the lantern pool");
-        assert_eq!(map.places[1].name, "the glade", "unnamed, a place is called by its kind");
+        assert_eq!(
+            map.places[1].name, "the glade",
+            "unnamed, a place is called by its kind"
+        );
         assert!(map.places[3].hidden && map.places[3].ending);
-        assert_eq!(adventure.ending_places().collect::<Vec<_>>(), [3]);
+        let endings: Vec<usize> = (0..map.places.len())
+            .filter(|index| map.places[*index].ending)
+            .collect();
+        assert_eq!(endings, [3]);
         assert_eq!(map.paths[2].length, 9.0);
-        assert!(map.paths[0].length >= 1.0, "left to the drawing, a length is measured");
+        assert!(
+            map.paths[0].length >= 1.0,
+            "left to the drawing, a length is measured"
+        );
         assert_eq!(
             map.paths[3].way,
             Way::Shortcut("the fern tunnel".into(), Opener::Explorer)
         );
-        assert_eq!(map.places[3].depth, 1, "the shortcut makes the pool one path in");
+        assert_eq!(
+            map.places[3].depth, 1,
+            "the shortcut makes the pool one path in"
+        );
         let ending = adventure.endings[3].as_ref().unwrap();
         assert_eq!(
             told(ending, "Pip", None),
@@ -566,9 +570,8 @@ pub(crate) mod tests {
     fn an_ending_too_far_for_a_day_is_refused() {
         // A long way in, one place after another, every path as long as a path can be.
         let chain = |count: usize| {
-            let mut file = String::from(
-                "[adventure]\nid = \"far\"\ntitle = \"title\"\nstart = \"p0\"\n",
-            );
+            let mut file =
+                String::from("[adventure]\nid = \"far\"\ntitle = \"title\"\nstart = \"p0\"\n");
             for place in 0..count {
                 let ending = if place + 1 == count {
                     "ending = \"pool.ending\"\n"
@@ -597,16 +600,29 @@ pub(crate) mod tests {
         let missing = FILE.replace("name = \"pool.name\"", "name = \"pool.called\"");
         assert!(problem(&missing).contains("no line \"pool.called\""));
         let naming = Lines::parse(&LINES.replace("{leader} sees", "{finder} sees")).unwrap();
-        assert!(parse(FILE, &naming).unwrap_err().contains("only name {leader}"));
+        assert!(
+            parse(FILE, &naming)
+                .unwrap_err()
+                .contains("only name {leader}")
+        );
     }
 
     #[test]
     fn places_and_paths_stay_on_the_map_and_within_bounds() {
-        assert!(problem(&FILE.replace("at = [150, 150]", "at = [150, 10]")).contains("off the map"));
+        assert!(
+            problem(&FILE.replace("at = [150, 150]", "at = [150, 10]")).contains("off the map")
+        );
         assert!(problem(&FILE.replace("at = [150, 150]", "at = [45, 180]")).contains("too close"));
-        assert!(problem(&FILE.replace("site = \"glade\"", "site = \"castle\"")).contains("not a kind of place"));
-        assert!(problem(&FILE.replace("way = \"explorer\"", "way = \"teleport\"")).contains("not open"));
-        assert!(problem(&FILE.replace("way = \"explorer\"", "way = \"reader\"")).contains("signpost"));
+        assert!(
+            problem(&FILE.replace("site = \"glade\"", "site = \"castle\""))
+                .contains("not a kind of place")
+        );
+        assert!(
+            problem(&FILE.replace("way = \"explorer\"", "way = \"teleport\"")).contains("not open")
+        );
+        assert!(
+            problem(&FILE.replace("way = \"explorer\"", "way = \"reader\"")).contains("signpost")
+        );
         assert!(problem(&FILE.replace("length = 9", "length = 99")).contains("length"));
     }
 
@@ -635,7 +651,10 @@ pub(crate) mod tests {
                 let mut now = 0.0;
                 while !trip.finished() && now < 900.0 {
                     now += 1.0 / 30.0;
-                    let input = trip.leg_mut().map(|leg| leg.steady(now)).unwrap_or_default();
+                    let input = trip
+                        .leg_mut()
+                        .map(|leg| leg.steady(now))
+                        .unwrap_or_default();
                     trip.tick(&cast, input, now);
                     match trip.phase() {
                         Phase::Choosing if trip.can_stop() => {

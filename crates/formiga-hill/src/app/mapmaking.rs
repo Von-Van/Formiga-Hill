@@ -9,11 +9,10 @@
 
 use super::{Card, HillApp, paper};
 use crate::adventure::draft::{self, Draft, MAX_LINE_CHARS, MAX_NAME_CHARS, MAX_TITLE_CHARS};
-use crate::adventure::{self, opener_key, opener_words};
-use crate::expedition::map::{Map, Opener, Site, Way};
+use crate::adventure::{opener_key, opener_words};
+use crate::expedition::map::{Map, Opener, Site};
 use crate::paint::{ellipse, put, rgb, rgba};
 use crate::sharing::{self, Drafts};
-use crate::story::Library;
 use eframe::egui;
 use formiga_art::Canvas;
 
@@ -132,11 +131,9 @@ impl HillApp {
             self.arrival.cast.snapshot.colony_id,
             self.started.elapsed().as_nanos()
         );
-        let stamp: u64 = key
-            .bytes()
-            .fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
-                (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-            });
+        let stamp: u64 = key.bytes().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+            (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+        });
         let name = format!("adventure-{:08x}", stamp as u32);
         let mut draft = Draft::new(&name, "");
         if let Some(last) = self
@@ -161,7 +158,11 @@ impl HillApp {
     }
 
     fn open_adventure_draft(&mut self, name: &str) {
-        let Some(draft) = self.drafts().load(name).and_then(|text| Draft::from_text(&text)) else {
+        let Some(draft) = self
+            .drafts()
+            .load(name)
+            .and_then(|text| Draft::from_text(&text))
+        else {
             return;
         };
         self.woods.making = Some(Making {
@@ -175,9 +176,34 @@ impl HillApp {
         self.card = Some(Card::Making);
     }
 
+    /// For review: an adventure half made, never kept, with the `chapter`th place picked out, or
+    /// past the places, a path.
+    pub(super) fn open_sample_making(&mut self, chapter: Option<usize>) {
+        let draft = Draft::sample();
+        let places = draft.places.len();
+        let selected = match chapter {
+            Some(n) if n >= 1 && n <= places => Selected::Place(n - 1),
+            Some(n) if n > places && n - places <= draft.paths.len() => {
+                Selected::Path(n - places - 1)
+            }
+            _ => Selected::Nothing,
+        };
+        self.woods.activity = super::rummaging::Activity::Adventure;
+        self.woods.making = Some(Making {
+            draft,
+            // Never kept: no draft has this name.
+            name: String::new(),
+            tool: Tool::Pick,
+            selected,
+            dragging: None,
+            picture: None,
+        });
+    }
+
     /// Keeps the draft as it stands, so nothing made is lost.
     fn keep_draft(&self) {
         if let Some(making) = &self.woods.making
+            && !making.name.is_empty()
             && let Err(error) = self.drafts().save(&making.name, &making.draft.to_text())
         {
             eprintln!("formiga-hill: could not keep the adventure being made: {error}");
@@ -192,7 +218,10 @@ impl HillApp {
         let pointer = self.pointer;
         let making = self.woods.making.as_mut()?;
         let map = making.draft.map();
-        let stale = making.picture.as_ref().is_none_or(|(drawn, _)| *drawn != map);
+        let stale = making
+            .picture
+            .as_ref()
+            .is_none_or(|(drawn, _)| *drawn != map);
         if stale {
             let picture = crate::expedition::sketch(&map);
             making.picture = Some((map.clone(), picture));
@@ -205,7 +234,12 @@ impl HillApp {
         if let Selected::Path(index) = making.selected
             && index < map.paths.len()
         {
-            crate::expedition::draw_way(&mut scene, &map.walk(index, map.paths[index].ends.0), true, true);
+            crate::expedition::draw_way(
+                &mut scene,
+                &map.walk(index, map.paths[index].ends.0),
+                true,
+                true,
+            );
         }
         let ring = |scene: &mut Canvas, (x, y): (f32, f32), color| {
             for step in 0..48 {
@@ -318,7 +352,12 @@ impl HillApp {
     }
 
     /// A place picked up and moved by dragging it.
-    pub(super) fn making_drag(&mut self, pointer: Option<(f32, f32)>, started: bool, stopped: bool) {
+    pub(super) fn making_drag(
+        &mut self,
+        pointer: Option<(f32, f32)>,
+        started: bool,
+        stopped: bool,
+    ) {
         let Some(making) = &mut self.woods.making else {
             return;
         };
@@ -404,10 +443,17 @@ impl HillApp {
             .add(paper::Button::new("Join places").selected(joining))
             .clicked()
         {
-            making.tool = if joining { Tool::Pick } else { Tool::Join(None) };
+            making.tool = if joining {
+                Tool::Pick
+            } else {
+                Tool::Join(None)
+            };
         }
         let picking = making.tool == Tool::Pick;
-        if ui.add(paper::Button::new("Pick").selected(picking)).clicked() {
+        if ui
+            .add(paper::Button::new("Pick").selected(picking))
+            .clicked()
+        {
             making.tool = Tool::Pick;
         }
         let hint = match making.tool {
@@ -448,20 +494,12 @@ impl HillApp {
         }
         let mut changed = false;
         let mut act = None;
-        self.show_card(ctx, Card::Making, "Making an adventure", 0.46, |app, ui| {
+        self.show_card(ctx, Card::Making, "Making an adventure", 0.4, |app, ui| {
             let Some(making) = &mut app.woods.making else {
                 return;
             };
             let draft = &mut making.draft;
-            changed |= field(ui, "title", &mut draft.title, "What is it called?", MAX_TITLE_CHARS);
-            changed |= field(
-                ui,
-                "about",
-                &mut draft.about,
-                "A line about it, for choosing it",
-                MAX_LINE_CHARS,
-            );
-            changed |= field(ui, "author", &mut draft.author, "Made by", MAX_TITLE_CHARS);
+            // Whatever is picked out on the map, or else the adventure itself.
             match making.selected {
                 Selected::Place(index) if index < draft.places.len() => {
                     changed |= place_card(ui, draft, index, &mut making.selected);
@@ -470,7 +508,30 @@ impl HillApp {
                     changed |= path_card(ui, draft, index, &mut making.selected);
                 }
                 _ => {
-                    paper::heading(ui, "On the map");
+                    paper::faint(ui, "Called");
+                    changed |= field(
+                        ui,
+                        "title",
+                        &mut draft.title,
+                        "What is it called?",
+                        MAX_TITLE_CHARS,
+                    );
+                    paper::faint(ui, "About it");
+                    changed |= field(
+                        ui,
+                        "about",
+                        &mut draft.about,
+                        "A line about it, for choosing it",
+                        MAX_LINE_CHARS,
+                    );
+                    paper::faint(ui, "Made by");
+                    changed |= field(
+                        ui,
+                        "author",
+                        &mut draft.author,
+                        "Your name",
+                        MAX_TITLE_CHARS,
+                    );
                     paper::aside(
                         ui,
                         "Click a place or a path on the map to name it and say what happens there.",
@@ -491,14 +552,22 @@ impl HillApp {
             ui.horizontal_wrapped(|ui| {
                 let party = !app.woods.party.is_empty();
                 let try_it = ui.add(paper::Button::new("Try it").enabled(ready && party));
-                if paper::explain(ui, try_it, "Play it now with whoever is chosen; nothing is kept")
-                    .clicked()
+                if paper::explain(
+                    ui,
+                    try_it,
+                    "Play it now with whoever is chosen; nothing is kept",
+                )
+                .clicked()
                 {
                     act = Some(Act::Try);
                 }
                 let keep = ui.add(paper::Button::new("Keep it in the Woods").enabled(ready));
-                if paper::explain(ui, keep, "Add it to the Woods' adventures, to play any time")
-                    .clicked()
+                if paper::explain(
+                    ui,
+                    keep,
+                    "Add it to the Woods' adventures, to play any time",
+                )
+                .clicked()
                 {
                     act = Some(Act::Keep);
                 }
@@ -562,7 +631,8 @@ impl HillApp {
         self.keep_draft();
         match sharing::install(&folder, &files) {
             Ok(installed) => {
-                self.reload_packages();
+                self.reload_library();
+                self.woods.plan = None;
                 self.woods.adventure = Some(key);
                 let line = if installed.replaced.is_some() {
                     format!("{title} is kept in the Woods, in place of the last version.")
@@ -571,7 +641,9 @@ impl HillApp {
                 };
                 self.notice = Some((line, now));
             }
-            Err(problem) => self.notice = Some((format!("It couldn't be kept: {}", problem.problem), now)),
+            Err(problem) => {
+                self.notice = Some((format!("It couldn't be kept: {}", problem.problem), now))
+            }
         }
     }
 
@@ -599,20 +671,12 @@ impl HillApp {
         let line = match sharing::export(&files, &path) {
             Ok(()) => format!(
                 "Saved to share: {}. Whoever opens it at their Hill sees what's in it first.",
-                path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned())
+                path.file_name()
+                    .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
             ),
             Err(problem) => format!("It couldn't be saved: {}", problem.problem),
         };
         self.notice = Some((line, now));
-    }
-
-    /// Reads every package again, after one has been kept or taken out.
-    fn reload_packages(&mut self) {
-        self.library = Library::load(self.packages_folder.as_deref(), &[]);
-        for problem in &self.library.problems {
-            eprintln!("formiga-hill: a package was not loaded: {problem}");
-        }
-        self.woods.plan = None;
     }
 }
 
@@ -637,7 +701,9 @@ fn place_card(ui: &mut egui::Ui, draft: &mut Draft, index: usize, selected: &mut
     let mut changed = false;
     let start = draft.start == index;
     let place = &mut draft.places[index];
-    paper::heading(ui, place.called());
+    if paper::back(ui, &place.called()) {
+        *selected = Selected::Nothing;
+    }
     let kind = place.site();
     let (_, picked) = paper::menu(
         ui,
@@ -662,6 +728,7 @@ fn place_card(ui: &mut egui::Ui, draft: &mut Draft, index: usize, selected: &mut
         place.site = site.key().to_owned();
         changed = true;
     }
+    paper::faint(ui, "Called");
     changed |= field(
         ui,
         ("name", place.number),
@@ -669,18 +736,23 @@ fn place_card(ui: &mut egui::Ui, draft: &mut Draft, index: usize, selected: &mut
         kind.name(),
         MAX_NAME_CHARS,
     );
+    paper::faint(ui, "Said on getting here");
     changed |= field(
         ui,
         ("arrive", place.number),
         &mut place.arrive,
-        "Something said on getting here (optional)",
+        "Nothing, unless you write something",
         MAX_LINE_CHARS,
     );
     ui.horizontal_wrapped(|ui| {
         if !start {
             let hidden = ui.add(paper::Button::new("Hidden in the mist").selected(place.hidden));
-            if paper::explain(ui, hidden, "Out of sight on the map until somebody gets there")
-                .clicked()
+            if paper::explain(
+                ui,
+                hidden,
+                "Out of sight on the map until somebody gets there",
+            )
+            .clicked()
             {
                 place.hidden = !place.hidden;
                 changed = true;
@@ -693,6 +765,7 @@ fn place_card(ui: &mut egui::Ui, draft: &mut Draft, index: usize, selected: &mut
         }
     });
     if place.ending {
+        paper::faint(ui, "Said at the end");
         changed |= field(
             ui,
             ("ending", place.number),
@@ -729,7 +802,9 @@ fn path_card(ui: &mut egui::Ui, draft: &mut Draft, index: usize, selected: &mut 
             .find(|place| place.number == number)
             .map_or_else(String::new, draft::DraftPlace::called)
     };
-    paper::heading(ui, format!("{} to {}", name(ends.0), name(ends.1)));
+    if paper::back(ui, &format!("{} to {}", name(ends.0), name(ends.1))) {
+        *selected = Selected::Nothing;
+    }
     let path = &mut draft.paths[index];
     let way = path.opener();
     let (_, picked) = paper::menu(
@@ -772,27 +847,18 @@ fn path_card(ui: &mut egui::Ui, draft: &mut Draft, index: usize, selected: &mut 
         *selected = Selected::Nothing;
         changed = true;
     }
-    let _ = Way::Open;
-    let _ = adventure::LEADER;
     changed
 }
 
 /// A line to write in, on a card. Says whether its words changed.
 fn field(
     ui: &mut egui::Ui,
-    id: impl std::hash::Hash,
+    id: impl egui::AsIdSalt,
     text: &mut String,
     hint: &str,
     most: usize,
 ) -> bool {
-    let before = text.clone();
-    let edit = egui::TextEdit::singleline(text)
-        .id(ui.make_persistent_id(id))
-        .hint_text(hint)
-        .char_limit(most)
-        .desired_width(ui.available_width());
-    ui.add(edit);
-    *text != before
+    paper::field(ui, id, text, hint, most, None).changed()
 }
 
 /// A veil of mist over a hidden place, lighter than the mist it will be in, so whoever is

@@ -189,7 +189,12 @@ pub fn draw(
         }
         Area::Adventure => {
             let library = story::Library::load(None, packages);
-            adventure_moment(cast, adventure_to_draw(&library)?, at.unwrap_or(10.0), daylight)
+            adventure_moment(
+                cast,
+                adventure_to_draw(&library)?,
+                at.unwrap_or(10.0),
+                daylight,
+            )
         }
     })
 }

@@ -1135,7 +1135,12 @@ pub(super) fn old_track(scene: &mut Canvas, (x, y): (f32, f32)) {
 
 /// Paints rows of letters with their top-left at `at`, each letter a colour from `inks`; a
 /// letter not among them is left as it was.
-pub(super) fn stamp_rows(scene: &mut Canvas, (x, y): (i32, i32), rows: &[&str], inks: &[(char, Rgba)]) {
+pub(super) fn stamp_rows(
+    scene: &mut Canvas,
+    (x, y): (i32, i32),
+    rows: &[&str],
+    inks: &[(char, Rgba)],
+) {
     for (dy, row) in rows.iter().enumerate() {
         for (dx, letter) in row.chars().enumerate() {
             if let Some(&(_, color)) = inks.iter().find(|(name, _)| *name == letter) {

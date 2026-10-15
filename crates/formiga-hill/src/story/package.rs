@@ -349,7 +349,11 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
             text(files, entry).map_err(|problem| refuse(&package, Some(entry), problem))?;
         // An adventure says so at its top; anything else is a story.
         if crate::adventure::is_adventure(story_text) {
-            if !manifest.content_types.iter().any(|kind| kind == "adventure") {
+            if !manifest
+                .content_types
+                .iter()
+                .any(|kind| kind == "adventure")
+            {
                 return Err(in_manifest(format!(
                     "\"{entry}\" is an adventure, so content_types must list \"adventure\""
                 )));

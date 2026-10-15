@@ -121,7 +121,10 @@ pub fn planned(cast: &Cast, map: &Map, party: &[Id], known: &Known) -> Canvas {
     };
     let company = Company::of(&members, close);
     let sighted = sighted(map, known);
-    scenery::map(map, &Expedition::shown_for(map, &company, &sighted, &BTreeSet::new()))
+    scenery::map(
+        map,
+        &Expedition::shown_for(map, &company, &sighted, &BTreeSet::new()),
+    )
 }
 
 /// An adventure's map as whoever is making it sees it: every place and path drawn, hidden or not.
@@ -143,8 +146,7 @@ fn sighted(map: &Map, known: &Known) -> Vec<bool> {
         .map(|place| {
             !place.hidden
                 || (woods
-                    && (known.far_places.contains(place.id.as_ref())
-                        || far_sight(&known.hilltop)))
+                    && (known.far_places.contains(place.id.as_ref()) || far_sight(&known.hilltop)))
         })
         .collect()
 }
@@ -703,12 +705,20 @@ impl Expedition {
         {
             self.read.insert(place);
             for (index, there) in self.map.places.iter().enumerate() {
-                if there.hidden && self.map.paths.iter().any(|path| path.from(place) == Some(index))
+                if there.hidden
+                    && self
+                        .map
+                        .paths
+                        .iter()
+                        .any(|path| path.from(place) == Some(index))
                 {
                     self.sighted[index] = true;
                 }
             }
-            self.events.push(Event::Read { who: reader, place: to });
+            self.events.push(Event::Read {
+                who: reader,
+                place: to,
+            });
             let mut reads = Beat::new(Gesture::Watch, ExpressionKind::Focused, 1.6);
             reads.cue = Some(crate::character::Cue::Exclaim);
             self.paper.direct(reader, vec![Step::Beat(reads)], now);
@@ -1358,10 +1368,13 @@ mod tests {
     fn each_leg_hands_back_light_and_finds_and_the_basket_it_was_given() {
         let cast = sample();
         let party = [named(&cast, "Tansy"), named(&cast, "Mochi")];
-        let map = scenery::map(&Map::woods(), &Shown {
-            places: vec![true; PLACES.len()],
-            paths: vec![true; PATHS.len()],
-        });
+        let map = scenery::map(
+            &Map::woods(),
+            &Shown {
+                places: vec![true; PLACES.len()],
+                paths: vec![true; PATHS.len()],
+            },
+        );
         let influence = Influence::default();
         let hilltop = Arrangement::new();
         let nothing = |_: &str| false;
@@ -2019,10 +2032,13 @@ mod tests {
     fn the_secret_never_shows_on_an_expedition() {
         let cast = sample();
         let party = [cast.members[0].id];
-        let map = scenery::map(&Map::woods(), &Shown {
-            places: vec![true; PLACES.len()],
-            paths: vec![true; PATHS.len()],
-        });
+        let map = scenery::map(
+            &Map::woods(),
+            &Shown {
+                places: vec![true; PLACES.len()],
+                paths: vec![true; PATHS.len()],
+            },
+        );
         let hilltop = Arrangement::from([(3, Standing::from("brass_lens"))]);
         let influence = Influence::default();
         let nothing = |_: &str| false;
@@ -2164,10 +2180,13 @@ mod tests {
     fn at_the_old_track_the_party_goes_to_a_heap_or_two_and_no_further() {
         let cast = sample();
         let party = [named(&cast, "Fig")];
-        let map = scenery::map(&Map::woods(), &Shown {
-            places: vec![true; PLACES.len()],
-            paths: vec![true; PATHS.len()],
-        });
+        let map = scenery::map(
+            &Map::woods(),
+            &Shown {
+                places: vec![true; PLACES.len()],
+                paths: vec![true; PATHS.len()],
+            },
+        );
         let (influence, hilltop) = (Influence::default(), Arrangement::new());
         let nothing = |_: &str| false;
         let start = Start {

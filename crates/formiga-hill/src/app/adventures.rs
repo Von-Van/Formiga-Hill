@@ -84,7 +84,8 @@ impl HillApp {
             |ui| {
                 let mut picked = None;
                 for (p, a, title, about) in &entries {
-                    let pick = ui.add(paper::Button::new(title).selected(*p == package && *a == id));
+                    let pick =
+                        ui.add(paper::Button::new(title).selected(*p == package && *a == id));
                     if paper::explain(ui, pick, about).clicked() {
                         picked = Some((p.clone(), a.clone()));
                     }
@@ -157,11 +158,16 @@ impl HillApp {
         expedition.set_daylight(self.daylight);
         let title = playing.adventure.title.clone();
         let line = if playing.trying {
-            format!("Trying out {title}: nothing found is kept. Click a place on the map to go there.")
+            format!(
+                "Trying out {title}: nothing found is kept. Click a place on the map to go there."
+            )
         } else if playing.adventure.about.is_empty() {
             format!("{title}. Click a place on the map to go there, and where you are to stop.")
         } else {
-            format!("{} Click a place on the map to go there.", playing.adventure.about)
+            format!(
+                "{} Click a place on the map to go there.",
+                playing.adventure.about
+            )
         };
         self.woods.expedition = Some(expedition);
         self.woods.playing = Some(playing);
@@ -237,14 +243,15 @@ pub(super) fn told(
     };
     let adventure = &playing.adventure;
     let leader = expedition.party().first().copied();
-    let (name, kind) = leader
-        .and_then(|id| cast.member(id))
-        .map_or(("Someone".to_owned(), None), |member| {
-            (
-                member.name.clone(),
-                Some(crate::character::Character::of(member).kind),
-            )
-        });
+    let (name, kind) =
+        leader
+            .and_then(|id| cast.member(id))
+            .map_or(("Someone".to_owned(), None), |member| {
+                (
+                    member.name.clone(),
+                    Some(crate::character::Character::of(member).kind),
+                )
+            });
     let name_of = |id: Id| {
         cast.member(id)
             .map_or("Someone".to_owned(), |member| member.name.clone())

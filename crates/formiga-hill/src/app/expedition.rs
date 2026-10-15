@@ -270,9 +270,12 @@ impl HillApp {
                     if let Some(cue) = super::sound::expedition_heard(&event) {
                         self.sound.play(cue);
                     }
-                    if let Some(line) =
-                super::adventures::told(expedition, self.woods.playing.as_ref(), cast, event)
-            {
+                    if let Some(line) = super::adventures::told(
+                        expedition,
+                        self.woods.playing.as_ref(),
+                        cast,
+                        event,
+                    ) {
                         self.notice = Some((line, now));
                     }
                 }
@@ -608,7 +611,11 @@ fn leg_hover(expedition: &Expedition, (x, y): (f32, f32)) -> Option<(String, (f3
 }
 
 /// What to tell the person of something that happened, if anything.
-pub(super) fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Option<String> {
+pub(super) fn tell(
+    expedition: &Expedition,
+    cast: &crate::cast::Cast,
+    event: Event,
+) -> Option<String> {
     let name = |id: Id| {
         cast.member(id)
             .map_or("Someone", |member| member.name.as_str())

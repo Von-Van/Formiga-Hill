@@ -151,7 +151,11 @@ pub fn lettering(name: &str) -> String {
 /// The lane in from the Hill: from the left margin to where the adventure starts, winding.
 fn lane(scene: &mut Canvas, (to_x, to_y): (f32, f32)) {
     let from = (0.0, to_y + 6.0);
-    let points = [from, ((to_x * 0.5).max(4.0), to_y + 9.0), (to_x, to_y + 2.0)];
+    let points = [
+        from,
+        ((to_x * 0.5).max(4.0), to_y + 9.0),
+        (to_x, to_y + 2.0),
+    ];
     for (x, y) in traced(&points) {
         let wobble = (patches(x as i32, 0, (13, 1), 2230) * 2.0) as i32;
         let (x, top) = (x as i32, y as i32 - 3 + wobble);
@@ -309,7 +313,13 @@ fn hedgerow(scene: &mut Canvas, (x, y): (f32, f32), salt: u32) {
     let mut index = 0;
     while px < x + 14 {
         let radius = 3 + pick(index, 0, 2260 + salt, 2);
-        bush(scene, (px, foot - radius + 1), radius, HEDGE, 2261 + salt * 7 + index as u32);
+        bush(
+            scene,
+            (px, foot - radius + 1),
+            radius,
+            HEDGE,
+            2261 + salt * 7 + index as u32,
+        );
         if pick(index, 1, 2260 + salt, 3) == 0 {
             put(scene, px + 1, foot - radius, rgb(0x6a2a48));
         }
@@ -372,7 +382,8 @@ fn crag(scene: &mut Canvas, at: (f32, f32)) {
     for y in top - 16..top + 34 {
         for x in fx - 30..fx + 30 {
             let (u, v) = ((x - fx) as f32 / 30.0, (y - top - 8) as f32 / 26.0);
-            let r = u * u + v * v + (noise(x.div_euclid(3), y.div_euclid(3), 2280) % 10) as f32 / 60.0;
+            let r =
+                u * u + v * v + (noise(x.div_euclid(3), y.div_euclid(3), 2280) % 10) as f32 / 60.0;
             if r > 1.0 || !on_paper(x, y) {
                 continue;
             }
@@ -418,6 +429,9 @@ mod tests {
         assert_eq!(lettering("the old mill pond"), "OLD MILL POND");
         assert_eq!(lettering("Bramble Corner"), "BRAMBLE CORNER");
         assert_eq!(lettering("the carters' track"), "CARTERS TRACK");
-        assert_eq!(lettering("a very long name for a little place"), "A VERY LONG NAME F");
+        assert_eq!(
+            lettering("a very long name for a little place"),
+            "A VERY LONG NAME F"
+        );
     }
 }

@@ -7,7 +7,7 @@
 //! A draft can be unfinished, or wrong, at any point: a place with no path to it, no ending yet.
 //! It says what is wrong in plain words, and can be put down and picked up again as it is.
 
-use super::{Adventure, CLOSEST, LEFT, MOST_PATHS, MOST_PLACES, BOTTOM, RIGHT, TOP};
+use super::{Adventure, BOTTOM, CLOSEST, LEFT, MOST_PATHS, MOST_PLACES, RIGHT, TOP};
 use crate::expedition::map::{Map, Opener, Path, Place, Site, Way};
 use crate::story::{self, Files, Package};
 use serde::{Deserialize, Serialize};
@@ -143,6 +143,39 @@ impl Draft {
         }
     }
 
+    /// For review: an adventure half made, as someone might leave one, with a thing or two
+    /// still to do.
+    pub fn sample() -> Self {
+        let mut draft = Self::new("sample", "Someone at the Hill");
+        draft.title = "The Bell in the Fog".into();
+        draft.about = "Somewhere in the Woods a bell rings, but only on foggy days.".into();
+        let places = [
+            (Site::Hedgerow, (104.0, 196.0)),
+            (Site::Glade, (160.0, 146.0)),
+            (Site::Signpost, (236.0, 110.0)),
+            (Site::Pool, (300.0, 176.0)),
+            (Site::Log, (96.0, 98.0)),
+        ];
+        for (site, at) in places {
+            let _ = draft.add_place(site, at);
+        }
+        // The way in, the hedgerow, the glade, the signpost, the pool and the log, joined up but
+        // for the pool, which only the old way reaches yet.
+        for (a, b) in [(0, 1), (1, 2), (0, 2), (2, 3), (2, 5), (5, 3), (3, 4)] {
+            let _ = draft.join(a, b);
+        }
+        draft.places[2].name = "the bell oak".into();
+        draft.places[2].arrive = "A bell rings, somewhere further in.".into();
+        draft.places[4].ending = true;
+        draft.places[4].hidden = true;
+        draft.places[4].name = "the fog pool".into();
+        draft.places[4].ending_words =
+            "The bell hangs over the pool, and {leader} rings it.".into();
+        draft.paths[6].way = "reader".into();
+        draft.paths[6].name = "the bell-ringers' way".into();
+        draft
+    }
+
     /// The draft kept as text, for `sharing::Drafts`.
     pub fn to_text(&self) -> String {
         serde_json::to_string_pretty(self).unwrap_or_default()
@@ -200,12 +233,9 @@ impl Draft {
         if !on_the_map(at) {
             return Err("That's too near the edge of the map.".into());
         }
-        if self
-            .places
-            .iter()
-            .enumerate()
-            .any(|(index, place)| Some(index) != but && crate::playground::distance(place.at, at) < CLOSEST)
-        {
+        if self.places.iter().enumerate().any(|(index, place)| {
+            Some(index) != but && crate::playground::distance(place.at, at) < CLOSEST
+        }) {
             return Err("That's too close to another place.".into());
         }
         Ok(())
@@ -380,9 +410,7 @@ impl Draft {
                         .is_some_and(|index| self.places[index].site() == Site::Signpost)
                 });
                 if !signpost {
-                    problems.push(
-                        "An old way is read off a signpost: start it at one.".to_owned(),
-                    );
+                    problems.push("An old way is read off a signpost: start it at one.".to_owned());
                 }
             }
         }
@@ -475,8 +503,14 @@ impl Draft {
         manifest.insert("title".into(), one_line(&self.title).into());
         manifest.insert("author".into(), one_line(&self.author).into());
         manifest.insert("version".into(), format!("1.0.{}", self.version).into());
-        manifest.insert("hill_api".into(), Value::Integer(i64::from(story::HILL_API)));
-        manifest.insert("content_types".into(), Value::Array(vec!["adventure".into()]));
+        manifest.insert(
+            "hill_api".into(),
+            Value::Integer(i64::from(story::HILL_API)),
+        );
+        manifest.insert(
+            "content_types".into(),
+            Value::Array(vec!["adventure".into()]),
+        );
         manifest.insert(
             "entry_points".into(),
             Value::Array(vec![ADVENTURE_FILE.into()]),
@@ -603,8 +637,14 @@ mod tests {
     #[test]
     fn places_keep_their_room_and_the_way_in_stays() {
         let mut draft = made();
-        assert!(draft.add_place(Site::Log, (152.0, 152.0)).is_err(), "too close");
-        assert!(draft.add_place(Site::Log, (150.0, 2.0)).is_ok(), "pulled onto the map");
+        assert!(
+            draft.add_place(Site::Log, (152.0, 152.0)).is_err(),
+            "too close"
+        );
+        assert!(
+            draft.add_place(Site::Log, (150.0, 2.0)).is_ok(),
+            "pulled onto the map"
+        );
         assert!(!draft.move_place(1, (290.0, 168.0)), "onto another place");
         assert!(draft.move_place(1, (160.0, 120.0)));
         assert!(!draft.remove_place(0), "the way in stays");
@@ -644,7 +684,11 @@ mod tests {
     fn words_with_a_stray_brace_or_a_stranger_named_are_turned_away() {
         let mut draft = made();
         draft.places[2].ending_words = "{finder} found it".into();
-        assert!(draft.problems()[0].contains("leader"), "{:?}", draft.problems());
+        assert!(
+            draft.problems()[0].contains("leader"),
+            "{:?}",
+            draft.problems()
+        );
         draft.places[2].ending_words = "a { stray".into();
         assert!(!draft.problems().is_empty());
     }

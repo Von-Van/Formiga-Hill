@@ -478,11 +478,6 @@ impl Map {
         self.title.is_none()
     }
 
-    /// The place with this id, if the map has one.
-    pub fn place(&self, id: &str) -> Option<usize> {
-        self.places.iter().position(|place| place.id == id)
-    }
-
     /// Every point along a path, from `place` to its other end, as walked.
     pub fn walk(&self, path: usize, place: usize) -> Vec<(f32, f32)> {
         self.paths[path].walk_from(&self.places, place)
