@@ -800,23 +800,30 @@ pub(super) fn reader_hint(character: &Character) -> String {
 
 /// The old track's part of the journal: what has been found there, by whom first, and hints of
 /// the rest: in a heap, deep in one, or only in a chest at the end of a map. And any maps held.
-pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&str) -> String) {
+/// How the old track's chapter of the journal stands, for its line in the contents.
+pub(super) fn journal_line(colony: &ColonyMemories) -> String {
     let found = SCAVENGED
         .iter()
         .filter(|find| colony.finds.contains_key(find.id))
         .count();
-    ui.add_space(6.0);
-    paper::heading(
-        ui,
-        format!(
-            "Found on the old track ({found} of {}) \u{b7} {} scavenge{} \u{b7} {} chest{} dug up",
-            SCAVENGED.len(),
-            colony.scavenges,
-            plural(colony.scavenges as usize),
-            colony.chests,
-            plural(colony.chests as usize)
-        ),
-    );
+    format!(
+        "{found} of {} found \u{b7} {} scavenge{} \u{b7} {} chest{} dug up",
+        SCAVENGED.len(),
+        colony.scavenges,
+        plural(colony.scavenges as usize),
+        colony.chests,
+        plural(colony.chests as usize)
+    )
+}
+
+/// The old track's chapter of the journal: what has been found there, in full. Returns a hint of
+/// each thing still to find.
+pub(super) fn journal(
+    ui: &mut egui::Ui,
+    colony: &ColonyMemories,
+    who: &dyn Fn(&str) -> String,
+) -> Vec<String> {
+    let mut hints = Vec::new();
     if !colony.maps.is_empty() {
         paper::aside(
             ui,
@@ -848,11 +855,9 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
                     Tier::Rare => "deep in a heap, or in a chest",
                     _ => "in a heap on the old track",
                 };
-                paper::faint(
-                    ui,
-                    format!("??? \u{b7} something {} {whereabouts}", find.tier.label()),
-                );
+                hints.push(format!("something {} {whereabouts}", find.tier.label()));
             }
         }
     }
+    hints
 }

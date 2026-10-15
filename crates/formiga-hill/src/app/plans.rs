@@ -270,11 +270,6 @@ impl HillApp {
         if thought_of.is_empty() {
             return;
         }
-        ui.add_space(6.0);
-        paper::heading(
-            ui,
-            format!("Plans ({} of {} thought of)", thought_of.len(), PLANS.len()),
-        );
         for plan in thought_of {
             let standing = colony
                 .hilltop

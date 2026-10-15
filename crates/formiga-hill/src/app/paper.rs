@@ -31,10 +31,11 @@ pub const AMBER: Color32 = rgb(236, 172, 68);
 pub const AMBER_DEEP: Color32 = rgb(190, 128, 44);
 /// Headings, as the notebook sets its printed labels in forest green.
 pub const FOREST: Color32 = rgb(62, 112, 96);
-/// Words that explain rather than say: hints, dates, what something takes.
-pub const FADED: Color32 = rgb(118, 104, 124);
-/// What cannot be used yet, and what is not known yet.
-pub const MUTED: Color32 = rgb(160, 148, 164);
+/// Words that explain rather than say: hints, dates, what something takes. Quieter than ink but
+/// read as easily, at better than 6:1 on paper and 4.5:1 on a chosen button.
+pub const FADED: Color32 = rgb(90, 76, 96);
+/// What cannot be used yet, and what is not known yet: quieter again, and still better than 5:1.
+pub const MUTED: Color32 = rgb(112, 98, 118);
 /// A shadow under paper laid over the scene, so it lifts off whatever is behind it.
 const SHADOW: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 70);
 /// Night paper, for the one who speaks from the dark.
@@ -377,6 +378,97 @@ pub fn name_it(ui: &Ui, response: &Response, name: &str) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Contents and chapters
+// ---------------------------------------------------------------------------------------------
+
+/// One line of a card's contents: a chapter's name, how it stands in a few words, and a mark that
+/// it opens. A card that has more to say than fits at a glance lists its chapters this way, and
+/// opens one at a time. Pointed at, the line lights as a button does; the chapter read last keeps
+/// a bar down its left edge, so coming back finds the place.
+pub struct Entry {
+    title: String,
+    summary: String,
+    marked: bool,
+}
+
+impl Entry {
+    pub fn new(title: impl Into<String>, summary: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            summary: summary.into(),
+            marked: false,
+        }
+    }
+
+    /// The chapter read last.
+    pub fn marked(mut self, marked: bool) -> Self {
+        self.marked = marked;
+        self
+    }
+}
+
+impl egui::Widget for Entry {
+    fn ui(self, ui: &mut Ui) -> Response {
+        let grain = Grain::of(ui.ctx());
+        let width = grain.fit(ui.available_width()).max(40);
+        let title = self.title.to_uppercase();
+        let room = width - 8 - lettering::width(">") - 4;
+        let summary = if self.summary.is_empty() {
+            Vec::new()
+        } else {
+            lettering::wrap(&self.summary, room.max(24))
+        };
+        let height = 3 + WORDS_HEIGHT + summary.len() as i32 * LINE + 3;
+        let (rect, response) = ui.allocate_exact_size(grain.size(width, height), Sense::click());
+        if ui.is_rect_visible(rect) {
+            let mut ink = Ink::new(ui.ctx(), rect.min, grain);
+            if response.hovered() || response.has_focus() {
+                ink.frame((0, 0, width, height), HOVER, OUTLINE, 1);
+            } else {
+                // A dashed rule under each line, as the card is ruled.
+                let mut x = 0;
+                while x < width {
+                    ink.rect(x, height - 1, 3.min(width - x), 1, SHADE);
+                    x += 5;
+                }
+            }
+            if self.marked {
+                ink.rect(1, 1, 2, height - 2, AMBER_DEEP);
+            }
+            ink.text(6, 3, &title, INK);
+            for (index, line) in summary.iter().enumerate() {
+                ink.text(6, 3 + WORDS_HEIGHT + 2 + index as i32 * LINE, line, FADED);
+            }
+            ink.text(
+                width - 4 - lettering::width(">"),
+                (height - ASCENT) / 2,
+                ">",
+                FOREST,
+            );
+            ink.paint(ui.painter());
+        }
+        if response.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        response
+    }
+}
+
+/// The top of an open chapter: a way back to the contents, beside the chapter's name. True when
+/// it is pressed. Escape goes back the same way.
+pub fn back(ui: &mut Ui, title: &str) -> bool {
+    let mut pressed = false;
+    ui.horizontal(|ui| {
+        let back = ui.add(Button::new("< Back"));
+        name_it(ui, &back, "Back to the contents");
+        pressed = back.clicked();
+        ui.add(Words::new(title).caps().color(FOREST));
+    });
+    rule(ui);
+    pressed
+}
+
+// ---------------------------------------------------------------------------------------------
 // Words
 // ---------------------------------------------------------------------------------------------
 
@@ -710,10 +802,15 @@ pub fn spaced(ui: &mut Ui) {
 /// A card over the scene, at its right, in place of a window: a title in capitals, a close
 /// button, and whatever `add` puts on it, scrolling if there is more than fits. `open` is
 /// cleared when the person closes it.
+///
+/// `page` names what the card is showing, a chapter or its contents: each keeps how far it was
+/// scrolled, so going back to the contents finds it where it was left.
+#[allow(clippy::too_many_arguments)]
 pub fn card<R>(
     ctx: &egui::Context,
     scene: Rect,
     id: &str,
+    page: &str,
     title: &str,
     width: f32,
     open: &mut bool,
@@ -746,6 +843,7 @@ pub fn card<R>(
                 rule(ui);
                 let room = scene.height() - margin * 2.0 - grain.len(12 + BUTTON_HEIGHT + 8);
                 egui::ScrollArea::vertical()
+                    .id_salt(("hill-card-page", id, page))
                     .max_height(room.max(grain.len(40)))
                     .auto_shrink([false, true])
                     .show(ui, |ui| {

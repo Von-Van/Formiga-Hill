@@ -335,14 +335,192 @@ impl HillApp {
         }
     }
 
-    /// Everything the Woods can turn up: what has been found, by whom, and hints of the rest.
+    /// Everything the Woods can turn up: what has been found, by whom, and hints of the rest. The
+    /// card opens on its contents, a line for each chapter with how it stands, and one chapter is
+    /// read at a time.
     pub(super) fn journal_window(&mut self, ctx: &egui::Context) {
+        if !self.showing(Card::Journal) {
+            // A journal opened again opens on its contents.
+            self.chapter = None;
+        }
         self.show_card(ctx, Card::Journal, "Journal", 0.5, |app, ui| {
             app.journal_page(ui)
         });
     }
 
-    fn journal_page(&self, ui: &mut egui::Ui) {
+    fn journal_page(&mut self, ui: &mut egui::Ui) {
+        match self.chapter {
+            None => {
+                if let Some(chapter) = self.journal_contents(ui) {
+                    self.chapter = Some(chapter);
+                    self.last_chapter = Some(chapter);
+                }
+            }
+            Some(chapter) => {
+                let (title, _) = self.chapter_line(chapter);
+                if paper::back(ui, &title) {
+                    self.chapter = None;
+                } else {
+                    self.journal_chapter(ui, chapter);
+                }
+            }
+        }
+    }
+
+    /// The chapters there is something in, in the order the journal keeps them.
+    pub(super) fn chapters(&self) -> Vec<Chapter> {
+        let colony = self.memories.colony();
+        let mut chapters: Vec<Chapter> = Kind::ALL.into_iter().map(Chapter::Finds).collect();
+        // Relics only appear once there is one to show: they are a secret until then.
+        if crate::finds::RELICS
+            .iter()
+            .any(|relic| colony.finds.contains_key(relic.id))
+        {
+            chapters.push(Chapter::Relics);
+        }
+        if !self.growing().is_empty() {
+            chapters.push(Chapter::Growing);
+        }
+        if !self.thought_of().is_empty() {
+            chapters.push(Chapter::Plans);
+        }
+        chapters.extend([
+            Chapter::Fish,
+            Chapter::Bugs,
+            Chapter::Hedgerow,
+            Chapter::Expeditions,
+            Chapter::OldTrack,
+        ]);
+        if !colony.outings_by.is_empty() {
+            chapters.push(Chapter::WhoHasBeen);
+        }
+        chapters
+    }
+
+    /// A chapter's name, and how it stands in a few words.
+    fn chapter_line(&self, chapter: Chapter) -> (String, String) {
+        let colony = self.memories.colony();
+        let tally = |found: usize, of: usize| format!("{found} of {of} found");
+        match chapter {
+            Chapter::Finds(kind) => {
+                let of_kind: Vec<_> = CATALOGUE.iter().filter(|find| find.kind == kind).collect();
+                let found = of_kind
+                    .iter()
+                    .filter(|find| colony.finds.contains_key(find.id))
+                    .count();
+                (
+                    format!("Found {}", kind.whereabouts()),
+                    tally(found, of_kind.len()),
+                )
+            }
+            Chapter::Relics => {
+                let relics = crate::finds::RELICS
+                    .iter()
+                    .filter(|relic| colony.finds.contains_key(relic.id))
+                    .count();
+                ("Relics".to_owned(), format!("{relics} kept"))
+            }
+            Chapter::Growing => {
+                let growing = self.growing().len();
+                ("Growing".to_owned(), format!("{growing} coming up"))
+            }
+            Chapter::Plans => (
+                "Plans".to_owned(),
+                format!(
+                    "{} of {} thought of",
+                    self.thought_of().len(),
+                    plans::PLANS.len()
+                ),
+            ),
+            Chapter::Fish => {
+                let fish = &crate::fishing::fish::CATALOGUE;
+                let caught = fish
+                    .iter()
+                    .filter(|kind| colony.fish.contains_key(kind.id))
+                    .count();
+                (
+                    "Caught at the pool".to_owned(),
+                    format!("{caught} of {} caught", fish.len()),
+                )
+            }
+            Chapter::Bugs => {
+                let bugs = &crate::meadow::bugs::CATALOGUE;
+                let caught = bugs
+                    .iter()
+                    .filter(|kind| colony.bugs.contains_key(kind.id))
+                    .count();
+                (
+                    "Caught in the meadow".to_owned(),
+                    format!("{caught} of {} caught", bugs.len()),
+                )
+            }
+            Chapter::Hedgerow => (
+                "Picked at the hedgerow".to_owned(),
+                super::foraging::journal_line(colony),
+            ),
+            Chapter::Expeditions => (
+                "Expeditions".to_owned(),
+                super::expedition::journal_line(colony),
+            ),
+            Chapter::OldTrack => (
+                "Found on the old track".to_owned(),
+                super::scavenging::journal_line(colony),
+            ),
+            Chapter::WhoHasBeen => (
+                "Who has been".to_owned(),
+                format!(
+                    "{} companion{}",
+                    colony.outings_by.len(),
+                    plural(colony.outings_by.len())
+                ),
+            ),
+        }
+    }
+
+    /// The journal's contents: how much has been found, then a line for each chapter. Returns
+    /// the chapter chosen, if one was.
+    fn journal_contents(&self, ui: &mut egui::Ui) -> Option<Chapter> {
+        let colony = self.memories.colony();
+        paper::words(
+            ui,
+            format!(
+                "{} of {} found \u{b7} {} outing{} to the Woods",
+                CATALOGUE
+                    .iter()
+                    .filter(|find| colony.finds.contains_key(find.id))
+                    .count(),
+                CATALOGUE.len(),
+                colony.outings,
+                plural(colony.outings as usize)
+            ),
+        );
+        let mut chosen = None;
+        for chapter in self.chapters() {
+            let (title, summary) = self.chapter_line(chapter);
+            let entry =
+                paper::Entry::new(title, summary).marked(self.last_chapter == Some(chapter));
+            if ui.add(entry).clicked() {
+                chosen = Some(chapter);
+            }
+        }
+        chosen
+    }
+
+    /// What is planted and still coming up, on the Hilltop or lifted into the satchel: each with
+    /// whether it is in the ground.
+    fn growing(&self) -> Vec<(&Standing, bool)> {
+        let colony = self.memories.colony();
+        let planted = colony.hilltop.values().map(|standing| (standing, true));
+        let lifted = colony.lifted.iter().map(|standing| (standing, false));
+        planted
+            .chain(lifted)
+            .filter(|(standing, _)| standing.growing())
+            .collect()
+    }
+
+    /// One chapter of the journal: what has been found first, in full, then what is still to
+    /// find, a line of hint for each.
+    fn journal_chapter(&self, ui: &mut egui::Ui, chapter: Chapter) {
         let colony = self.memories.colony();
         let cast = &self.arrival.cast;
         let who = |id: &str| {
@@ -354,202 +532,206 @@ impl HillApp {
                     |member| member.name.clone(),
                 )
         };
-        {
-            {
-                paper::words(
-                    ui,
-                    format!(
-                        "{} of {} found \u{b7} {} outing{} to the Woods",
-                        CATALOGUE
-                            .iter()
-                            .filter(|find| colony.finds.contains_key(find.id))
-                            .count(),
-                        CATALOGUE.len(),
-                        colony.outings,
-                        plural(colony.outings as usize)
-                    ),
-                );
-                {
-                    for kind in Kind::ALL {
-                        let of_kind: Vec<_> =
-                            CATALOGUE.iter().filter(|find| find.kind == kind).collect();
-                        let found = of_kind
-                            .iter()
-                            .filter(|find| colony.finds.contains_key(find.id))
-                            .count();
-                        ui.add_space(6.0);
-                        paper::heading(
-                            ui,
-                            format!(
-                                "Found {} ({found} of {})",
-                                kind.whereabouts(),
-                                of_kind.len()
-                            ),
-                        );
-                        for find in of_kind {
-                            match colony.finds.get(find.id) {
-                                Some(record) => {
-                                    let becomes = if growing::growth(find.id).is_some() {
-                                        "Grows into"
-                                    } else {
-                                        "Becomes"
-                                    };
-                                    paper::name(ui, find.name);
-                                    paper::words(ui, find.blurb);
-                                    paper::aside(
-                                        ui,
-                                        format!(
-                                            "{becomes} {} \u{b7} brought home {}\u{d7} \u{b7} first found with {}",
-                                            find.piece.to_lowercase(),
-                                            record.count,
-                                            who(&record.first_by)
-                                        ),
-                                    );
-                                }
-                                None => {
-                                    paper::faint(
-                                        ui,
-                                        format!(
-                                            "??? \u{b7} something {} {}",
-                                            find.tier.label(),
-                                            kind.whereabouts()
-                                        ),
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    // Relics only appear once there is one to show: they are a secret until then.
-                    let relics: Vec<_> = crate::finds::RELICS
-                        .iter()
-                        .filter(|relic| colony.finds.contains_key(relic.id))
-                        .collect();
-                    if !relics.is_empty() {
-                        ui.add_space(6.0);
-                        paper::heading(ui, "Relics");
-                        for relic in relics {
-                            paper::name(ui, relic.name);
-                            paper::words(ui, relic.blurb);
-                            paper::aside(ui, format!("Becomes {}", relic.piece.to_lowercase()));
-                        }
-                    }
-                    // What is planted and still coming up, on the Hilltop or lifted into the satchel.
-                    let planted = colony.hilltop.values().map(|standing| (standing, true));
-                    let lifted = colony.lifted.iter().map(|standing| (standing, false));
-                    let growing: Vec<_> = planted
-                        .chain(lifted)
-                        .filter(|(standing, _)| standing.growing())
-                        .collect();
-                    if !growing.is_empty() {
-                        ui.add_space(6.0);
-                        paper::heading(ui, "Growing");
-                        for (standing, up) in growing {
-                            let Some(find) = finds::find(standing.id()) else {
-                                continue;
-                            };
-                            let line = if up {
-                                format!(
-                                    "Grows a little with every visit, into {}",
-                                    find.piece.to_lowercase()
-                                )
+        let mut hints = Vec::new();
+        match chapter {
+            Chapter::Finds(kind) => {
+                for find in CATALOGUE.iter().filter(|find| find.kind == kind) {
+                    match colony.finds.get(find.id) {
+                        Some(record) => {
+                            let becomes = if growing::growth(find.id).is_some() {
+                                "Grows into"
                             } else {
-                                format!(
-                                    "Lifted into the satchel; it grows on into {} once it is planted again",
-                                    find.piece.to_lowercase()
-                                )
+                                "Becomes"
                             };
-                            paper::name(ui, standing.name());
-                            paper::aside(ui, line);
+                            found(
+                                ui,
+                                find.name,
+                                find.blurb,
+                                format!(
+                                    "{becomes} {} \u{b7} brought home {}\u{d7} \u{b7} first found with {}",
+                                    find.piece.to_lowercase(),
+                                    record.count,
+                                    who(&record.first_by)
+                                ),
+                            );
                         }
+                        None => hints.push(format!(
+                            "something {} {}",
+                            find.tier.label(),
+                            kind.whereabouts()
+                        )),
                     }
-                    self.journal_plans(ui);
-                    let fish = &crate::fishing::fish::CATALOGUE;
-                    let caught = fish
-                        .iter()
-                        .filter(|kind| colony.fish.contains_key(kind.id))
-                        .count();
-                    ui.add_space(6.0);
-                    paper::heading(
+                }
+            }
+            Chapter::Relics => {
+                for relic in crate::finds::RELICS
+                    .iter()
+                    .filter(|relic| colony.finds.contains_key(relic.id))
+                {
+                    found(
                         ui,
-                        format!("Caught at the pool ({caught} of {})", fish.len()),
+                        relic.name,
+                        relic.blurb,
+                        format!("Becomes {}", relic.piece.to_lowercase()),
                     );
-                    for kind in fish {
-                        match colony.fish.get(kind.id) {
-                            Some(record) => {
-                                paper::name(ui, kind.name);
-                                paper::words(ui, kind.blurb);
-                                paper::aside(
-                                    ui,
-                                    format!(
-                                        "Landed {}\u{d7}, longest {:.1} cm \u{b7} first caught by {}",
-                                        record.count,
-                                        record.longest,
-                                        who(&record.first_by)
-                                    ),
-                                );
-                            }
-                            None => {
-                                paper::faint(
-                                    ui,
-                                    format!(
-                                        "??? \u{b7} something {} in {}",
-                                        kind.tier.label(),
-                                        kind.haunt.name()
-                                    ),
-                                );
-                            }
-                        }
+                }
+            }
+            Chapter::Growing => {
+                for (standing, up) in self.growing() {
+                    let Some(find) = finds::find(standing.id()) else {
+                        continue;
+                    };
+                    let line = if up {
+                        format!(
+                            "Grows a little with every visit, into {}",
+                            find.piece.to_lowercase()
+                        )
+                    } else {
+                        format!(
+                            "Lifted into the satchel; it grows on into {} once it is planted again",
+                            find.piece.to_lowercase()
+                        )
+                    };
+                    paper::name(ui, standing.name());
+                    paper::aside(ui, line);
+                }
+            }
+            Chapter::Plans => self.journal_plans(ui),
+            Chapter::Fish => {
+                for kind in &crate::fishing::fish::CATALOGUE {
+                    match colony.fish.get(kind.id) {
+                        Some(record) => found(
+                            ui,
+                            kind.name,
+                            kind.blurb,
+                            format!(
+                                "Landed {}\u{d7}, longest {:.1} cm \u{b7} first caught by {}",
+                                record.count,
+                                record.longest,
+                                who(&record.first_by)
+                            ),
+                        ),
+                        None => hints.push(format!(
+                            "something {} in {}",
+                            kind.tier.label(),
+                            kind.haunt.name()
+                        )),
                     }
-                    let bugs = &crate::meadow::bugs::CATALOGUE;
-                    let caught = bugs
-                        .iter()
-                        .filter(|kind| colony.bugs.contains_key(kind.id))
-                        .count();
-                    ui.add_space(6.0);
-                    paper::heading(
-                        ui,
-                        format!("Caught in the meadow ({caught} of {})", bugs.len()),
-                    );
-                    for kind in bugs {
-                        match colony.bugs.get(kind.id) {
-                            Some(record) => {
-                                paper::name(ui, kind.name);
-                                paper::words(ui, kind.blurb);
-                                paper::aside(
-                                    ui,
-                                    format!(
-                                        "Caught {}\u{d7}, biggest {:.0} mm across \u{b7} first caught by {}",
-                                        record.count,
-                                        record.biggest,
-                                        who(&record.first_by)
-                                    ),
-                                );
-                            }
-                            None => {
-                                let when = if kind.dusk { " at dusk" } else { "" };
-                                paper::faint(
-                                    ui,
-                                    format!(
-                                        "??? \u{b7} something {} in {}{when}",
-                                        kind.tier.label(),
-                                        kind.haunt.name()
-                                    ),
-                                );
-                            }
-                        }
-                    }
-                    super::foraging::journal(ui, colony, &who);
-                    super::expedition::journal(ui, colony, &who);
-                    super::scavenging::journal(ui, colony, &who);
-                    if !colony.outings_by.is_empty() {
-                        ui.add_space(6.0);
-                        paper::heading(ui, "Who has been");
-                        for (id, count) in &colony.outings_by {
-                            paper::words(ui, format!("{}: {count}", who(id)));
+                }
+            }
+            Chapter::Bugs => {
+                for kind in &crate::meadow::bugs::CATALOGUE {
+                    match colony.bugs.get(kind.id) {
+                        Some(record) => found(
+                            ui,
+                            kind.name,
+                            kind.blurb,
+                            format!(
+                                "Caught {}\u{d7}, biggest {:.0} mm across \u{b7} first caught by {}",
+                                record.count,
+                                record.biggest,
+                                who(&record.first_by)
+                            ),
+                        ),
+                        None => {
+                            let when = if kind.dusk { " at dusk" } else { "" };
+                            hints.push(format!(
+                                "something {} in {}{when}",
+                                kind.tier.label(),
+                                kind.haunt.name()
+                            ));
                         }
                     }
                 }
             }
+            Chapter::Hedgerow => hints = super::foraging::journal(ui, colony, &who),
+            Chapter::Expeditions => hints = super::expedition::journal(ui, colony, &who),
+            Chapter::OldTrack => hints = super::scavenging::journal(ui, colony, &who),
+            Chapter::WhoHasBeen => {
+                for (id, count) in &colony.outings_by {
+                    paper::words(ui, format!("{}: {count}", who(id)));
+                }
+            }
         }
+        still_to_find(ui, &hints);
+    }
+}
+
+/// A chapter of the journal: what one place, or one way of finding things, has turned up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Chapter {
+    Finds(Kind),
+    Relics,
+    Growing,
+    Plans,
+    Fish,
+    Bugs,
+    Hedgerow,
+    Expeditions,
+    OldTrack,
+    WhoHasBeen,
+}
+
+/// Something found, in a chapter of the journal: its name, what it is, and its record.
+pub(super) fn found(ui: &mut egui::Ui, name: &str, blurb: &str, record: String) {
+    paper::name(ui, name);
+    paper::words(ui, blurb);
+    paper::aside(ui, record);
+}
+
+/// What a chapter still has to find, under what has been found: a hint of each, together, and
+/// the same hint once with how many it stands for.
+fn still_to_find(ui: &mut egui::Ui, hints: &[String]) {
+    if hints.is_empty() {
+        return;
+    }
+    ui.add_space(6.0);
+    paper::heading(ui, format!("Still to find ({})", hints.len()));
+    for line in tallied(hints) {
+        paper::faint(ui, line);
+    }
+}
+
+/// `hints` in the order they first come, each once, with how many times it came if more than once.
+fn tallied(hints: &[String]) -> Vec<String> {
+    let mut counted: Vec<(&str, usize)> = Vec::new();
+    for hint in hints {
+        match counted.iter_mut().find(|(seen, _)| *seen == hint) {
+            Some((_, count)) => *count += 1,
+            None => counted.push((hint, 1)),
+        }
+    }
+    counted
+        .into_iter()
+        .map(|(hint, count)| {
+            if count > 1 {
+                format!("{hint} \u{d7}{count}")
+            } else {
+                hint.to_owned()
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod journal_tests {
+    use super::*;
+
+    #[test]
+    fn hints_still_to_find_are_told_once_with_how_many_there_are() {
+        let hints = [
+            "something common in the earth",
+            "something common in the earth",
+            "something rare in the earth",
+            "something common in the earth",
+        ]
+        .map(String::from);
+        assert_eq!(
+            tallied(&hints),
+            [
+                "something common in the earth \u{d7}3",
+                "something rare in the earth"
+            ]
+        );
     }
 }

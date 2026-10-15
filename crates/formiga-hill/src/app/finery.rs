@@ -114,14 +114,30 @@ impl HillApp {
     }
 
     /// Everyone wears what they have on, shines if groomed, and carries whatever it won at
-    /// hoopla, wherever they are.
+    /// hoopla, wherever they are. On the Green, whoever the pointer is over while something is
+    /// picked out of the box is shown trying it on, or with theirs off, until the pointer moves
+    /// away or the click puts it on.
     pub(super) fn dress_everyone(&mut self) {
         let carried = self
             .fairground
             .as_ref()
             .map(|(_, games)| games.hoopla.carried().to_vec())
             .unwrap_or_default();
-        let (costumes, groomed) = (&self.costumes, &self.groomed);
+        let mut trying = self.costumes.clone();
+        if self.area == Area::Green
+            && let Some(id) = self.hovered
+        {
+            match self.picked {
+                Some(Pick::Piece(piece)) => {
+                    trying.insert(id, piece);
+                }
+                Some(Pick::TakeOff) => {
+                    trying.remove(&id);
+                }
+                None => {}
+            }
+        }
+        let (costumes, groomed) = (&trying, &self.groomed);
         let grounds = [
             self.green.as_mut(),
             self.clubhouse.as_mut().map(|room| room.ground()),
@@ -149,13 +165,14 @@ impl HillApp {
         self.show_card(ctx, Card::DressUp, "The dress-up box", 0.4, |app, ui| {
             paper::aside(
                 ui,
-                "Pick something, then click someone to put it on. Just for the visit.",
+                "Pick something, point at someone to see it on them, and click to put it on. \
+                 Just for the visit.",
             );
             ui.horizontal_wrapped(|ui| {
                 for piece in costume::PIECES.iter() {
                     let chosen = app.picked == Some(Pick::Piece(piece.id));
                     let button = paper::Button::new(piece.name)
-                        .picture(costume::art::icon(piece.id), 2)
+                        .picture(costume::art::icon(piece.id), 3)
                         .selected(chosen);
                     if ui.add(button).clicked() {
                         app.picked = (!chosen).then_some(Pick::Piece(piece.id));

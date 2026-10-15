@@ -103,6 +103,8 @@ pub struct Snap {
     pub card: Option<String>,
     /// In the Clubhouse, begin the first story on the shelves.
     pub story: bool,
+    /// With the journal open, the chapter of its contents to open, from 1.
+    pub chapter: Option<usize>,
 }
 
 /// What `--place` can name, in `Snap`.
@@ -162,6 +164,9 @@ pub struct HillApp {
     clubhouse: Option<Clubhouse>,
     /// The card open over the scene, if any.
     card: Option<Card>,
+    /// The journal's chapter open, if one is, and the one read last, marked in its contents.
+    chapter: Option<arranging::Chapter>,
+    last_chapter: Option<arranging::Chapter>,
     /// Where the scene was drawn last, in points, for laying paper over it.
     scene: egui::Rect,
     /// The packages the person has set aside, and where community packages go.
@@ -271,6 +276,8 @@ impl HillApp {
             green: None,
             clubhouse: None,
             card: None,
+            chapter: None,
+            last_chapter: None,
             snap: None,
             scene: egui::Rect::NOTHING,
             set_aside: SetAside::open(Memories::folder().as_deref()),
@@ -380,6 +387,7 @@ impl HillApp {
             _ => None,
         };
         let story = snap.story;
+        let chapter = snap.chapter;
         if let Some(place) = place {
             self.go_to(place, now);
             self.leaving = None;
@@ -393,6 +401,12 @@ impl HillApp {
             self.start_story(&package, &story, now);
         }
         self.card = card;
+        if card == Some(Card::Journal)
+            && let Some(chapter) = chapter.and_then(|n| self.chapters().get(n - 1).copied())
+        {
+            self.chapter = Some(chapter);
+            self.last_chapter = Some(chapter);
+        }
     }
 
     /// Asks for the review picture once it is time, and saves it and closes when it comes.
@@ -595,10 +609,15 @@ impl HillApp {
     ) -> Option<R> {
         let mut open = self.showing(card);
         let scene = self.scene;
+        let page = match (card, self.chapter) {
+            (Card::Journal, Some(chapter)) => format!("{chapter:?}"),
+            _ => "contents".to_owned(),
+        };
         let shown = paper::card(
             ctx,
             scene,
             &format!("{card:?}"),
+            &page,
             title,
             width,
             &mut open,
@@ -837,9 +856,15 @@ impl eframe::App for HillApp {
                 self.camera.out = !self.camera.out;
             }
             mute |= input.key_pressed(egui::Key::M);
+            // Escape goes back a step: out of a chapter to the card's contents, and from there
+            // closes the card.
             if input.key_pressed(egui::Key::Escape) {
                 self.camera.out = false;
-                self.card = None;
+                if self.chapter.is_some() && self.showing(Card::Journal) {
+                    self.chapter = None;
+                } else {
+                    self.card = None;
+                }
             }
             match &mut self.story {
                 Some((_, director)) if self.area == Area::Clubhouse => {
