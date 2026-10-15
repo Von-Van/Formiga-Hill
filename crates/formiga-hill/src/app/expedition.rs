@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 
 impl HillApp {
     /// What the colony knows, for an expedition setting off or being planned.
-    fn known(&self) -> Known {
+    pub(super) fn known(&self) -> Known {
         let colony = self.memories.colony();
         Known {
             finds: colony.finds.keys().cloned().collect(),
@@ -94,7 +94,9 @@ impl HillApp {
             if let Some(cue) = super::sound::expedition_heard(&event) {
                 self.sound.play(cue);
             }
-            if let Some(line) = tell(expedition, cast, event) {
+            if let Some(line) =
+                super::adventures::told(expedition, self.woods.playing.as_ref(), cast, event)
+            {
                 self.notice = Some((line, now));
             }
         }
@@ -111,6 +113,10 @@ impl HillApp {
         };
         // Leaving the Woods partway through a stop still brings its basket home.
         expedition.close_leg(now);
+        if let Some(playing) = self.woods.playing.take() {
+            self.finish_adventure(expedition, playing, now);
+            return;
+        }
         let places = &expedition.map().places;
         let route: Vec<&str> = expedition
             .route()
@@ -190,12 +196,30 @@ impl HillApp {
         if let Some(expedition) = &mut self.woods.expedition {
             return Some(expedition.compose(now, pointer));
         }
-        if self.woods.activity != super::rummaging::Activity::Expedition {
+        let activity = self.woods.activity;
+        if !matches!(
+            activity,
+            super::rummaging::Activity::Expedition | super::rummaging::Activity::Adventure
+        ) {
+            return None;
+        }
+        let adventure = (activity == super::rummaging::Activity::Adventure)
+            .then(|| self.chosen_adventure())
+            .flatten()
+            .map(|(package, adventure)| {
+                (
+                    (package.id.clone(), adventure.id.clone()),
+                    adventure.map.clone(),
+                )
+            });
+        if activity == super::rummaging::Activity::Adventure && adventure.is_none() {
             return None;
         }
         // Planning: the map, showing the ways the chosen company would open, and the far places
         // the colony has found or can see from the Hilltop.
+        let (key, map) = adventure.unzip();
         let now_for = super::rummaging::PlannedFor {
+            adventure: key,
             party: self.woods.party.clone(),
             far_places: self.memories.colony().far_places.clone(),
             far_sight: expedition::far_sight(&self.hilltop_standing()),
@@ -207,8 +231,8 @@ impl HillApp {
             .is_none_or(|(planned_for, _)| *planned_for != now_for);
         if stale {
             let known = self.known();
-            let picture =
-                expedition::planned(&self.arrival.cast, &Map::woods(), &now_for.party, &known);
+            let map = map.unwrap_or_else(Map::woods);
+            let picture = expedition::planned(&self.arrival.cast, &map, &now_for.party, &known);
             self.woods.plan = Some((now_for, picture));
         }
         let (_, picture) = self.woods.plan.as_ref()?;
@@ -246,7 +270,9 @@ impl HillApp {
                     if let Some(cue) = super::sound::expedition_heard(&event) {
                         self.sound.play(cue);
                     }
-                    if let Some(line) = tell(expedition, cast, event) {
+                    if let Some(line) =
+                super::adventures::told(expedition, self.woods.playing.as_ref(), cast, event)
+            {
                         self.notice = Some((line, now));
                     }
                 }
@@ -398,7 +424,9 @@ impl HillApp {
             if let Some(cue) = super::sound::expedition_heard(&event) {
                 self.sound.play(cue);
             }
-            if let Some(line) = tell(expedition, cast, event) {
+            if let Some(line) =
+                super::adventures::told(expedition, self.woods.playing.as_ref(), cast, event)
+            {
                 self.notice = Some((line, now));
             }
         }
@@ -406,7 +434,7 @@ impl HillApp {
 }
 
 /// What a stop is for, as a button or a label: "Rummage here".
-fn verb(stop: Stop) -> &'static str {
+pub(super) fn verb(stop: Stop) -> &'static str {
     match stop {
         Stop::Rummage => "rummage here",
         Stop::Fish => "fish here",
@@ -580,7 +608,7 @@ fn leg_hover(expedition: &Expedition, (x, y): (f32, f32)) -> Option<(String, (f3
 }
 
 /// What to tell the person of something that happened, if anything.
-fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Option<String> {
+pub(super) fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Option<String> {
     let name = |id: Id| {
         cast.member(id)
             .map_or("Someone", |member| member.name.as_str())

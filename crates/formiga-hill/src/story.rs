@@ -153,6 +153,16 @@ impl Library {
         self.origins.get(index).copied()
     }
 
+    /// Every Woods adventure, with the package it came from.
+    pub fn adventures(&self) -> impl Iterator<Item = (&Package, &crate::adventure::Adventure)> {
+        self.packages.iter().flat_map(|package| {
+            package
+                .adventures
+                .iter()
+                .map(move |adventure| (package, adventure))
+        })
+    }
+
     /// Every story, with the package it came from.
     pub fn stories(&self) -> impl Iterator<Item = (&Package, &Story)> {
         self.packages

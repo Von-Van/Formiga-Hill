@@ -24,6 +24,8 @@ pub enum Activity {
     Bugs,
     Forage,
     Expedition,
+    /// An adventure someone has laid out on a map of its own, walked as an expedition is.
+    Adventure,
     /// Scavenging the heaps along the old track.
     Scavenge,
     /// Following a torn map along the old track.
@@ -39,6 +41,7 @@ impl Activity {
             Self::Bugs => "Catch bugs",
             Self::Forage => "Forage",
             Self::Expedition => "Expedition",
+            Self::Adventure => "Adventure",
             Self::Scavenge => "Scavenge",
             Self::Treasure => "Follow a map",
         }
@@ -66,6 +69,10 @@ pub struct Woods {
     /// An expedition under way, and the map as planned for whoever is chosen.
     pub expedition: Option<crate::expedition::Expedition>,
     pub plan: Option<(PlannedFor, Canvas)>,
+    /// The adventure chosen to go on, by package and id, and the one under way, if the
+    /// expedition is one.
+    pub adventure: Option<(String, String)>,
+    pub playing: Option<super::adventures::Playing>,
     /// The old track with nobody there, a scavenge under way, and a map being followed, and
     /// which of the colony's maps is chosen to follow.
     pub track: Option<Playground>,
@@ -78,6 +85,8 @@ pub struct Woods {
 /// coming, the far places the colony has been to, and whether anything on the Hilltop sees far.
 #[derive(PartialEq)]
 pub struct PlannedFor {
+    /// The adventure planned for, by package and id; none for the Woods' own map.
+    pub adventure: Option<(String, String)>,
     pub party: Vec<Id>,
     pub far_places: std::collections::BTreeSet<String>,
     pub far_sight: bool,
@@ -452,14 +461,21 @@ impl HillApp {
                         Activity::Bugs,
                         Activity::Forage,
                         Activity::Expedition,
+                        Activity::Adventure,
                     ] {
                         paper::choice(ui, &mut self.woods.activity, activity, activity.label());
                     }
                     self.track_activities(ui);
                 });
                 self.map_choice(ui);
-                // Only an expedition takes three.
-                let most = if self.woods.activity == Activity::Expedition {
+                if self.woods.activity == Activity::Adventure {
+                    self.adventure_choice(ui);
+                }
+                // Only an expedition, or an adventure, takes three.
+                let most = if matches!(
+                    self.woods.activity,
+                    Activity::Expedition | Activity::Adventure
+                ) {
                     crate::expedition::PARTY
                 } else {
                     PARTY
@@ -488,7 +504,7 @@ impl HillApp {
                         Activity::Forage => {
                             super::foraging::forager_hint(colony, member.id, &character)
                         }
-                        Activity::Expedition => {
+                        Activity::Expedition | Activity::Adventure => {
                             super::expedition::expeditioner_hint(colony, member.id, &character)
                         }
                         Activity::Scavenge => {
@@ -540,6 +556,7 @@ impl HillApp {
                 Activity::Bugs => self.set_off_bug_hunting(now),
                 Activity::Forage => self.set_off_foraging(now),
                 Activity::Expedition => self.set_off_expedition(now),
+                Activity::Adventure => self.set_off_adventure(now),
                 Activity::Scavenge => self.set_off_scavenging(now),
                 Activity::Treasure => self.set_off_treasure(now),
             }

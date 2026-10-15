@@ -1,6 +1,7 @@
 //! Formiga Hill: somewhere the colony goes to spend time together.
 
 mod actor;
+mod adventure;
 mod app;
 mod audio;
 mod cast;

@@ -1,6 +1,7 @@
 //! The Hill window: the station, the green, the Clubhouse, the Fairground, the Woods and the
 //! Hilltop, the colony in them, and the way home.
 
+mod adventures;
 mod arranging;
 mod bug_hunt;
 mod camera;
