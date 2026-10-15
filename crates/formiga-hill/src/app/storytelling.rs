@@ -267,12 +267,22 @@ impl HillApp {
             });
             paper::rule(ui);
             for (package, origin) in app.library.packages.iter().zip(&app.library.origins) {
-                let stories = package.stories.len();
+                let mut holds = Vec::new();
+                match package.stories.len() {
+                    0 => {}
+                    1 => holds.push("1 story".to_owned()),
+                    count => holds.push(format!("{count} stories")),
+                }
+                match package.adventures.len() {
+                    0 => {}
+                    1 => holds.push("1 Woods adventure".to_owned()),
+                    count => holds.push(format!("{count} Woods adventures")),
+                }
                 let about = format!(
-                    "by {} \u{b7} version {} \u{b7} {stories} {}",
+                    "by {} \u{b7} version {} \u{b7} {}",
                     package.author,
                     package.version,
-                    if stories == 1 { "story" } else { "stories" }
+                    holds.join(", ")
                 );
                 ui.horizontal_wrapped(|ui| {
                     if *origin == Origin::Official {

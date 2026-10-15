@@ -1,4 +1,4 @@
-# Writing a story or an adventure for Formiga Hill
+# Writing for Formiga Hill
 
 A story is a short scene, or a few, that the colony plays out in the Clubhouse at the Hill, a
 snug room with a fire where the person picks a story from the notice board. Stories are written as
@@ -19,6 +19,10 @@ exactly this way, and each is a complete working example in
 best place to start, since it shows a mystery whose suspects are cast from the colony's own
 habits, temperaments and friendships.
 
+A package can carry Woods adventures too, in the same folder and format, and much of what follows
+holds for them as it does for stories; [A Woods adventure](#a-woods-adventure) says what is
+different.
+
 ## Writing a story in Hill
 
 The Clubhouse's **Write a story** button opens the story builder, which writes a package in exactly
@@ -35,9 +39,10 @@ The builder says less than a story file can, on purpose: each role is cast by on
 where to go next, and a choice is the only way a story forks. Anything it writes can be opened and
 carried on by hand.
 
-## Sharing a story
+## Sharing a story, or anything else made at the Hill
 
-A story is passed on as one plain text file ending `.formiga-hill-share`: the package's files, each
+A story, an adventure, or anything else a package carries, is passed on as one plain text file
+ending `.formiga-hill-share`: the package's files, each
 written out as text in a TOML table, under `formiga_hill_share = 1`.
 
 ```toml
@@ -318,7 +323,8 @@ home. Hill's own, *The Lantern Walk*, *Up to the Singing Falls* and *The Owl's Q
 There is no need to write one by hand. The map editor in the Woods (**Adventure**, then **Make
 an adventure**) puts places down, joins them with paths and names everything, says what is still
 missing, lets it be tried at once with whoever is visiting (nothing found on a try is kept), and
-keeps it in the Woods or saves it as one file to share. What it writes is this format.
+keeps it in the Woods or saves it as one file to share, as above. Adventures being made are kept as
+drafts in Hill's data folder, under `drafts/adventures/`. What it writes is this format.
 
 The manifest lists `"adventure"` in `content_types`, and the adventure's file in
 `entry_points`. A package may carry stories and adventures together; each file says which it is
@@ -390,13 +396,6 @@ leader's. Place and path names are plain, short and name nobody.
 An adventure gives nothing of its own. Whatever is found, caught or turned up on the way comes by
 the Woods' usual rules and goes home in the satchel as from any expedition; Hill remembers how
 often each adventure has been played and finished, and that is all.
-
-## Sharing what you make
-
-Anything made at the Hill, a story or an adventure, can be saved as one `.formiga-hill-share`
-file and passed on. Whoever opens it, or drops it on Hill's window, sees what is inside and
-who made it before anything is kept, and can turn it away; once added, it is an ordinary package
-in the packages folder, set aside or removed from the **Story packages** card like any other.
 
 ## What packages can't do
 

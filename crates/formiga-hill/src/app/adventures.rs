@@ -229,6 +229,38 @@ impl HillApp {
     }
 }
 
+/// An adventure shared by someone else, as it is looked over before it is added: what it is
+/// about, how big a map, how it ends, and who its shortcuts are for.
+pub(super) fn describe(ui: &mut egui::Ui, adventure: &Adventure) {
+    paper::heading(ui, format!("In the Woods: {}", adventure.title));
+    if !adventure.about.is_empty() {
+        paper::words(ui, &adventure.about);
+    }
+    let map = &adventure.map;
+    let endings = map.places.iter().filter(|place| place.ending).count();
+    let hidden = map.places.iter().filter(|place| place.hidden).count();
+    let mut about = format!(
+        "{} places, {} {}",
+        map.places.len(),
+        endings,
+        if endings == 1 { "ending" } else { "endings" }
+    );
+    if hidden > 0 {
+        about.push_str(&format!(", {hidden} hidden in the mist"));
+    }
+    let shortcuts: std::collections::BTreeSet<&str> = map
+        .paths
+        .iter()
+        .filter_map(|path| path.way.opener())
+        .map(adventure::opener_words)
+        .collect();
+    if !shortcuts.is_empty() {
+        let who: Vec<&str> = shortcuts.into_iter().collect();
+        about.push_str(&format!("; shortcuts for {}", listed(&who)));
+    }
+    paper::aside(ui, format!("{about}."));
+}
+
 /// What to tell the person of something on an adventure: the author's words on arriving
 /// somewhere and at an ending, and the ways only some company takes as this map names them;
 /// anything else is told as on any expedition.
