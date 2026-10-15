@@ -14,6 +14,8 @@
 //! only way, and at least one ending is near enough to reach in a day. One that is not is
 //! refused, with the reason, and never stops Hill opening.
 
+pub mod draft;
+
 use crate::expedition::map::{Map, Opener, Path, Place, Site, Way};
 use crate::story::lines::{Line, Lines};
 use formiga_core::TemperamentKind;
@@ -606,5 +608,56 @@ pub(crate) mod tests {
         assert!(problem(&FILE.replace("way = \"explorer\"", "way = \"teleport\"")).contains("not open"));
         assert!(problem(&FILE.replace("way = \"explorer\"", "way = \"reader\"")).contains("signpost"));
         assert!(problem(&FILE.replace("length = 9", "length = 99")).contains("length"));
+    }
+
+    /// Plays every one of Hill's own adventures to an ending with each of Desktop's sample
+    /// colony on their own, stopping wherever there is something to do on the way, so none of
+    /// them is out of reach of anyone, or out of a day's light.
+    #[test]
+    fn every_official_adventure_can_be_finished_by_anyone_on_their_own() {
+        use crate::expedition::{Expedition, Known, Outset, Phase};
+        let cast = crate::cast::Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let library = crate::story::Library::load(None, &[]);
+        assert!(library.problems.is_empty(), "{:?}", library.problems);
+        let adventures: Vec<&Adventure> = library.adventures().map(|(_, a)| a).collect();
+        assert!(adventures.len() >= 3);
+        for adventure in adventures {
+            for member in &cast.members {
+                let outset = Outset {
+                    map: adventure.map.clone(),
+                    party: vec![member.id],
+                    influence: crate::woods::Influence::default(),
+                    seed: 11,
+                };
+                let mut trip = Expedition::new(&cast, outset, Known::default(), 0.0);
+                let way = shortest_way(&adventure.map);
+                let mut next = 1;
+                let mut now = 0.0;
+                while !trip.finished() && now < 900.0 {
+                    now += 1.0 / 30.0;
+                    let input = trip.leg_mut().map(|leg| leg.steady(now)).unwrap_or_default();
+                    trip.tick(&cast, input, now);
+                    match trip.phase() {
+                        Phase::Choosing if trip.can_stop() => {
+                            trip.stop(&cast, now);
+                        }
+                        Phase::Choosing if next < way.len() => {
+                            assert!(trip.go(way[next], now), "{} is stuck", adventure.title);
+                            next += 1;
+                        }
+                        Phase::MakingRoom => {
+                            trip.leave_behind(0, now);
+                        }
+                        _ => {}
+                    }
+                }
+                assert!(
+                    trip.finished(),
+                    "{} on their own never finished {}",
+                    member.name,
+                    adventure.title
+                );
+            }
+        }
     }
 }
