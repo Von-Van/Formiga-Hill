@@ -1182,7 +1182,7 @@ mod tests {
     use crate::finds;
     use crate::hilltop::Standing;
     use legs::Play;
-    use map::{EDGE, FAR_FALLS, GLADE, LOG, OLD_TRACK, PATHS, PLACES, POOL, SIGNPOST, Way};
+    use map::{FAR_FALLS, GLADE, LOG, OLD_TRACK, PATHS, PLACES, POOL, Way};
 
     fn setting_off(cast: &Cast, party: Vec<Id>, known: Known) -> Expedition {
         let outset = Outset {
@@ -1752,7 +1752,7 @@ mod tests {
         now = walk(&mut trip, &cast, GLADE, now);
         assert!(trip.way_to(FAR_FALLS).is_none());
         walk(&mut trip, &cast, map::SIGNPOST, now);
-        assert!(trip.read);
+        assert!(trip.read.contains(&map::SIGNPOST));
         assert!(
             trip.sighted(FAR_FALLS),
             "the signpost says where the old way goes"
@@ -1771,7 +1771,7 @@ mod tests {
         let mut now = arrived(&mut plain, &cast);
         now = walk(&mut plain, &cast, GLADE, now);
         walk(&mut plain, &cast, map::SIGNPOST, now);
-        assert!(!plain.read && !plain.sighted(FAR_FALLS));
+        assert!(plain.read.is_empty() && !plain.sighted(FAR_FALLS));
         let long_way = plain.way_to(FAR_FALLS).unwrap();
         assert_eq!(PATHS[long_way.path].way, Way::Open);
         assert!(old_way.cost < long_way.cost);
@@ -1785,7 +1785,7 @@ mod tests {
         let party = vec![named(&cast, "Mochi"), named(&cast, "Pip")];
         let mut trip = setting_off(&cast, party.clone(), Known::default());
         let now = arrived(&mut trip, &cast);
-        let start = trip.map.position(party[0]).unwrap();
+        let start = trip.paper.position(party[0]).unwrap();
         assert!(trip.go(GLADE, now));
         let end = formation(PLACES[GLADE].at, 0);
         let mut later = now;
@@ -1793,7 +1793,7 @@ mod tests {
         while matches!(trip.phase(), Phase::Walking { .. }) {
             later += 1.0 / 30.0;
             trip.tick(&cast, Input::default(), later);
-            seen.push(trip.map.position(party[0]).unwrap());
+            seen.push(trip.paper.position(party[0]).unwrap());
             assert!(later < now + 5.0);
         }
         assert!(
