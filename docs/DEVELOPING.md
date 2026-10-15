@@ -27,8 +27,11 @@ thing a test needs to be:
 - **A real trip.** Run Desktop with `FORMIGA_HILL_PATH` pointing at Hill's binary, and the whole
   journey runs as it would for anyone else.
 
-Story packages have their own options: `--check-package <folder>` checks one, `--package <folder>`
-loads one for this run, and `--packages-folder` prints where the packages folder is.
+Story packages have their own options: `--check-package <folder>` checks one (or a
+`.formiga-hill-share` file), `--package <folder>` loads one for this run, `--share-package <folder>
+<file>` writes one to a share file, and `--packages-folder` prints where the packages folder is.
+`--snap <png> --card writing` pictures the story builder with a sample story, `--chapter <n>` at its
+nth scene.
 [PACKAGES.md](PACKAGES.md) covers the format.
 
 To build the downloads, `scripts/package-macos.sh` makes a universal `Formiga Hill.app` with the

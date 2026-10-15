@@ -19,6 +19,48 @@ exactly this way, and each is a complete working example in
 best place to start, since it shows a mystery whose suspects are cast from the colony's own
 habits, temperaments and friendships.
 
+## Writing a story in Hill
+
+The Clubhouse's **Write a story** button opens the story builder, which writes a package in exactly
+this format without anyone having to see it. A story is built from plain choices: who is in it and
+how each role is cast, its scenes in order, and each scene's steps, such as someone going to the
+rug, a line said (with a different version for any temperament), a feeling shown, or a choice for
+whoever is watching. **Try it** plays the story straight away with whoever is visiting and keeps
+nothing; **Put on the board** adds it to the packages folder, for every colony; **Share…** saves it
+as one file to pass on. Stories being written are kept as drafts in Hill's data folder, under
+`drafts/stories/`, as they are written.
+
+The builder says less than a story file can, on purpose: each role is cast by one choice (with
+`any` behind it unless it is left out when nobody fits), scenes follow one another unless one says
+where to go next, and a choice is the only way a story forks. Anything it writes can be opened and
+carried on by hand.
+
+## Sharing a story
+
+A story is passed on as one plain text file ending `.formiga-hill-share`: the package's files, each
+written out as text in a TOML table, under `formiga_hill_share = 1`.
+
+```toml
+formiga_hill_share = 1
+
+[files]
+"manifest.toml" = "package_id = \"org.example.lost-kite\"\n…"
+"content/lost-kite.toml" = "…"
+"localization/en.toml" = "…"
+```
+
+Hill reads at most 2 MiB of one, holds its files to exactly the limits of a package folder below,
+and loads the package by the same loader before anything is written. The Clubhouse's **Story
+packages…** card opens one (dropping it on the window does too) and shows whose it is, what it
+holds, how its story begins and which souvenirs it can give, with ways to try the story first, add
+it, or turn it away. Adding it puts the package in the packages folder as `<package_id>.formiga-hill`,
+in place of any earlier version with the same id. Ids beginning `com.formiga.` are kept for Hill's
+own packages and are refused. **Take out…** on the same card removes a package from the folder
+again.
+
+`formiga-hill --share-package my-story.formiga-hill my-story.formiga-hill-share` writes a share
+file from a package folder, and `--check-package` checks a share file as it does a folder.
+
 ## Trying a story
 
 The quickest way to work on a story is to check it, play it, and look at a moment of it, all

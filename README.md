@@ -38,8 +38,10 @@ A few other ideas guide the design:
   lets playing actually matter.
 - **The same creatures, not lookalikes.** Hill draws each traveller from the appearance Desktop
   sends, using Desktop's own art code. It never makes up a new one.
-- **Open to other people's stories.** Anyone can write a story for the Clubhouse as a small folder
-  of text files, with no code involved ([docs/PACKAGES.md](docs/PACKAGES.md)).
+- **Open to other people's stories.** Anyone can write a story for the Clubhouse with its story
+  builder, a step at a time from plain choices, or as a small folder of text files; either way no
+  code is involved ([docs/PACKAGES.md](docs/PACKAGES.md)). A story is shared as one file, and
+  whoever opens it sees what is in it, and can try it, before adding it.
 
 ## A visit
 
@@ -166,7 +168,8 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 | --- | --- |
 | `memories.json` | Each colony's finished stories, kept souvenirs, finds, journal, Hilltop and records |
 | `photos/` | Each colony's album |
-| `packages/` | Community story packages |
+| `packages/` | Community story packages, including any added from a shared file or put on the board from the story builder |
+| `drafts/stories/` | Stories being written in the story builder |
 | `packages.json` | Which of them are set aside |
 | `settings.json` | Music and sound levels, and whether they are muted, for the Hill as a whole |
 | `hosting.lock` | Held while a window is open |
