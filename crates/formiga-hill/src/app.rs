@@ -15,8 +15,10 @@ mod paper;
 mod plans;
 mod rummaging;
 mod scavenging;
+mod shared;
 mod sound;
 mod storytelling;
+mod writing;
 
 use crate::audio::Sound;
 use crate::cast::{Cast, Id};
@@ -88,6 +90,9 @@ enum Card {
     /// The Clubhouse's notice board of stories, and the shelf of story packages.
     Board,
     Shelf,
+    /// The Clubhouse's story builder, and a shared story being looked over before it is added.
+    Writing,
+    Import,
     DressUp,
     Journal,
     Plans,
@@ -118,11 +123,12 @@ pub const SNAP_PLACES: [&str; 6] = [
 ];
 
 /// What `--card` can name, in `Snap`.
-pub const SNAP_CARDS: [&str; 9] = [
+pub const SNAP_CARDS: [&str; 10] = [
     "notices",
     "departures",
     "board",
     "shelf",
+    "writing",
     "dress-up",
     "journal",
     "plans",
@@ -135,7 +141,7 @@ pub const SNAP_CARDS: [&str; 9] = [
 pub fn snap_card_places(card: &str) -> &'static [&'static str] {
     match card {
         "notices" | "departures" => &["station"],
-        "board" | "shelf" => &["clubhouse"],
+        "board" | "shelf" | "writing" => &["clubhouse"],
         "dress-up" => &["green"],
         "plans" => &["hilltop"],
         "journal" => &["woods", "hilltop"],
@@ -172,6 +178,12 @@ pub struct HillApp {
     /// The packages the person has set aside, and where community packages go.
     set_aside: SetAside,
     packages_folder: Option<std::path::PathBuf>,
+    /// The story builder, any story being tried rather than played, a shared story being looked
+    /// over, and a package the person has asked to take out, waiting to be sure.
+    writing: writing::Writing,
+    trying: Option<writing::Trying>,
+    importing: Option<shared::Importing>,
+    removing: Option<String>,
     /// The same, and the games played there.
     fairground: Option<(Playground, Games)>,
     /// The game chosen to watch next, and who the person has picked to play each game.
@@ -282,6 +294,10 @@ impl HillApp {
             scene: egui::Rect::NOTHING,
             set_aside: SetAside::open(Memories::folder().as_deref()),
             packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
+            writing: writing::Writing::new(Memories::folder().as_deref()),
+            trying: None,
+            importing: None,
+            removing: None,
             fairground: None,
             game: Game::HideAndSeek,
             picks: Picks::default(),
@@ -379,6 +395,7 @@ impl HillApp {
             Some("departures") => Some(Card::Departures),
             Some("board") => Some(Card::Board),
             Some("shelf") => Some(Card::Shelf),
+            Some("writing") => Some(Card::Writing),
             Some("dress-up") => Some(Card::DressUp),
             Some("journal") => Some(Card::Journal),
             Some("plans") => Some(Card::Plans),
@@ -406,6 +423,10 @@ impl HillApp {
         {
             self.chapter = Some(chapter);
             self.last_chapter = Some(chapter);
+        }
+        // The builder is pictured with a story open, at the scene named as its chapter.
+        if card == Some(Card::Writing) {
+            self.writing.open_sample(chapter);
         }
     }
 
@@ -588,6 +609,23 @@ impl HillApp {
         }
     }
 
+    /// Loads every story package again, after one has been added or taken out, and pins the
+    /// board up afresh.
+    fn reload_library(&mut self) {
+        self.library.reload();
+        for problem in &self.library.problems {
+            eprintln!("formiga-hill: a package was not loaded: {problem}");
+        }
+        let finished = &self.memories.colony().stories;
+        let pinned = self
+            .on_the_board()
+            .map(|(package, story)| finished.contains(&format!("{}/{}", package.id, story.id)))
+            .collect();
+        if let Some(room) = &mut self.clubhouse {
+            room.pin_up(pinned);
+        }
+    }
+
     /// Whether `card` is the one open.
     fn showing(&self, card: Card) -> bool {
         self.card == Some(card)
@@ -611,6 +649,7 @@ impl HillApp {
         let scene = self.scene;
         let page = match (card, self.chapter) {
             (Card::Journal, Some(chapter)) => format!("{chapter:?}"),
+            (Card::Writing, _) => self.writing.page_name(),
             _ => "contents".to_owned(),
         };
         let shown = paper::card(
@@ -848,7 +887,12 @@ impl eframe::App for HillApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         let mut mute = false;
+        // Keys typed into a story being written are words, not the Hill's shortcuts.
+        let typing = ctx.egui_wants_keyboard_input();
         ctx.input(|input| {
+            if typing {
+                return;
+            }
             let onwards =
                 input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Enter);
             // The camera comes out, and goes away, wherever the person is, a story included.
@@ -1294,7 +1338,10 @@ impl eframe::App for HillApp {
         self.journal_window(&ctx);
         self.plans_window(&ctx);
         self.board_window(&ctx, now);
-        self.shelf_window(&ctx);
+        self.shelf_window(&ctx, now);
+        self.writing_window(&ctx, now);
+        self.import_window(&ctx, now);
+        self.take_dropped(&ctx, now);
         self.notices_window(&ctx);
         self.departures_window(&ctx, now);
         self.sound_window(&ctx);

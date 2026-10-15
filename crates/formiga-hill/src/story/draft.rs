@@ -1041,22 +1041,6 @@ impl Step {
             StepAction::Souvenir { .. } => "souvenir",
         }
     }
-
-    /// The people it is about, in the order they come in it.
-    pub fn who(&self) -> Option<&str> {
-        match &self.action {
-            StepAction::Say { who, .. }
-            | StepAction::Walk { who, .. }
-            | StepAction::Face { who, .. }
-            | StepAction::React { who, .. }
-            | StepAction::Pose { who, .. }
-            | StepAction::Eat { who }
-            | StepAction::Nap { who }
-            | StepAction::Celebrate { who }
-            | StepAction::Play { who, .. } => Some(who),
-            _ => None,
-        }
-    }
 }
 
 fn scene_id(number: u32) -> String {
@@ -1239,6 +1223,58 @@ mod tests {
             );
             assert_eq!(director.souvenirs().is_empty(), option == 1);
         }
+    }
+
+    /// The whole of what the builder is for: a story written here, shared as one file, looked
+    /// over and added by someone else's Hill, and played there by a colony of their own.
+    #[test]
+    fn a_story_written_here_is_shared_added_and_played_by_another_colony() {
+        let draft = written();
+        let text = crate::sharing::encode(&draft.files(), "kite").unwrap();
+        let folder = std::env::temp_dir().join(format!("hill-draft-share-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&folder);
+        let files =
+            crate::sharing::decode(text.as_bytes(), "The Lost Kite.formiga-hill-share").unwrap();
+        let inspection = crate::sharing::inspect(files, "kite").unwrap();
+        assert_eq!(inspection.summary.title, "The Lost Kite");
+        assert_eq!(inspection.summary.author, "Jake");
+        crate::sharing::install(&folder, &inspection.files).unwrap();
+        let library = crate::story::Library::load(Some(&folder), &[]);
+        assert!(library.problems.is_empty(), "{:?}", library.problems);
+        let (_, story) = library
+            .stories()
+            .find(|(package, _)| package.id == draft.package_id)
+            .unwrap();
+
+        // Someone else's colony: other names, in another order.
+        let mut snapshot = formiga_travel::sample::snapshot();
+        snapshot.colony_id = "someone-elses-colony".into();
+        snapshot.travelers.reverse();
+        for (n, traveler) in snapshot.travelers.iter_mut().enumerate() {
+            traveler.name = format!("Friend {n}");
+        }
+        let cast = Cast::new(snapshot).unwrap();
+        let mut room =
+            crate::clubhouse::Clubhouse::open(&cast, 0.0, &Default::default(), Vec::new());
+        let mut director = Director::new(story.clone(), &cast, 3).unwrap();
+        room.ground().reserve(director.players());
+        let mut now = 0.0;
+        let mut said = Vec::new();
+        while !director.finished() && now < 300.0 {
+            now += 1.0 / 30.0;
+            room.tick(&cast, now);
+            director.run(room.ground(), &cast, now);
+            if let Some(shown) = director.shown() {
+                said.push(shown.text.clone());
+                director.read_on();
+            }
+            if !director.choices().is_empty() {
+                director.choose(0);
+            }
+        }
+        assert!(director.finished());
+        assert!(said.iter().any(|line| line.contains("Friend")), "{said:?}");
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]

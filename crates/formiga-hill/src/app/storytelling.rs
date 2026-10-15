@@ -1,6 +1,7 @@
 //! The Clubhouse in the window: the notice board of stories, and a story played out by the fire,
 //! its words in a box over whoever says them.
 
+use super::writing::Trying;
 use super::{Area, Card, HillApp, paper, tools};
 use crate::clubhouse::Clubhouse;
 use crate::story::{Director, Origin, Package, Story, souvenirs};
@@ -35,15 +36,37 @@ impl HillApp {
     }
 
     pub(super) fn start_story(&mut self, package: &str, story: &str, now: f32) {
-        let Some(room) = &mut self.clubhouse else {
+        if self.clubhouse.is_none() {
             return;
-        };
+        }
         let Some((_, chosen)) = self
             .library
             .stories()
             .find(|(p, s)| p.id == package && s.id == story)
         else {
             return;
+        };
+        let chosen = chosen.clone();
+        self.stage(package, chosen, now);
+    }
+
+    /// Plays a story that is not on the board, to try it: a draft from the story builder, or a
+    /// shared story before it is added. Nothing it gives is kept, and once it is over the card
+    /// it came from opens again.
+    pub(super) fn try_story(&mut self, package: &str, story: Story, trying: Trying, now: f32) {
+        if self.area != Area::Clubhouse {
+            self.go_to(Area::Clubhouse, now);
+        }
+        self.open_clubhouse(now);
+        if self.stage(package, story, now) {
+            self.trying = Some(trying);
+        }
+    }
+
+    /// Begins a story in the Clubhouse, if the visit can cast it; says why not, if not.
+    fn stage(&mut self, package: &str, story: Story, now: f32) -> bool {
+        let Some(room) = &mut self.clubhouse else {
+            return false;
         };
         // The same colony always casts a story the same way.
         let seed = self
@@ -52,18 +75,31 @@ impl HillApp {
             .snapshot
             .colony_id
             .bytes()
-            .chain(story.bytes())
+            .chain(story.id.bytes())
             .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
                 (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
             });
-        match Director::new(chosen.clone(), &self.arrival.cast, seed) {
+        match Director::new(story, &self.arrival.cast, seed) {
             Ok(director) => {
                 room.ground().reserve(director.players());
                 self.story = Some((package.to_owned(), director));
                 self.card = None;
+                true
             }
-            Err(problem) => self.notice = Some((problem, now)),
+            Err(problem) => {
+                self.notice = Some((problem, now));
+                false
+            }
         }
+    }
+
+    /// Once a story being tried is over, the card it was tried from, open again.
+    fn back_from_trying(&mut self) {
+        self.card = match self.trying.take() {
+            Some(Trying::Draft) => Some(Card::Writing),
+            Some(Trying::Shared) => Some(Card::Import),
+            None => self.card,
+        };
     }
 
     /// Plays the story on, and settles it once it ends.
@@ -78,7 +114,18 @@ impl HillApp {
                 .shown()
                 .and_then(|shown| shown.speaker.as_ref().map(|(id, _)| *id)),
         );
-        if director.finished() {
+        if director.finished() && self.trying.is_some() {
+            ground.release();
+            self.notice = Some((
+                format!(
+                    "The end of \u{201c}{}\u{201d}. Nothing was kept: it was only a try.",
+                    director.title()
+                ),
+                now,
+            ));
+            self.story = None;
+            self.back_from_trying();
+        } else if director.finished() {
             ground.release();
             let kept: Vec<&str> = director
                 .souvenirs()
@@ -114,6 +161,7 @@ impl HillApp {
             room.ground().release();
         }
         self.story = None;
+        self.back_from_trying();
     }
 
     pub(super) fn clubhouse_tray(&mut self, ui: &mut egui::Ui, _now: f32) {
@@ -126,6 +174,17 @@ impl HillApp {
             ui.add(paper::Button::new("The notice board").selected(self.showing(Card::Board)));
         if paper::explain(ui, board, "The stories pinned up in the Clubhouse").clicked() {
             self.toggle(Card::Board);
+        }
+        let write =
+            ui.add(paper::Button::new("Write a story").selected(self.showing(Card::Writing)));
+        if paper::explain(
+            ui,
+            write,
+            "Write a story of your own for the colony to play, and share it",
+        )
+        .clicked()
+        {
+            self.toggle(Card::Writing);
         }
     }
 
@@ -191,9 +250,22 @@ impl HillApp {
 
     /// Every package Hill found, where it came from, and a way to set any but Hill's own aside;
     /// then any that would not load, and why, and where community packages go.
-    pub(super) fn shelf_window(&mut self, ctx: &egui::Context) {
+    pub(super) fn shelf_window(&mut self, ctx: &egui::Context, now: f32) {
         let mut changes = Vec::new();
+        let mut open_file = false;
+        let mut remove = None;
         self.show_card(ctx, Card::Shelf, "Story packages", 0.5, |app, ui| {
+            ui.horizontal_wrapped(|ui| {
+                let open = ui.add(paper::Button::new("Open a shared story\u{2026}"));
+                open_file = paper::explain(
+                    ui,
+                    open,
+                    "Open a story file someone has shared with you, and see what is in it before \
+                     adding it. You can drop one on the window, too.",
+                )
+                .clicked();
+            });
+            paper::rule(ui);
             for (package, origin) in app.library.packages.iter().zip(&app.library.origins) {
                 let stories = package.stories.len();
                 let about = format!(
@@ -231,6 +303,32 @@ impl HillApp {
                     }
                 });
                 paper::aside(ui, about);
+                // Anything in the packages folder can be taken out again, once the person is
+                // sure: added from a shared file, put on the board from the builder, or by hand.
+                if *origin == Origin::Folder {
+                    ui.horizontal_wrapped(|ui| {
+                        if app.removing.as_deref() == Some(package.id.as_str()) {
+                            paper::words(ui, "Take it out for good?");
+                            if paper::button(ui, "Take it out").clicked() {
+                                remove = Some(package.id.clone());
+                            }
+                            if paper::button(ui, "Keep it").clicked() {
+                                app.removing = None;
+                            }
+                        } else {
+                            let out = ui.add(paper::Button::new("Take out\u{2026}"));
+                            if paper::explain(
+                                ui,
+                                out,
+                                "Remove it from this computer. Setting it aside keeps it instead.",
+                            )
+                            .clicked()
+                            {
+                                app.removing = Some(package.id.clone());
+                            }
+                        }
+                    });
+                }
             }
             if !app.library.problems.is_empty() {
                 paper::heading(ui, "Would not load");
@@ -243,7 +341,8 @@ impl HillApp {
                 Some(folder) => {
                     paper::aside(
                         ui,
-                        "To add a story, put its package folder here and come back to the Hill:",
+                        "Packages are kept here. A package folder put here by hand is on the board \
+                         next time the colony comes to the Hill:",
                     );
                     paper::words(ui, folder.display().to_string());
                 }
@@ -254,6 +353,13 @@ impl HillApp {
         });
         for (id, aside) in changes {
             self.set_aside.set(&id, aside);
+        }
+        if let Some(id) = remove {
+            self.removing = None;
+            self.remove_package(&id, now);
+        }
+        if open_file {
+            self.choose_shared_file(now);
         }
         let pinned = self.pinned();
         if let Some(room) = &mut self.clubhouse {
@@ -290,7 +396,12 @@ impl HillApp {
                 director.choose(index);
             }
         }
-        if paper::button(ui, "Leave the story").clicked() {
+        let leave = if self.trying.is_some() {
+            "Stop trying it"
+        } else {
+            "Leave the story"
+        };
+        if paper::button(ui, leave).clicked() {
             self.leave_story();
         }
     }

@@ -115,10 +115,12 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
                            given) and close, with nothing the keys or pointer do let in
   --place <PLACE>          With --snap: open at the station, green, clubhouse, fairground, woods
                            or hilltop rather than the station
-  --card <CARD>            With --snap: open the notices, departures, board, shelf, dress-up,
-                           journal, plans, album or sound card, at its own place if none is given
+  --card <CARD>            With --snap: open the notices, departures, board, shelf, writing,
+                           dress-up, journal, plans, album or sound card, at its own place if
+                           none is given
   --story                  With --snap in the Clubhouse: begin the first story on the shelves
-  --chapter <N>            With --snap --card journal: open the Nth chapter of its contents
+  --chapter <N>            With --snap --card journal: open the Nth chapter of its contents;
+                           with --card writing, the Nth scene of a sample story
 ";
 
 /// Each `--render-*` option, and what it draws.
@@ -414,8 +416,8 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     if at.is_some() && render.is_none() && snap.is_none() {
         bail!("--at only goes with --snap or one of the --render options");
     }
-    if chapter.is_some() && card.as_deref() != Some("journal") {
-        bail!("--chapter only goes with --card journal");
+    if chapter.is_some() && !matches!(card.as_deref(), Some("journal" | "writing")) {
+        bail!("--chapter only goes with --card journal or --card writing");
     }
     if (place.is_some() || card.is_some() || story) && snap.is_none() {
         bail!("--place, --card and --story only go with --snap");

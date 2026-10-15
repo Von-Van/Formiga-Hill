@@ -79,13 +79,20 @@ pub struct Library {
     /// Where each package came from, in the same order.
     pub origins: Vec<Origin>,
     pub problems: Vec<PackageError>,
+    /// Where it was loaded from, to load it again from the same places.
+    folder: Option<PathBuf>,
+    named: Vec<PathBuf>,
 }
 
 impl Library {
     /// Hill's own packages, then whatever is in the packages `folder`, then any package folders
     /// named for testing or authoring.
     pub fn load(folder: Option<&Path>, extra: &[PathBuf]) -> Self {
-        let mut library = Self::default();
+        let mut library = Self {
+            folder: folder.map(Path::to_owned),
+            named: extra.to_vec(),
+            ..Self::default()
+        };
         for (name, files) in official() {
             let files: Files = files
                 .into_iter()
@@ -104,6 +111,12 @@ impl Library {
             library.read(path, Origin::Named);
         }
         library
+    }
+
+    /// Loads everything again from the same places, after a package has been added to the
+    /// packages folder or taken out of it.
+    pub fn reload(&mut self) {
+        *self = Self::load(self.folder.as_deref(), &self.named.clone());
     }
 
     fn read(&mut self, path: &Path, origin: Origin) {
