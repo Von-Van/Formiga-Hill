@@ -10,8 +10,8 @@ use super::{Card, HillApp, listed, paper};
 use crate::cast::{Cast, Id};
 use crate::fairground::Game;
 use crate::fairground::competition::{
-    self, Entrants, Event, Format, Happening, MOST_ENTRANTS, MOST_EVENTS, MOST_PLACES,
-    MOST_POINTS, MOST_ROUNDS, MOST_TARGET, MOST_TITLE_CHARS, Win,
+    self, Entrants, Event, Format, Happening, MOST_ENTRANTS, MOST_EVENTS, MOST_PLACES, MOST_POINTS,
+    MOST_ROUNDS, MOST_TARGET, MOST_TITLE_CHARS, Win,
 };
 use crate::sharing;
 use crate::story::{Files, Origin, Package};
@@ -78,7 +78,10 @@ fn package_files(format: &Format, author: &str, id: &str, version: &str) -> File
     Files::from([
         ("manifest.toml".to_owned(), manifest.into_bytes()),
         (entry, format.content().into_bytes()),
-        ("localization/en.toml".to_owned(), format.words().into_bytes()),
+        (
+            "localization/en.toml".to_owned(),
+            format.words().into_bytes(),
+        ),
     ])
 }
 
@@ -184,7 +187,10 @@ pub(super) fn told(cast: &Cast, title: &str, happening: &Happening) -> String {
         Happening::Won { winners, .. } if winners.is_empty() => {
             format!("{title} is over, and nobody scored a point.")
         }
-        Happening::Won { winners, points: on } => {
+        Happening::Won {
+            winners,
+            points: on,
+        } => {
             let names: Vec<String> = winners.iter().map(|id| name(cast, *id)).collect();
             if winners.len() == 1 {
                 format!(
@@ -248,12 +254,18 @@ impl HillApp {
             } else {
                 String::new()
             };
-            format!("  \u{b7}  next: {}{round} ({at} of {of})", lower(event.game.name()))
+            format!(
+                "  \u{b7}  next: {}{round} ({at} of {of})",
+                lower(event.game.name())
+            )
         });
         paper::slip(ui, format!("{}{next}", contest.format().title));
         let standings = contest.standings();
         if !standings.is_empty() {
-            let slip = paper::slip(ui, standings_said(cast, &standings[..standings.len().min(3)]));
+            let slip = paper::slip(
+                ui,
+                standings_said(cast, &standings[..standings.len().min(3)]),
+            );
             paper::explain(ui, slip, &standings_said(cast, &standings));
         }
         if paper::button(ui, "Call it off").clicked() {
@@ -307,10 +319,7 @@ impl HillApp {
             paper::explain(
                 ui,
                 slip,
-                &format!(
-                    "{title}: {}",
-                    standings_said(&self.arrival.cast, standings)
-                ),
+                &format!("{title}: {}", standings_said(&self.arrival.cast, standings)),
             );
         }
     }
@@ -413,15 +422,9 @@ impl HillApp {
                 }
                 if origin != Some(Origin::Official) {
                     let pass = paper::button(ui, "Pass it on");
-                    if paper::explain(ui, pass, "Save it as a file to give to someone.")
-                        .clicked()
-                    {
-                        let files = package_files(
-                            format,
-                            &package.author,
-                            &package.id,
-                            &package.version,
-                        );
+                    if paper::explain(ui, pass, "Save it as a file to give to someone.").clicked() {
+                        let files =
+                            package_files(format, &package.author, &package.id, &package.version);
                         let files = if only_competitions(package) && package.competitions.len() == 1
                         {
                             files
@@ -483,6 +486,46 @@ impl HillApp {
         let can_keep = self.packages_folder.is_some();
         let editing = self.competitions.editing.as_mut()?;
         let format = &mut editing.format;
+        format.id = sharing::slug(&format.title, 40);
+
+        // Trying and saving come first, so they are in reach however long it grows.
+        let mut problems = format.problems();
+        if !is_by(&editing.author) {
+            problems.push("Say who it is by, in a few words.".to_owned());
+        }
+        for problem in &problems {
+            paper::faint(ui, format!("To put right: {problem}"));
+        }
+        let ready = problems.is_empty();
+        ui.horizontal_wrapped(|ui| {
+            let try_it = ui.add(paper::Button::new("Try it now").enabled(ready && can_run.is_ok()));
+            let why = if ready {
+                can_run
+                    .err()
+                    .unwrap_or("Run it with the colony, without saving it.")
+            } else {
+                "Put it right first."
+            };
+            if paper::explain(ui, try_it, why).clicked() {
+                act = Some(Act::Run(format.clone()));
+            }
+            let save = ui.add(paper::Button::new("Save").enabled(ready && can_keep));
+            let why = if !can_keep {
+                "There is nowhere to keep competitions on this computer."
+            } else if editing.over.is_some() {
+                "Save it in place of the one it was."
+            } else {
+                "Keep it with the Fairground's competitions."
+            };
+            if paper::explain(ui, save, why).clicked() {
+                act = Some(Act::Save);
+            }
+            let back = paper::button(ui, "Back");
+            if paper::explain(ui, back, "Leave it without saving.").clicked() {
+                act = Some(Act::Close);
+            }
+        });
+        paper::rule(ui);
 
         paper::heading(ui, "Called");
         ui.add(
@@ -511,7 +554,8 @@ impl HillApp {
                     |ui| {
                         let mut picked = None;
                         for game in Game::ALL {
-                            let button = paper::Button::new(game.name()).selected(game == event.game);
+                            let button =
+                                paper::Button::new(game.name()).selected(game == event.game);
                             if ui.add(button).clicked() {
                                 picked = Some(game);
                             }
@@ -567,7 +611,9 @@ impl HillApp {
         ui.horizontal_wrapped(|ui| {
             for (index, worth) in format.points.iter_mut().enumerate() {
                 let place = super::ordinal(index + 1);
-                stepper(ui, worth, 0, MOST_POINTS, |worth| format!("{place}: {worth}"));
+                stepper(ui, worth, 0, MOST_POINTS, |worth| {
+                    format!("{place}: {worth}")
+                });
             }
         });
         ui.horizontal_wrapped(|ui| {
@@ -612,7 +658,6 @@ impl HillApp {
             }
         });
 
-        format.id = sharing::slug(&format.title, 40);
         paper::heading(ui, "How it goes");
         for line in format.told() {
             paper::words(ui, line);
@@ -620,41 +665,6 @@ impl HillApp {
         for line in preview(cast, format) {
             paper::aside(ui, line);
         }
-        let mut problems = format.problems();
-        if !is_by(&editing.author) {
-            problems.push("Say who it is by, in a few words.".to_owned());
-        }
-        for problem in &problems {
-            paper::faint(ui, format!("To put right: {problem}"));
-        }
-        paper::rule(ui);
-        let ready = problems.is_empty();
-        ui.horizontal_wrapped(|ui| {
-            let try_it = ui.add(paper::Button::new("Try it now").enabled(ready && can_run.is_ok()));
-            let why = if ready {
-                can_run.err().unwrap_or("Run it with the colony, without saving it.")
-            } else {
-                "Put it right first."
-            };
-            if paper::explain(ui, try_it, why).clicked() {
-                act = Some(Act::Run(format.clone()));
-            }
-            let save = ui.add(paper::Button::new("Save").enabled(ready && can_keep));
-            let why = if !can_keep {
-                "There is nowhere to keep competitions on this computer."
-            } else if editing.over.is_some() {
-                "Save it in place of the one it was."
-            } else {
-                "Keep it with the Fairground's competitions."
-            };
-            if paper::explain(ui, save, why).clicked() {
-                act = Some(Act::Save);
-            }
-            let back = paper::button(ui, "Back");
-            if paper::explain(ui, back, "Leave it without saving.").clicked() {
-                act = Some(Act::Close);
-            }
-        });
         act
     }
 
@@ -665,7 +675,10 @@ impl HillApp {
         paper::aside(ui, format!("From {}", looking.from));
         match &looking.found {
             Err(problem) => {
-                paper::words(ui, "It can't be added: it isn't something Hill can take in.");
+                paper::words(
+                    ui,
+                    "It can't be added: it isn't something Hill can take in.",
+                );
                 paper::faint(ui, problem);
             }
             Ok(inspection) => {
@@ -839,8 +852,7 @@ impl HillApp {
                 let Some(looking) = state.looking.take() else {
                     return;
                 };
-                let (Ok(inspection), Some(folder)) = (&looking.found, &self.packages_folder)
-                else {
+                let (Ok(inspection), Some(folder)) = (&looking.found, &self.packages_folder) else {
                     return;
                 };
                 let title = inspection.summary.title.clone();
@@ -951,16 +963,19 @@ fn entrants(ui: &mut egui::Ui, players: &mut Entrants) {
             }
             let keenest = matches!(players, Entrants::Keenest(_));
             let button = ui.add(paper::Button::new("The keenest few").selected(keenest));
-            if paper::explain(ui, button, "Whoever is keenest on this game, by temperament.")
-                .clicked()
+            if paper::explain(
+                ui,
+                button,
+                "Whoever is keenest on this game, by temperament.",
+            )
+            .clicked()
                 && !keenest
             {
                 *players = Entrants::Keenest(3);
             }
             let leaders = matches!(players, Entrants::Leaders(_));
             let button = ui.add(paper::Button::new("Whoever leads so far").selected(leaders));
-            if paper::explain(ui, button, "A final: the few with the most points so far.")
-                .clicked()
+            if paper::explain(ui, button, "A final: the few with the most points so far.").clicked()
                 && !leaders
             {
                 *players = Entrants::Leaders(2);
@@ -968,7 +983,9 @@ fn entrants(ui: &mut egui::Ui, players: &mut Entrants) {
             match players {
                 Entrants::Keenest(count) | Entrants::Leaders(count) => {
                     ui.horizontal(|ui| {
-                        stepper(ui, count, 1, MOST_ENTRANTS, |count| format!("{count} of them"));
+                        stepper(ui, count, 1, MOST_ENTRANTS, |count| {
+                            format!("{count} of them")
+                        });
                     });
                 }
                 Entrants::Everyone => {}
@@ -1110,10 +1127,7 @@ mod tests {
         };
         assert_eq!(
             told(&cast, "Games", &scored),
-            format!(
-                "Points: {} and {} 3, {} 1.",
-                names[0], names[1], names[2]
-            )
+            format!("Points: {} and {} 3, {} 1.", names[0], names[1], names[2])
         );
         let won = Happening::Won {
             winners: vec![ids[2]],
@@ -1136,7 +1150,10 @@ mod tests {
         let mut format = Format::starter();
         format.events[1].players = Entrants::Keenest(2);
         let lines = preview(&cast, &format);
-        assert!(lines[0].contains("too few can play the sack race"), "{lines:?}");
+        assert!(
+            lines[0].contains("too few can play the sack race"),
+            "{lines:?}"
+        );
         assert!(lines[1].contains(&cast.members[0].name), "{lines:?}");
     }
 }

@@ -264,6 +264,35 @@ lost by staying away. When the colony goes home, every souvenir it has kept goes
 Formiga Desktop's Journal, whichever story or game gave it: from Desktop 0.66.6, or from 0.67.0 for
 the Fairground's four newest.
 
+## A competition file
+
+A package can also carry competitions for the Fairground: a run of its own games, one after
+another, for points. The colony plays each game exactly as it always does, and the person
+watches. List `"competition"` in the manifest's `content_types`, and give each competition its own
+file in `entry_points`, beside any stories. The Fairground's Competitions card makes these
+packages for you, so most people never write one by hand.
+
+```toml
+[competition]
+id = "summer-games"
+title = "title"          # a line in the localisation file: up to 40 characters, naming nobody
+points = [3, 2, 1]       # for 1st, 2nd and 3rd, from 1 to 6 places, each worth up to 10
+win = "most-points"      # or "first-to:10": the first to that many points, up to 99
+
+[[events]]               # from 1 to 8, played in order
+game = "sack-race"       # hide-and-seek, sack-race, high-striker, hoopla or tug-of-war
+rounds = 2               # from 1 to 3; 1 if left out
+players = "everyone"     # or "keenest:4", or "leaders:3"; everyone if left out
+```
+
+Who plays is said without naming anyone, so a competition means something in any colony:
+everyone, the few keenest on that game by their own temperaments, or the few with the most points
+so far, for a final. A game finishes in places: the order home in the sack race, the mark on the
+striker, rings rung at hoopla (a ring or more to be placed), the best hidden at hide-and-seek, and
+the winning side of the tug-of-war. Those level share a place, and the next place is as far down as
+there were of them. A game too few can play is passed over. Unknown fields in a competition file
+are refused, so nothing in one can say anything about a companion.
+
 ## What packages can't do
 
 Packages can't run code, read or write files, reach the network, start programs, change anything

@@ -196,12 +196,23 @@ impl HillApp {
         self.show_card(ctx, Card::Shelf, "Story packages", 0.5, |app, ui| {
             for (package, origin) in app.library.packages.iter().zip(&app.library.origins) {
                 let stories = package.stories.len();
-                let about = format!(
+                let mut about = format!(
                     "by {} \u{b7} version {} \u{b7} {stories} {}",
                     package.author,
                     package.version,
                     if stories == 1 { "story" } else { "stories" }
                 );
+                let competitions = package.competitions.len();
+                if competitions > 0 {
+                    about.push_str(&format!(
+                        " \u{b7} {competitions} {} for the Fairground",
+                        if competitions == 1 {
+                            "competition"
+                        } else {
+                            "competitions"
+                        }
+                    ));
+                }
                 ui.horizontal_wrapped(|ui| {
                     if *origin == Origin::Official {
                         paper::words(ui, &package.title);
