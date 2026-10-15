@@ -4,7 +4,16 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
-## Unreleased
+## 0.67.7 (2026-10-15)
+
+Hill is built on Formiga Desktop 0.67.7 and still speaks travel version 5, so it takes the same
+trips as before.
+
+### On the scene
+
+- Whatever a companion arrives wearing from the desktop is drawn in what it is made of, with a
+  few tones of shade, so an acorn cap is brown and a leaf hat green wherever it goes on the Hill.
+  What companions wear from home is drawn by Formiga Desktop, so this comes with Desktop 0.67.7.
 
 ### In the window
 
