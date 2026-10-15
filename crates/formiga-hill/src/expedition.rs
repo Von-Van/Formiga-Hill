@@ -124,6 +124,15 @@ pub fn planned(cast: &Cast, map: &Map, party: &[Id], known: &Known) -> Canvas {
     scenery::map(map, &Expedition::shown_for(map, &company, &sighted, &BTreeSet::new()))
 }
 
+/// An adventure's map as whoever is making it sees it: every place and path drawn, hidden or not.
+pub fn sketch(map: &Map) -> Canvas {
+    let shown = Shown {
+        places: vec![true; map.places.len()],
+        paths: vec![true; map.paths.len()],
+    };
+    scenery::map(map, &shown)
+}
+
 /// Which places on `map` are in sight as an expedition sets off: every place not hidden, and in
 /// the Woods any far place the colony has found or can see from the Hilltop. An adventure's
 /// hidden places are found afresh each time it is played.
@@ -1116,7 +1125,7 @@ fn layout(_map: &Map) -> Layout {
 
 /// A way on from here, inked bolder over the path: gold under the pointer, faded where there is
 /// not enough of the day left for it.
-fn draw_way(scene: &mut Canvas, points: &[(f32, f32)], hovered: bool, affordable: bool) {
+pub(crate) fn draw_way(scene: &mut Canvas, points: &[(f32, f32)], hovered: bool, affordable: bool) {
     let ink = match (hovered, affordable) {
         (true, true) => rgb(0xf5d25e),
         (_, true) => rgba(0xfff4d8, 210),
