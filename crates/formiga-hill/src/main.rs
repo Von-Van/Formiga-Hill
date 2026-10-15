@@ -31,6 +31,7 @@ mod paint;
 mod photos;
 mod playground;
 mod render;
+mod sharing;
 mod sheet;
 mod station;
 mod story;
@@ -44,7 +45,7 @@ use cast::Cast;
 use formiga_travel::{LAUNCH_ARGUMENT, SessionId, project_colony};
 use render::Area;
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use time::OffsetDateTime;
 
 const USAGE: &str = "\
@@ -100,7 +101,10 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-sounds <FOLDER> Write every sound and a minute of every piece of music to WAV files in
                            the folder, to listen to without a window
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
-  --check-package <FOLDER> Check a story package and say what is wrong, without opening a window
+  --check-package <FOLDER> Check a story package, or a share file, and say what is wrong,
+                           without opening a window
+  --share-package <FOLDER> <FILE>
+                           Write a story package to one share file, to pass on, once it loads
   --packages-folder        Say where to put story packages for Hill to find, and what is there
   --sample-hilltop         Draw the station's skyline with a sample of finds on the Hilltop
   --hour <HOUR>            Draw at that hour of the day, from 0 to 24, rather than at midday;
@@ -168,6 +172,8 @@ struct Args {
     check: Vec<PathBuf>,
     /// Say where the packages folder is, and what is in it, without opening a window.
     show_folder: bool,
+    /// Write a package folder to a share file, without opening a window.
+    share: Option<(PathBuf, PathBuf)>,
     /// Draw the station with a sample of finds on the Hilltop, rather than the colony's own.
     sample_hilltop: bool,
     /// The hour to draw at, rather than midday.
@@ -218,6 +224,9 @@ fn main() -> Result<()> {
     }
     if !args.check.is_empty() {
         return check_packages(&args.check);
+    }
+    if let Some((folder, file)) = &args.share {
+        return share_package(folder, file);
     }
     if let Some(folder) = &args.sounds {
         for line in audio::render_sounds(folder)? {
@@ -313,6 +322,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut packages = Vec::new();
     let mut check = Vec::new();
     let mut show_folder = false;
+    let mut share = None;
     let mut sample_hilltop = false;
     let mut hour = None;
     let mut sounds = None;
@@ -393,6 +403,10 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
             Some("--package") => packages.push(value("--package")?),
             Some("--check-package") => check.push(value("--check-package")?),
             Some("--packages-folder") => show_folder = true,
+            Some("--share-package") => {
+                let folder = value("--share-package")?;
+                share = Some((folder, value("--share-package")?));
+            }
             Some("-h" | "--help") => return Ok(None),
             _ => bail!("unexpected argument {arg:?}\n\n{USAGE}"),
         }
@@ -446,6 +460,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         packages,
         check,
         show_folder,
+        share,
         sample_hilltop,
         hour,
         sounds,
@@ -512,12 +527,18 @@ fn show_packages_folder() -> Result<()> {
     Ok(())
 }
 
-/// Checks package folders as Hill would load them, and says what is wrong in each.
+/// Checks package folders, or share files, as Hill would load them, and says what is wrong in
+/// each.
 fn check_packages(folders: &[PathBuf]) -> Result<()> {
     let mut failed = 0;
     for folder in folders {
         let label = folder.display().to_string();
-        match story::read_folder(folder).and_then(|files| story::load(&files, &label)) {
+        let files = if folder.is_file() {
+            sharing::read(folder)
+        } else {
+            story::read_folder(folder)
+        };
+        match files.and_then(|files| story::load(&files, &label)) {
             Ok(package) => {
                 println!(
                     "{} {} (\u{201c}{}\u{201d} by {}) loads:",
@@ -549,10 +570,25 @@ fn check_packages(folders: &[PathBuf]) -> Result<()> {
     Ok(())
 }
 
+/// Writes a package folder to one share file, once it loads as Hill would load it.
+fn share_package(folder: &Path, file: &Path) -> Result<()> {
+    let files = story::read_folder(folder)?;
+    let inspection = sharing::inspect(files, &folder.display().to_string())?;
+    sharing::export(&inspection.files, file)?;
+    println!(
+        "Wrote {} {} (\u{201c}{}\u{201d} by {}) to {}",
+        inspection.summary.id,
+        inspection.summary.version,
+        inspection.summary.title,
+        inspection.summary.author,
+        file.display()
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     /// Desktop finds an installed Hill by what `formiga_travel::discovery` names, so the bundle
     /// and the installer must say exactly that.

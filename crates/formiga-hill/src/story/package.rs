@@ -160,6 +160,63 @@ fn walk(
     Ok(())
 }
 
+/// Checks package files that did not come from a folder, such as those in a share file, by the
+/// same rules `read_folder` reads a folder by: plain names, nothing hidden, only text files,
+/// folders nested at most a few deep, and nothing too large.
+pub fn check_files(files: &Files, label: &str) -> Result<(), PackageError> {
+    let refuse = |file: Option<&str>, problem: String| PackageError {
+        package: label.to_owned(),
+        file: file.map(str::to_owned),
+        problem,
+    };
+    if files.len() > limits::MAX_FILES {
+        return Err(refuse(None, "the package is larger than Hill takes".into()));
+    }
+    let mut total = 0;
+    for (path, bytes) in files {
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() > limits::MAX_DEPTH + 1 {
+            return Err(refuse(Some(path), "folders nest too deep".into()));
+        }
+        for part in &parts {
+            if part.is_empty() || part.starts_with('.') {
+                return Err(refuse(
+                    Some(path),
+                    "not a plain path inside a package".into(),
+                ));
+            }
+            if !part
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+            {
+                return Err(refuse(
+                    Some(path),
+                    "file names may use only letters, digits, '.', '-' and '_'".into(),
+                ));
+            }
+        }
+        let extension = path.rsplit_once('.').map_or("", |(_, extension)| extension);
+        if !matches!(extension, "toml" | "md" | "txt") {
+            return Err(refuse(
+                Some(path),
+                "packages for this Hill carry only .toml, .md and .txt files".into(),
+            ));
+        }
+        let size = bytes.len() as u64;
+        if size > limits::MAX_FILE_BYTES {
+            return Err(refuse(
+                Some(path),
+                format!("larger than {} KiB", limits::MAX_FILE_BYTES / 1024),
+            ));
+        }
+        total += size;
+        if total > limits::MAX_PACKAGE_BYTES {
+            return Err(refuse(None, "the package is larger than Hill takes".into()));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 struct RawManifest {
     package_id: String,
