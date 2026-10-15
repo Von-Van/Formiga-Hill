@@ -5,6 +5,7 @@
 
 mod casting;
 mod director;
+pub mod draft;
 pub mod lines;
 mod package;
 pub(crate) mod script;
