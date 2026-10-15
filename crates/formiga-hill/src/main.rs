@@ -114,6 +114,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --card <CARD>            With --snap: open the notices, departures, board, shelf, dress-up,
                            journal, plans, album or sound card, at its own place if none is given
   --story                  With --snap in the Clubhouse: begin the first story on the shelves
+  --chapter <N>            With --snap --card journal: open the Nth chapter of its contents
 ";
 
 /// Each `--render-*` option, and what it draws.
@@ -319,6 +320,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     let mut place = None;
     let mut card = None;
     let mut story = false;
+    let mut chapter = None;
     let mut set_source = |next: Source| {
         if source.replace(next).is_some() {
             bail!("choose one of --sample, {LAUNCH_ARGUMENT}, or --from-save");
@@ -356,6 +358,15 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
                 card = Some(named);
             }
             Some("--story") => story = true,
+            Some("--chapter") => {
+                chapter = Some(
+                    value("--chapter")?
+                        .to_str()
+                        .and_then(|text| text.parse::<usize>().ok())
+                        .filter(|chapter| *chapter >= 1)
+                        .context("--chapter is a number, from 1")?,
+                );
+            }
             Some("--at") => {
                 let seconds = value("--at")?;
                 at = Some(
@@ -388,6 +399,9 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
     }
     if at.is_some() && render.is_none() && snap.is_none() {
         bail!("--at only goes with --snap or one of the --render options");
+    }
+    if chapter.is_some() && card.as_deref() != Some("journal") {
+        bail!("--chapter only goes with --card journal");
     }
     if (place.is_some() || card.is_some() || story) && snap.is_none() {
         bail!("--place, --card and --story only go with --snap");
@@ -423,6 +437,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         place,
         card,
         story,
+        chapter,
     });
     Ok(Some(Args {
         source: source.unwrap_or(Source::Sample),

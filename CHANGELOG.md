@@ -4,6 +4,19 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## Unreleased
+
+### In the window
+
+- The journal opens on its contents: how much has been found, then a line for each chapter (each
+  place in the Woods, the pool, the meadow, the hedgerow, expeditions, the old track, and the
+  plans, relics and growing things once there are any) with how it stands. Choosing a line opens
+  that chapter alone, with what has been found first and what is still to find gathered under it,
+  each hint once with how many it stands for. Back, or Escape, returns to the contents where they
+  were left, with the chapter just read marked; Escape there closes the journal.
+- Hints, dates and what is not known yet are darker on the paper, so they read as easily as the
+  rest: better than 6:1 and 5:1 where the faintest were 2.7:1.
+
 ## 0.67.6 (2026-10-12)
 
 Hill is built on Formiga Desktop 0.67.6 and reads travel version 5, so a colony in Desktop's Echo

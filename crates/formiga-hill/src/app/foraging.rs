@@ -311,21 +311,28 @@ impl HillApp {
 
 /// The hedgerow's part of the journal: what has been picked there, by whom first, and hints of
 /// the rest by where they grow.
-pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&str) -> String) {
+/// How the hedgerow chapter of the journal stands, for its line in the contents.
+pub(super) fn journal_line(colony: &ColonyMemories) -> String {
     let picked = FORAGED
         .iter()
         .filter(|find| colony.finds.contains_key(find.id))
         .count();
-    ui.add_space(6.0);
-    paper::heading(
-        ui,
-        format!(
-            "Picked at the hedgerow ({picked} of {}) \u{b7} {} foray{}",
-            FORAGED.len(),
-            colony.forays,
-            plural(colony.forays as usize)
-        ),
-    );
+    format!(
+        "{picked} of {} picked \u{b7} {} foray{}",
+        FORAGED.len(),
+        colony.forays,
+        plural(colony.forays as usize)
+    )
+}
+
+/// The hedgerow's chapter of the journal: what has been picked, in full. Returns a hint of each
+/// thing still to pick.
+pub(super) fn journal(
+    ui: &mut egui::Ui,
+    colony: &ColonyMemories,
+    who: &dyn Fn(&str) -> String,
+) -> Vec<String> {
+    let mut hints = Vec::new();
     for find in &FORAGED {
         match colony.finds.get(find.id) {
             Some(record) => {
@@ -359,16 +366,11 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
                 } else {
                     ""
                 };
-                paper::faint(
-                    ui,
-                    format!(
-                        "??? \u{b7} something {} at {place}{when}",
-                        find.tier.label()
-                    ),
-                );
+                hints.push(format!("something {} at {place}{when}", find.tier.label()));
             }
         }
     }
+    hints
 }
 
 /// What sort of forager a companion makes, and whether it has been yet, for the person choosing

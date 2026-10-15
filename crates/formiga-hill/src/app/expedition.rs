@@ -912,12 +912,27 @@ fn tell_leg(
 
 /// The expeditions' part of the journal: how far the colony has gone, everything brought from
 /// afar, and the latest expeditions' pages, the latest first.
-pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&str) -> String) {
-    ui.add_space(6.0);
-    paper::heading(
-        ui,
-        format!("Expeditions \u{b7} {} so far", colony.expeditions),
-    );
+/// How the expeditions' chapter of the journal stands, for its line in the contents.
+pub(super) fn journal_line(colony: &ColonyMemories) -> String {
+    let found = AFAR
+        .iter()
+        .filter(|find| colony.finds.contains_key(find.id))
+        .count();
+    format!(
+        "{} so far \u{b7} {found} of {} brought from afar",
+        colony.expeditions,
+        AFAR.len()
+    )
+}
+
+/// The expeditions' chapter of the journal: the furthest yet, what has been brought from afar,
+/// and a page for each expedition. Returns a hint of each thing still to bring home.
+pub(super) fn journal(
+    ui: &mut egui::Ui,
+    colony: &ColonyMemories,
+    who: &dyn Fn(&str) -> String,
+) -> Vec<String> {
+    let mut hints = Vec::new();
     if let Some(furthest) = &colony.furthest {
         let place = map::place(&furthest.place).map_or("somewhere", |place| PLACES[place].name);
         let party: Vec<String> = furthest.party.iter().map(|id| who(id)).collect();
@@ -950,13 +965,10 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
                 );
             }
             None => {
-                paper::faint(
-                    ui,
-                    format!(
-                        "??? \u{b7} something {}, a long way into the Woods",
-                        find.tier.label()
-                    ),
-                );
+                hints.push(format!(
+                    "something {}, a long way into the Woods",
+                    find.tier.label()
+                ));
             }
         }
     }
@@ -995,6 +1007,7 @@ pub(super) fn journal(ui: &mut egui::Ui, colony: &ColonyMemories, who: &dyn Fn(&
             paper::aside(ui, format!("Caught and let go: {}", listed(&caught)));
         }
     }
+    hints
 }
 
 /// What a companion would make of an expedition, for the person choosing who to bring: the
