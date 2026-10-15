@@ -66,6 +66,7 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 | `--render-hilltop` | The Hilltop, with a sample of finds on it |
 | `--render-building` | The colony building on the Hilltop, `--at` seconds in |
 | `--render-story` | A story, `--at` seconds in |
+| `--render-adventure` | A Woods adventure, `--at` seconds in, along the shortest way to an ending: the last loaded, so an author's own with `--package` |
 | `--render-sovereign` | The secret, `--at` seconds in |
 | `--render-finds`, `--render-fish`, `--render-bugs` | Sheets of every find, fish and bug |
 | `--render-growing`, `--render-plans` | Every growing thing at every stage, and every plan |
@@ -79,7 +80,8 @@ The window itself, with its buttons, cards and speech, is pictured with `--snap 
 waits `--at` seconds (3 if not given), saves what it shows and closes, letting in nothing the keys
 or pointer do. `--place` opens it somewhere other than the station, `--card` opens one of its
 cards (at the place it belongs to, if none is named), `--chapter <n>` opens the journal's nth
-chapter with `--card journal`, and `--story` begins the first story in the Clubhouse. If the picture can't be saved, it says why and fails. Give it a scratch
+chapter with `--card journal` (with `--card making`, the map editor's sample adventure with its
+nth place, then path, picked out), and `--story` begins the first story in the Clubhouse. If the picture can't be saved, it says why and fails. Give it a scratch
 `FORMIGA_HILL_DATA_DIR` so a review never touches the colony's memories.
 
 ```sh

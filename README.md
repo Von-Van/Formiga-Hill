@@ -38,10 +38,11 @@ A few other ideas guide the design:
   lets playing actually matter.
 - **The same creatures, not lookalikes.** Hill draws each traveller from the appearance Desktop
   sends, using Desktop's own art code. It never makes up a new one.
-- **Open to other people's stories.** Anyone can write a story for the Clubhouse with its story
-  builder, a step at a time from plain choices, or as a small folder of text files; either way no
-  code is involved ([docs/PACKAGES.md](docs/PACKAGES.md)). A story is shared as one file, and
-  whoever opens it sees what is in it, and can try it, before adding it.
+- **Open to other people's stories and adventures.** Anyone can write a story for the Clubhouse
+  with its story builder, a step at a time from plain choices, or lay out an adventure on the
+  Woods' map editor, or write either as a small folder of text files; either way no code is
+  involved ([docs/PACKAGES.md](docs/PACKAGES.md)). Each is shared as one file, and whoever opens
+  it sees what is in it before adding it.
 
 ## A visit
 
@@ -97,6 +98,11 @@ can be found by any single companion.
   spends some of the day's light, and the stops along the way offer a short go at the other
   activities, a heap or two on the old track, or a picnic. Past the signpost, the Far Falls bring
   down things found nowhere else.
+- **Adventures.** Short outings someone has laid out on a map of their own, made from the Woods'
+  own places: a hedgerow, a glade, a signpost at a fork, a pool hidden in the mist, and one or
+  more endings to find. Each is walked as an expedition is, and whatever is found on the way
+  comes by the Woods' usual rules. Hill has three of its own, and the map editor in the Woods
+  makes new ones to try, keep and share.
 
 There is also a secret somewhere in the Woods, played completely straight. How to find it is left
 out of this page on purpose.
@@ -177,8 +183,8 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 ## Where things stand
 
 Version 0.67.7 is current, and a fair amount is still open. The music and sounds are
-placeholders. Hill's own text is in English only. Community packages can add stories, but not yet
-anything else, such as new games or places, and it is not yet clear what the right shape for those
+placeholders. Hill's own text is in English only. Community packages can add stories and Woods
+adventures, but not yet anything else, such as new games or places, and it is not yet clear what the right shape for those
 would be. The [changelog](CHANGELOG.md) keeps track of what changes from one version to the next.
 
 ## Further reading

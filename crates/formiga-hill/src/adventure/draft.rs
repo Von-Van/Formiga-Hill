@@ -704,4 +704,71 @@ mod tests {
         );
         assert_eq!(draft.path_at(middle), Some(1));
     }
+
+    /// The whole way round: made, kept in the Woods, shared as one file, looked over and let in
+    /// at another Hill, played to its end there, and taken out again.
+    #[test]
+    fn an_adventure_made_here_is_kept_shared_let_in_elsewhere_and_finished() {
+        let root = std::env::temp_dir().join(format!("hill-made-adventure-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let (here, there) = (root.join("here"), root.join("there"));
+        let draft = made();
+        let files = draft.files();
+        crate::sharing::install(&here, &files).unwrap();
+        let library = crate::story::Library::load(Some(&here), &[]);
+        assert!(library.problems.is_empty(), "{:?}", library.problems);
+        assert!(
+            library
+                .adventures()
+                .any(|(package, adventure)| package.id == draft.package_id
+                    && adventure.title == "Down to the Pond")
+        );
+
+        let shared = root.join("pond.formiga-hill-share");
+        crate::sharing::export(&files, &shared).unwrap();
+        let looked =
+            crate::sharing::inspect(crate::sharing::read(&shared).unwrap(), "pond").unwrap();
+        assert_eq!(looked.summary.content_types, ["adventure"]);
+        assert_eq!(looked.package.adventures.len(), 1);
+        crate::sharing::install(&there, &looked.files).unwrap();
+        let elsewhere = crate::story::Library::load(Some(&there), &[]);
+        let (_, adventure) = elsewhere
+            .adventures()
+            .find(|(package, _)| package.id == draft.package_id)
+            .unwrap();
+
+        let cast = crate::cast::Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let outset = crate::expedition::Outset {
+            map: adventure.map.clone(),
+            party: vec![cast.members[0].id],
+            influence: crate::woods::Influence::default(),
+            seed: 1,
+        };
+        let mut trip = crate::expedition::Expedition::new(&cast, outset, Default::default(), 0.0);
+        let mut now = 0.0;
+        for place in super::super::shortest_way(&adventure.map)
+            .into_iter()
+            .skip(1)
+        {
+            while trip.phase() != crate::expedition::Phase::Choosing {
+                now += 1.0 / 30.0;
+                trip.tick(&cast, Default::default(), now);
+            }
+            assert!(trip.go(place, now));
+            while matches!(trip.phase(), crate::expedition::Phase::Walking { .. }) {
+                now += 1.0 / 30.0;
+                trip.tick(&cast, Default::default(), now);
+            }
+        }
+        assert!(trip.finished(), "the pond was never reached");
+
+        crate::sharing::remove(&there, &draft.package_id).unwrap();
+        assert_eq!(
+            crate::story::Library::load(Some(&there), &[])
+                .adventures()
+                .count(),
+            crate::story::Library::load(None, &[]).adventures().count()
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

@@ -1597,4 +1597,28 @@ mod tests {
         assert!(dir.join("memories.json.unreadable").exists());
         fs::remove_dir_all(dir).unwrap();
     }
+
+    #[test]
+    fn an_adventure_is_remembered_and_its_basket_kept_but_the_woods_records_are_left_alone() {
+        let dir = scratch("adventure");
+        let mut memories = Memories::open(Some(&dir), "colony");
+        let home = AdventureHome {
+            adventure: "org.example.pond/pond",
+            finished: true,
+            found: &[("acorn_stash", 7)],
+            ..AdventureHome::default()
+        };
+        let new = memories.back_from_an_adventure(&home);
+        assert_eq!(new, ["acorn_stash"]);
+        memories.back_from_an_adventure(&AdventureHome {
+            finished: false,
+            ..home
+        });
+        let colony = memories.colony();
+        let record = &colony.adventures["org.example.pond/pond"];
+        assert_eq!((record.played, record.finished), (2, 1));
+        assert_eq!(colony.satchel.get("acorn_stash"), Some(&2));
+        assert_eq!(colony.expeditions, 0);
+        assert!(colony.furthest.is_none() && colony.expedition_pages.is_empty());
+    }
 }

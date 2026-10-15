@@ -1,4 +1,4 @@
-# Writing a story for Formiga Hill
+# Writing a story or an adventure for Formiga Hill
 
 A story is a short scene, or a few, that the colony plays out in the Clubhouse at the Hill, a
 snug room with a fire where the person picks a story from the notice board. Stories are written as
@@ -306,10 +306,102 @@ lost by staying away. When the colony goes home, every souvenir it has kept goes
 Formiga Desktop's Journal, whichever story or game gave it: from Desktop 0.66.6, or from 0.67.0 for
 the Fairground's four newest.
 
+## A Woods adventure
+
+A package can also carry an adventure: a short outing in the Woods, laid out on a map of its own
+and walked the way an expedition is. The person picks it from the Woods' tray under
+**Adventure**, chooses up to three companions, and makes their way from place to place, choosing
+at each fork and stopping where there is something to do, until they reach an ending or head
+home. Hill's own, *The Lantern Walk*, *Up to the Singing Falls* and *The Owl's Question*, are in
+[`crates/formiga-hill/content`](../crates/formiga-hill/content) and written exactly this way.
+
+There is no need to write one by hand. The map editor in the Woods (**Adventure**, then **Make
+an adventure**) puts places down, joins them with paths and names everything, says what is still
+missing, lets it be tried at once with whoever is visiting (nothing found on a try is kept), and
+keeps it in the Woods or saves it as one file to share. What it writes is this format.
+
+The manifest lists `"adventure"` in `content_types`, and the adventure's file in
+`entry_points`. A package may carry stories and adventures together; each file says which it is
+by its first table.
+
+```toml
+[adventure]
+id = "lantern-walk"
+title = "title"        # a line in the localisation file
+about = "about"        # optional: shown when choosing it
+start = "lane"         # where everyone comes in, up the lane from the Hill
+
+[[places]]
+id = "lane"
+site = "edge"
+at = [36, 186]         # where on the map, from [16, 48] to [368, 206]
+arrive = "lane.arrive" # optional: said on getting here
+
+[[places]]
+id = "pool"
+site = "pool"
+at = [300, 180]
+name = "pool.name"     # optional: otherwise "the pool"
+hidden = true          # out of sight in the mist until somebody gets there
+ending = "pool.ending" # getting here finishes the adventure; this is said
+
+[[paths]]
+between = ["lane", "pool"]
+bends = [[150, 200]]   # optional, up to 8: where it bends on the way
+length = 12            # optional: how much of the day it takes; otherwise as drawn
+
+[[paths]]
+between = ["lane", "pool"]
+way = "little_one"     # a shortcut only some company takes
+name = "ways.rabbit"   # what it is called
+```
+
+Each place is one of the Woods' own kinds, and what is done there is that place's own activity,
+played as it always is:
+
+| `site` | What it is | What is done there |
+| --- | --- | --- |
+| `edge` | A way in, with a stile | Nothing: it is where the lane comes in |
+| `hedgerow` | A hedge with a gate | A patch of foraging |
+| `meadow` | Open grass and flowers | Catching a bug |
+| `glade` | A clearing under an oak | A few searches, rummaging |
+| `log` | A fallen log | A picnic, a rest |
+| `signpost` | An old signpost at a fork | Nothing, but someone who reads old signs may read it |
+| `pool` | A pond | A cast or two |
+| `old_track` | An old cart track and the woodcutter's hut | A heap or two to scavenge |
+| `falls` | Falls coming down a crag | Wading in for what the water brings |
+
+A path is open to anyone unless its `way` says otherwise: `explorer` (an explorer, or anyone very
+curious), `little_one`, `close_pair` (two close friends together), `bold`, or `reader` (someone
+who reads old signs, once they have read a signpost at one end of it, which it must start from).
+A way only some company takes is a shortcut, never the only way: whoever comes, the adventure
+has to be playable.
+
+Hill refuses an adventure, saying why, if:
+- any place can't be reached from the start along open paths, by anyone on their own;
+- no ending is near enough to reach in a day's light, at the slowest pace;
+- it has no ending, its start is hidden, or a path names a place that isn't there;
+- it has more than 16 places or 32 paths, or places stand closer than 22 apart, or off the map.
+
+An adventure's words follow the same rules as a story's (see Localisation), with one name to use:
+`{leader}`, whoever leads the party. A line can have a version for each temperament, told in the
+leader's. Place and path names are plain, short and name nobody.
+
+An adventure gives nothing of its own. Whatever is found, caught or turned up on the way comes by
+the Woods' usual rules and goes home in the satchel as from any expedition; Hill remembers how
+often each adventure has been played and finished, and that is all.
+
+## Sharing what you make
+
+Anything made at the Hill, a story or an adventure, can be saved as one `.formiga-hill-share`
+file and passed on. Whoever opens it, or drops it on Hill's window, sees what is inside and
+who made it before anything is kept, and can turn it away; once added, it is an ordinary package
+in the packages folder, set aside or removed from the **Story packages** card like any other.
+
 ## What packages can't do
 
 Packages can't run code, read or write files, reach the network, start programs, change anything
 in Formiga Desktop, rewrite a companion's temperament, or make up history for it. These limits are
-what make it reasonable to install a story from someone you don't know: the worst a package can
-do is tell a story badly. A package that fails to load is reported and left out, and it never
+what make it reasonable to install a story or an adventure from someone you don't know: the worst
+a package can do is tell a story badly, or lay out a dull walk. A package that fails to load is reported and left out, and it never
 stops Hill from opening.
