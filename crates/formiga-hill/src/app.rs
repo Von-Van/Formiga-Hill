@@ -4,6 +4,7 @@
 mod arranging;
 mod bug_hunt;
 mod camera;
+mod competitions;
 mod departures;
 mod encounter;
 mod expedition;
@@ -93,6 +94,8 @@ enum Card {
     Plans,
     Album,
     Sound,
+    /// The Fairground's competitions, and the editor for making one.
+    Competitions,
 }
 
 /// For review only: where the window opens, with which card, and when its picture is taken.
@@ -118,7 +121,7 @@ pub const SNAP_PLACES: [&str; 6] = [
 ];
 
 /// What `--card` can name, in `Snap`.
-pub const SNAP_CARDS: [&str; 9] = [
+pub const SNAP_CARDS: [&str; 11] = [
     "notices",
     "departures",
     "board",
@@ -128,6 +131,8 @@ pub const SNAP_CARDS: [&str; 9] = [
     "plans",
     "album",
     "sound",
+    "competitions",
+    "new-competition",
 ];
 
 /// Where a card can be open, for `Snap`: the places it belongs to, the first being where a
@@ -138,6 +143,7 @@ pub fn snap_card_places(card: &str) -> &'static [&'static str] {
         "board" | "shelf" => &["clubhouse"],
         "dress-up" => &["green"],
         "plans" => &["hilltop"],
+        "competitions" | "new-competition" => &["fairground"],
         "journal" => &["woods", "hilltop"],
         _ => &[],
     }
@@ -177,6 +183,8 @@ pub struct HillApp {
     /// The game chosen to watch next, and who the person has picked to play each game.
     game: Game,
     picks: Picks,
+    /// What the competitions card shows, and how the last competition ended.
+    competitions: competitions::Competitions,
     /// Who is going to the Woods, and the outing under way.
     woods: rummaging::Woods,
     /// The summit, made the first time anyone goes up.
@@ -285,6 +293,7 @@ impl HillApp {
             fairground: None,
             game: Game::HideAndSeek,
             picks: Picks::default(),
+            competitions: competitions::Competitions::default(),
             woods: rummaging::Woods::default(),
             hilltop: None,
             clearing: None,
@@ -384,8 +393,10 @@ impl HillApp {
             Some("plans") => Some(Card::Plans),
             Some("album") => Some(Card::Album),
             Some("sound") => Some(Card::Sound),
+            Some("competitions" | "new-competition") => Some(Card::Competitions),
             _ => None,
         };
+        let new_competition = snap.card.as_deref() == Some("new-competition");
         let story = snap.story;
         let chapter = snap.chapter;
         if let Some(place) = place {
@@ -401,6 +412,7 @@ impl HillApp {
             self.start_story(&package, &story, now);
         }
         self.card = card;
+        self.snap_competitions(new_competition);
         if card == Some(Card::Journal)
             && let Some(chapter) = chapter.and_then(|n| self.chapters().get(n - 1).copied())
         {
@@ -563,9 +575,9 @@ impl HillApp {
         if area == Area::Station {
             self.pin_notices();
         }
-        // Walking away calls a game off.
+        // Walking away calls a game off, and any competition.
         if let Some((ground, games)) = &mut self.fairground
-            && games.playing().is_some()
+            && (games.playing().is_some() || games.contest_on())
         {
             games.stop(ground, now);
         }
@@ -912,7 +924,7 @@ impl eframe::App for HillApp {
                     if input.key_pressed(egui::Key::Escape)
                         && self.area == Area::Fairground
                         && let Some((ground, games)) = &mut self.fairground
-                        && games.playing().is_some()
+                        && (games.playing().is_some() || games.contest_on())
                     {
                         games.stop(ground, now);
                     }
@@ -951,6 +963,7 @@ impl eframe::App for HillApp {
         if let (Area::Fairground, Some((ground, game))) = (self.area, &mut self.fairground) {
             ground.tick(&self.arrival.cast, now);
             game.tick(ground, now);
+            game.tick_contest(ground, &self.arrival.cast, now);
         }
         self.fairground_events(now);
         if self.area == Area::Woods {
@@ -1298,6 +1311,7 @@ impl eframe::App for HillApp {
         self.notices_window(&ctx);
         self.departures_window(&ctx, now);
         self.sound_window(&ctx);
+        self.competitions_window(&ctx, now);
         self.take_snap(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {

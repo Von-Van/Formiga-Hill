@@ -103,6 +103,13 @@ fn next_version(version: Option<&str>) -> String {
         .to_string()
 }
 
+/// One short line saying who a competition is by.
+fn is_by(text: &str) -> bool {
+    !text.trim().is_empty()
+        && text.chars().count() <= MOST_AUTHOR_CHARS
+        && !text.chars().any(char::is_control)
+}
+
 /// Whether a package holds only competitions, so it can be changed or removed from here.
 fn only_competitions(package: &Package) -> bool {
     package.stories.is_empty() && !package.competitions.is_empty()
@@ -614,7 +621,7 @@ impl HillApp {
             paper::aside(ui, line);
         }
         let mut problems = format.problems();
-        if !crate::story::is_label(&editing.author, MOST_AUTHOR_CHARS) {
+        if !is_by(&editing.author) {
             problems.push("Say who it is by, in a few words.".to_owned());
         }
         for problem in &problems {
@@ -782,7 +789,12 @@ impl HillApp {
             }
             Act::Export(files, id) => {
                 let files = if files.is_empty() {
-                    match sharing::installed_files(self.packages_folder.as_deref(), &id) {
+                    let in_folder = self
+                        .packages_folder
+                        .as_deref()
+                        .and_then(|folder| sharing::installed(folder, &id))
+                        .and_then(|path| crate::story::read_folder(&path).ok());
+                    match in_folder {
                         Some(files) => files,
                         None => {
                             state.said = Some("It couldn't be read to pass on.".to_owned());

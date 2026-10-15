@@ -12,7 +12,9 @@ pub mod shelf;
 pub mod souvenirs;
 
 pub use director::Director;
-pub use package::{Files, Package, PackageError, check_files, limits, load, read_folder};
+pub use package::{
+    Files, HILL_API, Package, PackageError, check_files, limits, load, read_folder,
+};
 pub use script::Story;
 
 use crate::fairground::competition::Format;
