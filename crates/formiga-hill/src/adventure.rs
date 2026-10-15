@@ -19,7 +19,6 @@ use crate::story::lines::{Line, Lines};
 use formiga_core::TemperamentKind;
 use serde::Deserialize;
 use std::borrow::Cow;
-use std::collections::BTreeSet;
 
 /// The most places, paths and bends an adventure may have: a short outing, not a world.
 pub const MOST_PLACES: usize = 16;
@@ -412,14 +411,33 @@ pub fn check_fair(map: &Map) -> Result<(), String> {
     Ok(())
 }
 
-/// The ids of the places in an adventure, for anyone checking a reference to one.
-pub fn place_ids(adventure: &Adventure) -> BTreeSet<&str> {
-    adventure
-        .map
-        .places
-        .iter()
-        .map(|place| place.id.as_ref())
-        .collect()
+/// The shortest way anyone could go, along the open paths, from the start to the nearest
+/// ending: every place on it, the start first.
+pub fn shortest_way(map: &Map) -> Vec<usize> {
+    let open = |path: &Path| path.way == Way::Open;
+    let nearest = map.nearest(open);
+    let Some(mut here) = (0..map.places.len())
+        .filter(|place| map.places[*place].ending)
+        .filter(|place| nearest[*place].is_some())
+        .min_by(|a, b| nearest[*a].unwrap().total_cmp(&nearest[*b].unwrap()))
+    else {
+        return vec![map.start];
+    };
+    let mut way = vec![here];
+    while here != map.start {
+        let cost = nearest[here].unwrap_or(0.0);
+        let Some(back) = map.paths.iter().filter(|path| open(path)).find_map(|path| {
+            let there = path.from(here)?;
+            let through = nearest[there]? + path.length;
+            ((through - cost).abs() < 0.01).then_some(there)
+        }) else {
+            break;
+        };
+        way.push(back);
+        here = back;
+    }
+    way.reverse();
+    way
 }
 
 #[cfg(test)]

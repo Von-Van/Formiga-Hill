@@ -1,0 +1,17 @@
+title = "The Owl's Question"
+about = "An owl lives on the signpost, and asks everyone the same question: left, or right?"
+
+[hedge]
+name = "the hawthorn hedge"
+
+[post]
+name = "the owl's signpost"
+arrive = { text = "\"Hoo goes there?\" says the owl. \"Left to my oak, or right to the pond?\"", troublemaker = "\"Hoo goes there?\" says the owl. {leader} says: both, obviously." }
+
+[oak]
+name = "the owl's oak"
+ending = "Up in the oak, the owl's nest is full of things it has found. {leader} is allowed to look, but not to touch."
+
+[pond]
+name = "the moonlit pond"
+ending = { text = "The pond holds the whole sky. {leader} could look at it all night.", lazybones = "The pond holds the whole sky, and {leader} lies down beside it to look." }

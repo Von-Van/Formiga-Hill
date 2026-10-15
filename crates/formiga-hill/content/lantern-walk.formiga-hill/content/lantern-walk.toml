@@ -1,0 +1,89 @@
+# Along the hedge and through the hollow oak to the old signpost, and on to a pool nobody has
+# found yet. Someone who reads old signs finds the lamplighters' way; a little one knows the
+# rabbit run along the bottom of the hedge.
+
+[adventure]
+id = "lantern-walk"
+title = "title"
+about = "about"
+start = "lane"
+
+[[places]]
+id = "lane"
+site = "edge"
+at = [36, 186]
+arrive = "lane.arrive"
+
+[[places]]
+id = "hedge"
+site = "hedgerow"
+at = [108, 198]
+name = "hedge.name"
+arrive = "hedge.arrive"
+
+[[places]]
+id = "oak"
+site = "glade"
+at = [156, 144]
+name = "oak.name"
+arrive = "oak.arrive"
+
+[[places]]
+id = "log"
+site = "log"
+at = [92, 96]
+name = "log.name"
+
+[[places]]
+id = "post"
+site = "signpost"
+at = [232, 106]
+arrive = "post.arrive"
+
+[[places]]
+id = "pool"
+site = "pool"
+at = [300, 180]
+name = "pool.name"
+hidden = true
+ending = "pool.ending"
+
+[[paths]]
+between = ["lane", "hedge"]
+bends = [[70, 196]]
+
+[[paths]]
+between = ["lane", "oak"]
+bends = [[80, 170], [120, 158]]
+
+[[paths]]
+between = ["hedge", "oak"]
+bends = [[132, 176]]
+
+[[paths]]
+between = ["oak", "log"]
+bends = [[124, 120]]
+
+[[paths]]
+between = ["oak", "post"]
+bends = [[196, 128]]
+
+[[paths]]
+between = ["log", "post"]
+bends = [[150, 84], [196, 90]]
+
+[[paths]]
+between = ["post", "pool"]
+bends = [[262, 120], [290, 136], [304, 156]]
+
+[[paths]]
+between = ["post", "pool"]
+way = "reader"
+name = "ways.lamplighters"
+bends = [[248, 140]]
+
+[[paths]]
+between = ["hedge", "pool"]
+way = "little_one"
+name = "ways.rabbit_run"
+bends = [[170, 206], [240, 204]]

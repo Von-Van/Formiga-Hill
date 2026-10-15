@@ -58,6 +58,30 @@ fn official() -> Vec<BuiltIn> {
                 "localization/en.toml",
             ]
         ),
+        built_in!(
+            "lantern-walk.formiga-hill",
+            [
+                "manifest.toml",
+                "content/lantern-walk.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "singing-falls.formiga-hill",
+            [
+                "manifest.toml",
+                "content/singing-falls.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "owls-question.formiga-hill",
+            [
+                "manifest.toml",
+                "content/owls-question.toml",
+                "localization/en.toml",
+            ]
+        ),
     ]
 }
 

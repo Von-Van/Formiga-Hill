@@ -100,9 +100,14 @@ pub fn map(map: &Map, shown: &Shown) -> Canvas {
         }
     }
     for (index, place) in map.places.iter().enumerate() {
-        if shown.places[index] {
-            let (x, y) = place.at;
-            scenery::label(&mut scene, &lettering(&place.name), (x as i32, y as i32 + 6));
+        // The way in needs no name, unless its author gave it one: the lane says what it is.
+        let unnamed_way_in = place.site == Site::Edge && place.name == Site::Edge.name();
+        if shown.places[index] && !unnamed_way_in {
+            let text = lettering(&place.name);
+            // Kept on the parchment, however near its edge the place is.
+            let half = text.chars().count() as i32 * 2;
+            let x = (place.at.0 as i32).clamp(6 + half, WIDTH - 6 - half);
+            scenery::label(&mut scene, &text, (x, place.at.1 as i32 + 6));
         }
     }
     let (x, y, height) = SCROLL;
@@ -137,6 +142,7 @@ pub fn lettering(name: &str) -> String {
         .or_else(|| name.strip_prefix("The "))
         .unwrap_or(name);
     bare.chars()
+        .filter(|letter| !matches!(letter, '\'' | '\u{2019}'))
         .take(18)
         .map(|letter| letter.to_ascii_uppercase())
         .collect()
@@ -411,6 +417,7 @@ mod tests {
     fn names_are_lettered_without_the_and_kept_short() {
         assert_eq!(lettering("the old mill pond"), "OLD MILL POND");
         assert_eq!(lettering("Bramble Corner"), "BRAMBLE CORNER");
+        assert_eq!(lettering("the carters' track"), "CARTERS TRACK");
         assert_eq!(lettering("a very long name for a little place"), "A VERY LONG NAME F");
     }
 }

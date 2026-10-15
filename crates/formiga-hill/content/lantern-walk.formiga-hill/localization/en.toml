@@ -1,0 +1,27 @@
+title = "The Lantern Walk"
+about = "Somewhere past the old signpost, they say, lanterns float on a pool nobody has found."
+
+[lane]
+arrive = "The lane runs out at a stile, and the Woods begin."
+
+[hedge]
+name = "the bramble hedge"
+arrive = { text = "Blackberries, and somewhere in the hedge, a little light.", explorer = "{leader} spots a light deep in the hedge. Worth a look!" }
+
+[oak]
+name = "the hollow oak"
+arrive = "Someone has hung a tiny lantern in the hollow oak. It points on, further in."
+
+[log]
+name = "the mossy log"
+
+[post]
+arrive = { text = "The signpost's arms are worn smooth. One still has a lantern painted on it.", scholar = "{leader} traces the old letters: LAMPS, it says, and an arrow." }
+
+[pool]
+name = "the lantern pool"
+ending = { text = "Lanterns float on the dark water, dozens of them, and {leader} sits down to watch.", grump = "Lanterns. On a pond. {leader} admits it is quite nice.", sweetheart = "{leader} gasps. Every lantern on the pool is someone's wish." }
+
+[ways]
+lamplighters = "the lamplighters' way"
+rabbit_run = "the rabbit run"

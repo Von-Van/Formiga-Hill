@@ -99,6 +99,8 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --render-costumes <PNG>  Draw everyone wearing every piece in the dress-up box, for review
   --render-story <PNG>     Draw a story in the Clubhouse --at seconds after it starts, reading each
                            line for 2.5 seconds and taking the first choice
+  --render-adventure <PNG> Draw a Woods adventure --at seconds in, played by a steady hand along
+                           the shortest way to an ending: the last loaded, so an author's own
   --render-sounds <FOLDER> Write every sound and a minute of every piece of music to WAV files in
                            the folder, to listen to without a window
   --package <FOLDER>       Load a story package beside Hill's own (for authors); repeatable
@@ -125,7 +127,7 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
 ";
 
 /// Each `--render-*` option, and what it draws.
-const RENDERS: [(&str, Area); 31] = [
+const RENDERS: [(&str, Area); 32] = [
     ("--render-station", Area::Station),
     ("--render-green", Area::Green),
     ("--render-clubhouse", Area::Clubhouse),
@@ -155,6 +157,7 @@ const RENDERS: [(&str, Area); 31] = [
     ("--render-landmarks", Area::Landmarks),
     ("--render-sovereign", Area::Sovereign),
     ("--render-story", Area::Story),
+    ("--render-adventure", Area::Adventure),
     ("--render-reactions", Area::Reactions),
     ("--render-costumes", Area::Costumes),
 ];
