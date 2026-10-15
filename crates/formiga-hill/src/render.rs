@@ -837,6 +837,7 @@ fn expedition_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canv
         ..Known::default()
     };
     let outset = Outset {
+        map: expedition::map::Map::woods(),
         party,
         influence: woods::influence(&hilltop),
         seed: 3,

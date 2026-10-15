@@ -9,12 +9,17 @@
 //!
 //! A new place joins the map as a `Place` with its `Stop`, its paths in `PATHS`, and its picture
 //! in `scenery`; a new kind of stop needs its leg in `legs` too.
+//!
+//! The Woods' own map is `Map::woods`. An adventure brings a map of its own, made from the same
+//! kinds of place (`Site`) and the same kinds of path, which an expedition walks just the same.
 
 use crate::cast::Id;
 use crate::character::Character;
 use crate::finds::Leaning;
 use crate::track::crew::{bold, little};
 use formiga_core::TemperamentKind;
+use std::borrow::Cow;
+use std::collections::BTreeSet;
 
 /// What there is to do at a place.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -42,13 +47,94 @@ impl Stop {
     }
 }
 
+/// What kind of place a place on a map is: what it looks like there, and so what is done there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Site {
+    /// The edge of the Woods, where the lane comes in.
+    Edge,
+    Hedgerow,
+    Meadow,
+    Glade,
+    /// The fallen log, for a rest.
+    Log,
+    /// An old signpost at a fork, which someone who reads old things can read.
+    Signpost,
+    Pool,
+    OldTrack,
+    Falls,
+}
+
+impl Site {
+    pub const ALL: [Self; 9] = [
+        Self::Edge,
+        Self::Hedgerow,
+        Self::Meadow,
+        Self::Glade,
+        Self::Log,
+        Self::Signpost,
+        Self::Pool,
+        Self::OldTrack,
+        Self::Falls,
+    ];
+
+    /// What there is to do there.
+    pub fn stop(self) -> Stop {
+        match self {
+            Self::Edge => Stop::Edge,
+            Self::Hedgerow => Stop::Forage,
+            Self::Meadow => Stop::Bugs,
+            Self::Glade => Stop::Rummage,
+            Self::Log => Stop::Rest,
+            Self::Signpost => Stop::Fork,
+            Self::Pool => Stop::Fish,
+            Self::OldTrack => Stop::Scavenge,
+            Self::Falls => Stop::Falls,
+        }
+    }
+
+    /// What an adventure's file calls it.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Edge => "edge",
+            Self::Hedgerow => "hedgerow",
+            Self::Meadow => "meadow",
+            Self::Glade => "glade",
+            Self::Log => "log",
+            Self::Signpost => "signpost",
+            Self::Pool => "pool",
+            Self::OldTrack => "old_track",
+            Self::Falls => "falls",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|site| site.key() == key)
+    }
+
+    /// What it is called, when nobody has named it anything else.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Edge => "the edge of the Woods",
+            Self::Hedgerow => "the hedgerow",
+            Self::Meadow => "the meadow",
+            Self::Glade => "the glade",
+            Self::Log => "the fallen log",
+            Self::Signpost => "the old signpost",
+            Self::Pool => "the pool",
+            Self::OldTrack => "the old track",
+            Self::Falls => "the falls",
+        }
+    }
+}
+
 /// A place on the map.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Place {
     /// What memories call it.
-    pub id: &'static str,
+    pub id: Cow<'static, str>,
     /// What the person calls it.
-    pub name: &'static str,
+    pub name: Cow<'static, str>,
+    pub site: Site,
     pub stop: Stop,
     /// Where on the map the party stands there.
     pub at: (f32, f32),
@@ -56,6 +142,8 @@ pub struct Place {
     pub depth: u8,
     /// Out of sight in the mist until it is found, seen from the Hilltop, or read of.
     pub hidden: bool,
+    /// Where an adventure ends: getting there finishes it. Nowhere in the Woods' own map.
+    pub ending: bool,
 }
 
 /// Who opens a way only some company takes.
@@ -84,23 +172,33 @@ impl Opener {
 }
 
 /// How a path is walked.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Way {
     /// Anyone can walk it.
     Open,
     /// Only some company takes it: what it is called, and who opens it.
-    Shortcut(&'static str, Opener),
+    Shortcut(Cow<'static, str>, Opener),
+}
+
+impl Way {
+    /// Who opens it, if not everyone.
+    pub fn opener(&self) -> Option<Opener> {
+        match self {
+            Self::Open => None,
+            Self::Shortcut(_, opener) => Some(*opener),
+        }
+    }
 }
 
 /// A path between two places.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Path {
     pub ends: (usize, usize),
     /// How much of the day walking it takes, at a middling pace.
     pub length: f32,
     pub way: Way,
     /// The bends it takes on the way from its first end to its second, as drawn.
-    pub bends: &'static [(f32, f32)],
+    pub bends: Cow<'static, [(f32, f32)]>,
 }
 
 impl Path {
@@ -113,12 +211,12 @@ impl Path {
         }
     }
 
-    /// Every point along it, from `place` to its other end, as walked.
-    pub fn walk_from(&self, place: usize) -> Vec<(f32, f32)> {
+    /// Every point along it on a map of `places`, from `place` to its other end, as walked.
+    pub fn walk_from(&self, places: &[Place], place: usize) -> Vec<(f32, f32)> {
         let (a, b) = self.ends;
-        let mut points = vec![PLACES[a].at];
-        points.extend_from_slice(self.bends);
-        points.push(PLACES[b].at);
+        let mut points = vec![places[a].at];
+        points.extend_from_slice(&self.bends);
+        points.push(places[b].at);
         if place == b {
             points.reverse();
         }
@@ -139,76 +237,94 @@ pub const OLD_TRACK: usize = 8;
 /// The places, the edge of the Woods first. The map is painted round these.
 pub const PLACES: [Place; 9] = [
     Place {
-        id: "edge",
-        name: "the edge of the Woods",
+        id: Cow::Borrowed("edge"),
+        name: Cow::Borrowed("the edge of the Woods"),
+        site: Site::Edge,
         stop: Stop::Edge,
         at: (46.0, 186.0),
         depth: 0,
         hidden: false,
+        ending: false,
     },
     Place {
-        id: "hedgerow",
-        name: "the hedgerow",
+        id: Cow::Borrowed("hedgerow"),
+        name: Cow::Borrowed("the hedgerow"),
+        site: Site::Hedgerow,
         stop: Stop::Forage,
         at: (104.0, 200.0),
         depth: 1,
         hidden: false,
+        ending: false,
     },
     Place {
-        id: "meadow",
-        name: "the meadow",
+        id: Cow::Borrowed("meadow"),
+        name: Cow::Borrowed("the meadow"),
+        site: Site::Meadow,
         stop: Stop::Bugs,
         at: (64.0, 126.0),
         depth: 1,
         hidden: false,
+        ending: false,
     },
     Place {
-        id: "glade",
-        name: "the glade",
+        id: Cow::Borrowed("glade"),
+        name: Cow::Borrowed("the glade"),
+        site: Site::Glade,
         stop: Stop::Rummage,
         at: (172.0, 152.0),
         depth: 2,
         hidden: false,
+        ending: false,
     },
     Place {
-        id: "log",
-        name: "the fallen log",
+        id: Cow::Borrowed("log"),
+        name: Cow::Borrowed("the fallen log"),
+        site: Site::Log,
         stop: Stop::Rest,
         at: (124.0, 86.0),
         depth: 2,
         hidden: false,
+        ending: false,
     },
     Place {
-        id: "signpost",
-        name: "the old signpost",
+        id: Cow::Borrowed("signpost"),
+        name: Cow::Borrowed("the old signpost"),
+        site: Site::Signpost,
         stop: Stop::Fork,
         at: (226.0, 106.0),
         depth: 3,
         hidden: false,
+        ending: false,
     },
     Place {
-        id: "pool",
-        name: "the pool",
+        id: Cow::Borrowed("pool"),
+        name: Cow::Borrowed("the pool"),
+        site: Site::Pool,
         stop: Stop::Fish,
         at: (290.0, 182.0),
         depth: 3,
         hidden: false,
+        ending: false,
     },
     Place {
-        id: "far_falls",
-        name: "the Far Falls",
+        id: Cow::Borrowed("far_falls"),
+        name: Cow::Borrowed("the Far Falls"),
+        site: Site::Falls,
         stop: Stop::Falls,
         at: (318.0, 84.0),
         depth: 4,
         hidden: true,
+        ending: false,
     },
     Place {
-        id: "old_track",
-        name: "the old track",
+        id: Cow::Borrowed("old_track"),
+        name: Cow::Borrowed("the old track"),
+        site: Site::OldTrack,
         stop: Stop::Scavenge,
         at: (236.0, 172.0),
         depth: 3,
         hidden: false,
+        ending: false,
     },
 ];
 
@@ -219,119 +335,221 @@ pub const PATHS: [Path; 17] = [
         length: 6.0,
         way: Way::Open,
         // Along the lane.
-        bends: &[(72.0, 198.0)],
+        bends: Cow::Borrowed(&[(72.0, 198.0)]),
     },
     Path {
         ends: (EDGE, MEADOW),
         length: 8.0,
         way: Way::Open,
-        bends: &[(40.0, 164.0), (48.0, 142.0)],
+        bends: Cow::Borrowed(&[(40.0, 164.0), (48.0, 142.0)]),
     },
     Path {
         ends: (EDGE, GLADE),
         length: 10.0,
         way: Way::Open,
-        bends: &[(82.0, 174.0), (126.0, 164.0)],
+        bends: Cow::Borrowed(&[(82.0, 174.0), (126.0, 164.0)]),
     },
     Path {
         ends: (MEADOW, LOG),
         length: 8.0,
         way: Way::Open,
-        bends: &[(84.0, 102.0)],
+        bends: Cow::Borrowed(&[(84.0, 102.0)]),
     },
     Path {
         ends: (MEADOW, GLADE),
         length: 9.0,
         way: Way::Open,
-        bends: &[(104.0, 140.0), (140.0, 148.0)],
+        bends: Cow::Borrowed(&[(104.0, 140.0), (140.0, 148.0)]),
     },
     Path {
         ends: (GLADE, LOG),
         length: 7.0,
         way: Way::Open,
-        bends: &[(146.0, 116.0)],
+        bends: Cow::Borrowed(&[(146.0, 116.0)]),
     },
     Path {
         ends: (GLADE, SIGNPOST),
         length: 7.0,
         way: Way::Open,
-        bends: &[(198.0, 132.0)],
+        bends: Cow::Borrowed(&[(198.0, 132.0)]),
     },
     Path {
         ends: (LOG, SIGNPOST),
         length: 8.0,
         way: Way::Open,
-        bends: &[(166.0, 88.0), (198.0, 96.0)],
+        bends: Cow::Borrowed(&[(166.0, 88.0), (198.0, 96.0)]),
     },
     Path {
         ends: (SIGNPOST, POOL),
         length: 8.0,
         way: Way::Open,
-        bends: &[(244.0, 128.0), (262.0, 152.0), (278.0, 172.0)],
+        bends: Cow::Borrowed(&[(244.0, 128.0), (262.0, 152.0), (278.0, 172.0)]),
     },
     Path {
         ends: (SIGNPOST, FAR_FALLS),
         length: 16.0,
         way: Way::Open,
         // The long way round, winding up under the crag.
-        bends: &[(232.0, 78.0), (260.0, 62.0), (292.0, 62.0)],
+        bends: Cow::Borrowed(&[(232.0, 78.0), (260.0, 62.0), (292.0, 62.0)]),
     },
     Path {
         ends: (GLADE, OLD_TRACK),
         length: 7.0,
         way: Way::Open,
         // On from the glade, where the old cart track starts.
-        bends: &[(198.0, 170.0)],
+        bends: Cow::Borrowed(&[(198.0, 170.0)]),
     },
     Path {
         ends: (OLD_TRACK, POOL),
         length: 6.0,
         way: Way::Open,
-        bends: &[(262.0, 175.0)],
+        bends: Cow::Borrowed(&[(262.0, 175.0)]),
     },
     Path {
         ends: (HEDGEROW, POOL),
         length: 13.0,
-        way: Way::Shortcut("the deer track", Opener::Explorer),
+        way: Way::Shortcut(Cow::Borrowed("the deer track"), Opener::Explorer),
         // Along the bottom of the Woods.
-        bends: &[(152.0, 208.0), (214.0, 208.0), (262.0, 198.0)],
+        bends: Cow::Borrowed(&[(152.0, 208.0), (214.0, 208.0), (262.0, 198.0)]),
     },
     Path {
         ends: (HEDGEROW, GLADE),
         length: 5.0,
-        way: Way::Shortcut("the gap in the hedge", Opener::LittleOne),
-        bends: &[(114.0, 188.0), (144.0, 168.0)],
+        way: Way::Shortcut(Cow::Borrowed("the gap in the hedge"), Opener::LittleOne),
+        bends: Cow::Borrowed(&[(114.0, 188.0), (144.0, 168.0)]),
     },
     Path {
         ends: (POOL, FAR_FALLS),
         length: 8.0,
-        way: Way::Shortcut("the stepping stones", Opener::ClosePair),
+        way: Way::Shortcut(Cow::Borrowed("the stepping stones"), Opener::ClosePair),
         // Up the stream, stone to stone.
-        bends: &[
+        bends: Cow::Borrowed(&[
             (284.0, 166.0),
             (304.0, 152.0),
             (318.0, 144.0),
             (332.0, 122.0),
             (338.0, 100.0),
-        ],
+        ]),
     },
     Path {
         ends: (LOG, FAR_FALLS),
         length: 10.0,
-        way: Way::Shortcut("the steep way up the crag", Opener::Bold),
-        bends: &[(148.0, 58.0), (196.0, 40.0), (252.0, 36.0), (296.0, 50.0)],
+        way: Way::Shortcut(Cow::Borrowed("the steep way up the crag"), Opener::Bold),
+        bends: Cow::Borrowed(&[(148.0, 58.0), (196.0, 40.0), (252.0, 36.0), (296.0, 50.0)]),
     },
     Path {
         ends: (SIGNPOST, FAR_FALLS),
         length: 9.0,
-        way: Way::Shortcut("the old way", Opener::Reader),
-        bends: &[(262.0, 96.0), (294.0, 90.0)],
+        way: Way::Shortcut(Cow::Borrowed("the old way"), Opener::Reader),
+        bends: Cow::Borrowed(&[(262.0, 96.0), (294.0, 90.0)]),
     },
 ];
 
-/// The place with this id, if the map has one.
+/// The place with this id, if the Woods' map has one.
 pub fn place(id: &str) -> Option<usize> {
     PLACES.iter().position(|place| place.id == id)
+}
+
+/// A map an expedition walks: the Woods' own, or an adventure's.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Map {
+    /// An adventure's title, lettered on its map: such a map is painted from its places alone.
+    /// The Woods' own map has none, and is painted as the Woods are.
+    pub title: Option<String>,
+    pub places: Vec<Place>,
+    pub paths: Vec<Path>,
+    /// Where the party comes onto it, up the lane from the Hill, and leaves it for home.
+    pub start: usize,
+}
+
+impl Map {
+    /// The Woods' own map.
+    pub fn woods() -> Self {
+        Self {
+            title: None,
+            places: PLACES.to_vec(),
+            paths: PATHS.to_vec(),
+            start: EDGE,
+        }
+    }
+
+    /// Whether this is the Woods' own map, rather than an adventure's.
+    pub fn is_woods(&self) -> bool {
+        self.title.is_none()
+    }
+
+    /// The place with this id, if the map has one.
+    pub fn place(&self, id: &str) -> Option<usize> {
+        self.places.iter().position(|place| place.id == id)
+    }
+
+    /// Every point along a path, from `place` to its other end, as walked.
+    pub fn walk(&self, path: usize, place: usize) -> Vec<(f32, f32)> {
+        self.paths[path].walk_from(&self.places, place)
+    }
+
+    /// The places that can be reached from the start, walking only the paths `walkable` allows.
+    pub fn reachable(&self, walkable: impl Fn(&Path) -> bool) -> BTreeSet<usize> {
+        let mut reached = BTreeSet::from([self.start]);
+        let mut frontier = vec![self.start];
+        while let Some(here) = frontier.pop() {
+            for path in self.paths.iter().filter(|path| walkable(path)) {
+                if let Some(there) = path.from(here)
+                    && reached.insert(there)
+                {
+                    frontier.push(there);
+                }
+            }
+        }
+        reached
+    }
+
+    /// The least of the day it takes to get from the start to each place, at a middling pace,
+    /// walking only the paths `walkable` allows: `None` for anywhere that cannot be got to.
+    pub fn nearest(&self, walkable: impl Fn(&Path) -> bool) -> Vec<Option<f32>> {
+        let count = self.places.len();
+        let mut best: Vec<Option<f32>> = vec![None; count];
+        best[self.start] = Some(0.0);
+        let mut settled = vec![false; count];
+        loop {
+            let next = (0..count)
+                .filter(|place| !settled[*place])
+                .filter_map(|place| best[place].map(|cost| (place, cost)))
+                .min_by(|a, b| a.1.total_cmp(&b.1));
+            let Some((here, cost)) = next else {
+                break;
+            };
+            settled[here] = true;
+            for path in self.paths.iter().filter(|path| walkable(path)) {
+                if let Some(there) = path.from(here) {
+                    let through = cost + path.length;
+                    if best[there].is_none_or(|known| through < known) {
+                        best[there] = Some(through);
+                    }
+                }
+            }
+        }
+        best
+    }
+
+    /// How many paths in from the start each place is, by the fewest: how far into the Woods
+    /// an adventure's places are, for telling which is the furthest yet.
+    pub fn steps_in(&self) -> Vec<u8> {
+        let mut steps = vec![u8::MAX; self.places.len()];
+        steps[self.start] = 0;
+        let mut frontier = std::collections::VecDeque::from([self.start]);
+        while let Some(here) = frontier.pop_front() {
+            for path in &self.paths {
+                if let Some(there) = path.from(here)
+                    && steps[there] == u8::MAX
+                {
+                    steps[there] = steps[here].saturating_add(1);
+                    frontier.push_back(there);
+                }
+            }
+        }
+        steps
+    }
 }
 
 /// Who in a party opens each way only some company takes, read from who each is.
@@ -397,12 +615,12 @@ impl Company {
 }
 
 /// Whether a path can be walked by this company: an open one by anyone, a shortcut by those who
-/// open it, and the old way only once the signpost has been read.
+/// open it, and the old way only once the signpost it starts from has been read.
 pub fn walkable(path: &Path, company: &Company, read: bool) -> bool {
-    match path.way {
+    match &path.way {
         Way::Open => true,
         Way::Shortcut(_, Opener::Reader) => read && company.opens(Opener::Reader),
-        Way::Shortcut(_, opener) => company.opens(opener),
+        Way::Shortcut(_, opener) => company.opens(*opener),
     }
 }
 
@@ -416,49 +634,17 @@ pub fn pace(party: &[&Character]) -> f32 {
     1.0 / (0.8 + 0.4 * liveliness)
 }
 
-/// The places this company can reach from the edge, walking only what it can walk.
+/// The places in the Woods this company can reach from the edge, walking only what it can walk.
 #[cfg(test)]
-pub fn reachable(company: &Company, read: bool) -> std::collections::BTreeSet<usize> {
-    let mut reached = std::collections::BTreeSet::from([EDGE]);
-    let mut frontier = vec![EDGE];
-    while let Some(here) = frontier.pop() {
-        for path in PATHS.iter().filter(|path| walkable(path, company, read)) {
-            if let Some(there) = path.from(here)
-                && reached.insert(there)
-            {
-                frontier.push(there);
-            }
-        }
-    }
-    reached
+pub fn reachable(company: &Company, read: bool) -> BTreeSet<usize> {
+    Map::woods().reachable(|path| walkable(path, company, read))
 }
 
-/// The least of the day it takes this company to get from the edge to each place, at a middling
-/// pace: `None` for anywhere it cannot get to.
+/// The least of the day it takes this company to get from the edge of the Woods to each place,
+/// at a middling pace: `None` for anywhere it cannot get to.
 #[cfg(test)]
-pub fn nearest(company: &Company, read: bool) -> [Option<f32>; PLACES.len()] {
-    let mut best: [Option<f32>; PLACES.len()] = [None; PLACES.len()];
-    best[EDGE] = Some(0.0);
-    let mut settled = [false; PLACES.len()];
-    loop {
-        let next = (0..PLACES.len())
-            .filter(|place| !settled[*place])
-            .filter_map(|place| best[place].map(|cost| (place, cost)))
-            .min_by(|a, b| a.1.total_cmp(&b.1));
-        let Some((here, cost)) = next else {
-            break;
-        };
-        settled[here] = true;
-        for path in PATHS.iter().filter(|path| walkable(path, company, read)) {
-            if let Some(there) = path.from(here) {
-                let through = cost + path.length;
-                if best[there].is_none_or(|known| through < known) {
-                    best[there] = Some(through);
-                }
-            }
-        }
-    }
-    best
+pub fn nearest(company: &Company, read: bool) -> Vec<Option<f32>> {
+    Map::woods().nearest(|path| walkable(path, company, read))
 }
 
 #[cfg(test)]
@@ -466,7 +652,6 @@ mod tests {
     use super::*;
     use crate::cast::Cast;
     use formiga_travel::Band;
-    use std::collections::BTreeSet;
 
     fn sample() -> (Cast, Vec<(Id, Character)>) {
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
@@ -640,14 +825,14 @@ mod tests {
                 "path {index}"
             );
             assert!(path.length > 0.0);
-            let walked = path.walk_from(b);
+            let walked = path.walk_from(&PLACES, b);
             assert_eq!(walked.first(), Some(&PLACES[b].at));
             assert_eq!(walked.last(), Some(&PLACES[a].at));
         }
-        let ids: BTreeSet<&str> = PLACES.iter().map(|place| place.id).collect();
+        let ids: BTreeSet<&str> = PLACES.iter().map(|place| place.id.as_ref()).collect();
         assert_eq!(ids.len(), PLACES.len());
         for (index, place) in PLACES.iter().enumerate() {
-            assert_eq!(super::place(place.id), Some(index));
+            assert_eq!(super::place(&place.id), Some(index));
             let (x, y) = place.at;
             assert!((8.0..376.0).contains(&x) && (24.0..212.0).contains(&y));
         }

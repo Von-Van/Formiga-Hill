@@ -16,6 +16,7 @@
 //! What stands on the Hilltop helps: whatever lends the Woods light lends the expedition's day as
 //! much, and a telescope shows the Far Falls on the map from the start.
 
+mod drawn;
 pub mod legs;
 pub mod map;
 pub mod picnic;
@@ -36,7 +37,7 @@ use formiga_art::{Canvas, ExpressionKind};
 use formiga_core::{Gesture, TemperamentKind};
 use formiga_travel::Band;
 use legs::{Caught, Input, Leg, LegEvent, Start};
-use map::{Company, EDGE, Opener, PATHS, PLACES, SIGNPOST, Stop, Way};
+use map::{Company, Map, Opener, Stop};
 pub use scenery::Shown;
 use std::collections::BTreeSet;
 
@@ -89,6 +90,8 @@ pub struct Known {
 
 /// What an expedition sets out with.
 pub struct Outset {
+    /// The map it is walked on: the Woods' own, or an adventure's.
+    pub map: Map,
     /// Who came along, one to three; the first leads the way.
     pub party: Vec<Id>,
     /// What the Hilltop lends the Woods: the day's light, and rare things sooner.
@@ -106,7 +109,7 @@ pub fn far_sight(hilltop: &Arrangement) -> bool {
 
 /// The map as it would be planned for `party`: the ways that company would open, and the far
 /// places already in sight.
-pub fn planned(cast: &Cast, party: &[Id], known: &Known) -> Canvas {
+pub fn planned(cast: &Cast, map: &Map, party: &[Id], known: &Known) -> Canvas {
     let members: Vec<(Id, Character)> = party
         .iter()
         .filter_map(|id| cast.member(*id).map(|member| (*id, Character::of(member))))
@@ -117,12 +120,24 @@ pub fn planned(cast: &Cast, party: &[Id], known: &Known) -> Canvas {
             .is_some_and(|bond| bond.warmth >= Band::High)
     };
     let company = Company::of(&members, close);
-    let mut sighted = [false; PLACES.len()];
-    for (index, place) in PLACES.iter().enumerate() {
-        sighted[index] =
-            !place.hidden || known.far_places.contains(place.id) || far_sight(&known.hilltop);
-    }
-    scenery::map(&Expedition::shown_for(&company, &sighted, false))
+    let sighted = sighted(map, known);
+    scenery::map(map, &Expedition::shown_for(map, &company, &sighted, &BTreeSet::new()))
+}
+
+/// Which places on `map` are in sight as an expedition sets off: every place not hidden, and in
+/// the Woods any far place the colony has found or can see from the Hilltop. An adventure's
+/// hidden places are found afresh each time it is played.
+fn sighted(map: &Map, known: &Known) -> Vec<bool> {
+    let woods = map.is_woods();
+    map.places
+        .iter()
+        .map(|place| {
+            !place.hidden
+                || (woods
+                    && (known.far_places.contains(place.id.as_ref())
+                        || far_sight(&known.hilltop)))
+        })
+        .collect()
 }
 
 /// Something in the basket, and who found it.
@@ -184,6 +199,10 @@ pub enum Event {
     Arrived {
         place: usize,
     },
+    /// An adventure's ending reached: it is finished.
+    Finished {
+        place: usize,
+    },
     /// A far place found, out of the mist.
     Found {
         place: usize,
@@ -226,6 +245,8 @@ pub struct Onward {
 }
 
 pub struct Expedition {
+    /// The map walked: the Woods' own, or an adventure's.
+    map: Map,
     party: Vec<Id>,
     characters: Vec<Character>,
     company: Company,
@@ -244,13 +265,15 @@ pub struct Expedition {
     at: usize,
     route: Vec<usize>,
     stops: Vec<usize>,
-    /// Which places are in sight on the map, and whether the signpost has been read.
-    sighted: [bool; PLACES.len()],
-    read: bool,
+    /// Which places are in sight on the map, and which signposts have been read.
+    sighted: Vec<bool>,
+    read: BTreeSet<usize>,
+    /// Whether an adventure's ending has been reached.
+    finished: bool,
     phase: Phase,
     leg: Option<Leg>,
-    /// The map, with the party on it.
-    map: Playground,
+    /// The map as it lies on the table, with the party on it.
+    paper: Playground,
     shown: Shown,
     known: Known,
     influence: Influence,
@@ -267,6 +290,7 @@ pub struct Expedition {
 impl Expedition {
     pub fn new(cast: &Cast, outset: Outset, known: Known, now: f32) -> Self {
         let Outset {
+            map,
             party,
             influence,
             seed,
@@ -308,26 +332,31 @@ impl Expedition {
                 events.push(Event::Opened { opener, who: *who });
             }
         }
-        let mut sighted = [false; PLACES.len()];
-        for (index, place) in PLACES.iter().enumerate() {
-            sighted[index] = !place.hidden || known.far_places.contains(place.id);
-        }
-        if far_sight(&known.hilltop) {
-            for (index, place) in PLACES.iter().enumerate() {
-                if place.hidden && !sighted[index] {
+        let mut sighted = sighted(&map, &Known::default());
+        if map.is_woods() {
+            for (index, place) in map.places.iter().enumerate() {
+                if place.hidden && known.far_places.contains(place.id.as_ref()) {
                     sighted[index] = true;
-                    events.push(Event::Spied { place: index });
+                }
+            }
+            if far_sight(&known.hilltop) {
+                for (index, place) in map.places.iter().enumerate() {
+                    if place.hidden && !sighted[index] {
+                        sighted[index] = true;
+                        events.push(Event::Spied { place: index });
+                    }
                 }
             }
         }
         let full = LIGHT + influence.light;
-        let shown = Self::shown_for(&company, &sighted, false);
+        let read = BTreeSet::new();
+        let shown = Self::shown_for(&map, &company, &sighted, &read);
         let mut ground = Playground::with_members(
             cast,
             &party,
             now,
-            layout(),
-            scenery::map(&shown),
+            layout(&map),
+            scenery::map(&map, &shown),
             Canvas::new(SCENE_WIDTH, SCENE_HEIGHT),
             Vec::new(),
         );
@@ -338,7 +367,9 @@ impl Expedition {
             indoors: true,
         });
         let reduce_motion = ground.reduce_motion();
+        let at = map.start;
         let mut expedition = Self {
+            map,
             party,
             characters,
             company,
@@ -350,14 +381,15 @@ impl Expedition {
             fish: Vec::new(),
             bugs: Vec::new(),
             maps: Vec::new(),
-            at: EDGE,
-            route: vec![EDGE],
+            at,
+            route: vec![at],
             stops: Vec::new(),
             sighted,
-            read: false,
+            read,
+            finished: false,
             phase: Phase::Arriving { since: now },
             leg: None,
-            map: ground,
+            paper: ground,
             shown,
             known,
             influence,
@@ -374,21 +406,22 @@ impl Expedition {
 
     /// The paths and places the map shows to this company: the open paths and its own
     /// shortcuts, the old way once read, and the far places once in sight.
-    fn shown_for(company: &Company, sighted: &[bool; PLACES.len()], read: bool) -> Shown {
-        let mut paths = [false; PATHS.len()];
-        for (index, path) in PATHS.iter().enumerate() {
-            paths[index] = map::walkable(path, company, read);
-        }
+    fn shown_for(map: &Map, company: &Company, sighted: &[bool], read: &BTreeSet<usize>) -> Shown {
         Shown {
-            places: *sighted,
-            paths,
+            places: sighted.to_vec(),
+            paths: map
+                .paths
+                .iter()
+                .map(|path| open(path, company, read))
+                .collect(),
         }
     }
 
-    /// Up the lane from the Hill, onto the map at the edge of the Woods.
+    /// Up the lane from the Hill, onto the map where it starts: the edge of the Woods.
     fn walk_in(&mut self, now: f32) {
-        self.map.reserve(self.party.clone());
-        self.set_out(vec![LANE, PLACES[EDGE].at], 0.0, now);
+        self.paper.reserve(self.party.clone());
+        let start = self.map.places[self.map.start].at;
+        self.set_out(vec![LANE, start], 0.0, now);
     }
 
     /// Sets the party off across the map along `points`, after `pause` seconds pointing the
@@ -397,18 +430,18 @@ impl Expedition {
         let pause = if self.reduce_motion { HELD } else { pause };
         if let Some(start) = points.first() {
             for (index, id) in self.party.iter().enumerate() {
-                self.map.teleport(*id, formation(*start, index));
+                self.paper.teleport(*id, formation(*start, index));
             }
         }
         if pause > 0.0
             && let (Some(leader), Some(next)) = (self.party.first(), points.get(1))
         {
             let point = Beat::new(Gesture::Reach, ExpressionKind::Determined, pause);
-            self.map
+            self.paper
                 .direct(*leader, vec![Step::FaceX(next.0), Step::Beat(point)], now);
             for id in self.party.iter().skip(1) {
                 let watch = Beat::new(Gesture::Watch, ExpressionKind::Curious, pause);
-                self.map
+                self.paper
                     .direct(*id, vec![Step::FaceX(next.0), Step::Beat(watch)], now);
             }
         }
@@ -439,16 +472,16 @@ impl Expedition {
         let turned = trek.heading != Some(segment);
         trek.heading = Some(segment);
         for (index, id) in self.party.iter().enumerate() {
-            self.map.teleport(*id, formation(here, index));
+            self.paper.teleport(*id, formation(here, index));
             if done {
-                self.map.direct(*id, Vec::new(), now);
+                self.paper.direct(*id, Vec::new(), now);
             } else if turned {
                 let face = self
                     .characters
                     .get(index)
                     .map_or(ExpressionKind::Content, Character::walk_face);
                 let walking = Beat::new(formiga_core::ActionKind::Traverse, face, 600.0);
-                self.map
+                self.paper
                     .direct(*id, vec![Step::FaceX(towards.0), Step::Beat(walking)], now);
             }
         }
@@ -468,6 +501,16 @@ impl Expedition {
 
     pub fn company(&self) -> &Company {
         &self.company
+    }
+
+    /// The map walked.
+    pub fn map(&self) -> &Map {
+        &self.map
+    }
+
+    /// Whether an adventure's ending has been reached.
+    pub fn finished(&self) -> bool {
+        self.finished
     }
 
     /// The light left, on the day's scale, and as a share of it.
@@ -537,7 +580,7 @@ impl Expedition {
     pub fn ground_mut(&mut self) -> &mut Playground {
         match &mut self.leg {
             Some(leg) => &mut leg.ground,
-            None => &mut self.map,
+            None => &mut self.paper,
         }
     }
 
@@ -558,16 +601,16 @@ impl Expedition {
         self.route
             .iter()
             .copied()
-            .max_by_key(|place| PLACES[*place].depth)
-            .unwrap_or(EDGE)
+            .max_by_key(|place| self.map.places[*place].depth)
+            .unwrap_or(self.map.start)
     }
 
     /// The ways on from where the party is: each place a path it can walk goes to, by the
     /// shortest such path.
     pub fn ways(&self) -> Vec<Onward> {
         let mut ways: Vec<Onward> = Vec::new();
-        for (index, path) in PATHS.iter().enumerate() {
-            if !map::walkable(path, &self.company, self.read) {
+        for (index, path) in self.map.paths.iter().enumerate() {
+            if !open(path, &self.company, &self.read) {
                 continue;
             }
             let Some(to) = path.from(self.at) else {
@@ -596,7 +639,7 @@ impl Expedition {
     /// already today, with light left to do it in.
     pub fn can_stop(&self) -> bool {
         self.phase == Phase::Choosing
-            && PLACES[self.at].stop.played()
+            && self.map.places[self.at].stop.played()
             && !self.stops.contains(&self.at)
             && self.light > 0.0
     }
@@ -615,7 +658,7 @@ impl Expedition {
             return false;
         }
         self.light = (self.light - way.cost).max(0.0);
-        let points = PATHS[way.path].walk_from(self.at);
+        let points = self.map.walk(way.path, self.at);
         self.set_out(points, POINTING, now);
         self.phase = Phase::Walking {
             path: way.path,
@@ -634,28 +677,32 @@ impl Expedition {
             self.events.push(Event::Found { place });
         }
         self.events.push(Event::Arrived { place });
-        if place == SIGNPOST
-            && !self.read
-            && let Some(reader) = self.company.reader
+        if self.map.places[place].ending && !self.finished {
+            self.finished = true;
+            self.events.push(Event::Finished { place });
+        }
+        // A signpost with an old way on it, read by someone who can.
+        let old_way = self
+            .map
+            .paths
+            .iter()
+            .filter(|path| path.way.opener() == Some(Opener::Reader))
+            .find_map(|path| path.from(place));
+        if self.map.places[place].stop == Stop::Fork
+            && !self.read.contains(&place)
+            && let (Some(reader), Some(to)) = (self.company.reader, old_way)
         {
-            self.read = true;
-            let to = PATHS
-                .iter()
-                .find(|path| matches!(path.way, Way::Shortcut(_, Opener::Reader)))
-                .and_then(|path| path.from(SIGNPOST))
-                .unwrap_or(SIGNPOST);
-            for (index, place) in PLACES.iter().enumerate() {
-                if place.hidden && PATHS.iter().any(|path| path.from(SIGNPOST) == Some(index)) {
+            self.read.insert(place);
+            for (index, there) in self.map.places.iter().enumerate() {
+                if there.hidden && self.map.paths.iter().any(|path| path.from(place) == Some(index))
+                {
                     self.sighted[index] = true;
                 }
             }
-            self.events.push(Event::Read {
-                who: reader,
-                place: to,
-            });
+            self.events.push(Event::Read { who: reader, place: to });
             let mut reads = Beat::new(Gesture::Watch, ExpressionKind::Focused, 1.6);
             reads.cue = Some(crate::character::Cue::Exclaim);
-            self.map.direct(reader, vec![Step::Beat(reads)], now);
+            self.paper.direct(reader, vec![Step::Beat(reads)], now);
         }
         self.repaint();
         if self.light <= 0.0 {
@@ -669,9 +716,9 @@ impl Expedition {
 
     /// Repaints the map, if what it shows has changed.
     fn repaint(&mut self) {
-        let shown = Self::shown_for(&self.company, &self.sighted, self.read);
+        let shown = Self::shown_for(&self.map, &self.company, &self.sighted, &self.read);
         if shown != self.shown {
-            self.map.set_backdrop(scenery::map(&shown));
+            self.paper.set_backdrop(scenery::map(&self.map, &shown));
             self.shown = shown;
         }
     }
@@ -682,7 +729,7 @@ impl Expedition {
             return false;
         }
         let place = self.at;
-        let stop = PLACES[place].stop;
+        let stop = self.map.places[place].stop;
         let members: Vec<(Id, Character)> = self
             .party
             .iter()
@@ -720,7 +767,7 @@ impl Expedition {
             fish: &fish,
             bugs: &bugs,
             hilltop: &self.known.hilltop,
-            map: self.map.backdrop(),
+            map: self.paper.backdrop(),
             daylight: self.daylight,
             seed: self
                 .seed
@@ -760,8 +807,9 @@ impl Expedition {
         });
         // Back on the map, where they were.
         for (index, id) in self.party.iter().enumerate() {
-            self.map.teleport(*id, formation(PLACES[self.at].at, index));
-            self.map.direct(*id, Vec::new(), now);
+            self.paper
+                .teleport(*id, formation(self.map.places[self.at].at, index));
+            self.paper.direct(*id, Vec::new(), now);
         }
         self.after_stop(now);
     }
@@ -822,7 +870,7 @@ impl Expedition {
         // Back to the edge the way they came, as the crow flies on the map, and off down the lane.
         let here = match &self.trek {
             Some(trek) => trek.along((now - trek.since).max(0.0) * MAP_PACE).0,
-            None => PLACES[self.at].at,
+            None => self.map.places[self.at].at,
         };
         let tired = why == Ending::Dusk
             && self
@@ -837,11 +885,12 @@ impl Expedition {
                 .find_map(|(id, c)| (c.kind == TemperamentKind::Lazybones).then_some(*id))
         {
             let yawn = Beat::new(Gesture::Yawn, ExpressionKind::Yawning, 1.0);
-            self.map.direct(lazy, vec![Step::Beat(yawn)], now);
+            self.paper.direct(lazy, vec![Step::Beat(yawn)], now);
         }
         let mut points = vec![here];
-        if distance(here, PLACES[EDGE].at) > 2.0 {
-            points.push(PLACES[EDGE].at);
+        let start = self.map.places[self.map.start].at;
+        if distance(here, start) > 2.0 {
+            points.push(start);
         }
         points.push(LANE);
         self.trek = None;
@@ -860,7 +909,7 @@ impl Expedition {
             }
             return;
         }
-        self.map.tick(cast, now);
+        self.paper.tick(cast, now);
         let there = self.trek_on(now);
         match self.phase {
             Phase::Arriving { .. } if there => self.phase = Phase::Choosing,
@@ -873,7 +922,7 @@ impl Expedition {
     /// The light of the hour, everywhere the expedition is.
     pub fn set_daylight(&mut self, daylight: Daylight) {
         self.daylight = daylight;
-        self.map.set_daylight(daylight);
+        self.paper.set_daylight(daylight);
         if let Some(leg) = &mut self.leg {
             leg.set_daylight(daylight);
         }
@@ -881,7 +930,8 @@ impl Expedition {
 
     /// The place on the map under a point, if any.
     pub fn place_at(&self, x: f32, y: f32) -> Option<usize> {
-        PLACES
+        self.map
+            .places
             .iter()
             .enumerate()
             .filter(|(index, _)| self.sighted[*index] || self.way_to(*index).is_some())
@@ -911,11 +961,11 @@ impl Expedition {
         if let Some(leg) = &mut self.leg {
             return leg.compose(now, pointer);
         }
-        let mut scene = self.map.compose(now);
+        let mut scene = self.paper.compose(now);
         dim(&mut scene, self.light, self.daylight.darkness());
         if let Phase::Walking { path, to, .. } = self.phase {
-            let from = PATHS[path].from(to).unwrap_or(self.at);
-            draw_way(&mut scene, &PATHS[path].walk_from(from), true, true);
+            let from = self.map.paths[path].from(to).unwrap_or(self.at);
+            draw_way(&mut scene, &self.map.walk(path, from), true, true);
         }
         if self.phase == Phase::Choosing {
             let hovered = pointer.and_then(|(x, y)| self.place_at(x, y));
@@ -923,14 +973,14 @@ impl Expedition {
                 let affordable = way.cost <= self.light + 0.01;
                 draw_way(
                     &mut scene,
-                    &PATHS[way.path].walk_from(self.at),
+                    &self.map.walk(way.path, self.at),
                     hovered == Some(way.to),
                     affordable,
                 );
             }
         }
         for place in &self.stops {
-            draw_tick(&mut scene, PLACES[*place].at);
+            draw_tick(&mut scene, self.map.places[*place].at);
         }
         self.draw_basket(&mut scene);
         scene
@@ -1044,7 +1094,14 @@ fn walkable(x: f32, y: f32) -> bool {
 
 const MAP_SPOTS: [(&str, (f32, f32)); 1] = [("centre", (36.0, 182.0))];
 
-fn layout() -> Layout {
+/// Whether this company can walk a path, given the signposts read so far: the old way on one
+/// only once it has been read.
+fn open(path: &map::Path, company: &Company, read: &BTreeSet<usize>) -> bool {
+    let (a, b) = path.ends;
+    map::walkable(path, company, read.contains(&a) || read.contains(&b))
+}
+
+fn layout(_map: &Map) -> Layout {
     let ground: Patch = (4.0, 16.0, 380.0, 212.0);
     Layout {
         walkable,
@@ -1125,10 +1182,11 @@ mod tests {
     use crate::finds;
     use crate::hilltop::Standing;
     use legs::Play;
-    use map::{FAR_FALLS, GLADE, LOG, OLD_TRACK, POOL};
+    use map::{EDGE, FAR_FALLS, GLADE, LOG, OLD_TRACK, PATHS, PLACES, POOL, SIGNPOST, Way};
 
     fn setting_off(cast: &Cast, party: Vec<Id>, known: Known) -> Expedition {
         let outset = Outset {
+            map: Map::woods(),
             party,
             influence: Influence::default(),
             seed: 5,
@@ -1291,9 +1349,9 @@ mod tests {
     fn each_leg_hands_back_light_and_finds_and_the_basket_it_was_given() {
         let cast = sample();
         let party = [named(&cast, "Tansy"), named(&cast, "Mochi")];
-        let map = scenery::map(&Shown {
-            places: [true; PLACES.len()],
-            paths: [true; PATHS.len()],
+        let map = scenery::map(&Map::woods(), &Shown {
+            places: vec![true; PLACES.len()],
+            paths: vec![true; PATHS.len()],
         });
         let influence = Influence::default();
         let hilltop = Arrangement::new();
@@ -1952,9 +2010,9 @@ mod tests {
     fn the_secret_never_shows_on_an_expedition() {
         let cast = sample();
         let party = [cast.members[0].id];
-        let map = scenery::map(&Shown {
-            places: [true; PLACES.len()],
-            paths: [true; PATHS.len()],
+        let map = scenery::map(&Map::woods(), &Shown {
+            places: vec![true; PLACES.len()],
+            paths: vec![true; PATHS.len()],
         });
         let hilltop = Arrangement::from([(3, Standing::from("brass_lens"))]);
         let influence = Influence::default();
@@ -2097,9 +2155,9 @@ mod tests {
     fn at_the_old_track_the_party_goes_to_a_heap_or_two_and_no_further() {
         let cast = sample();
         let party = [named(&cast, "Fig")];
-        let map = scenery::map(&Shown {
-            places: [true; PLACES.len()],
-            paths: [true; PATHS.len()],
+        let map = scenery::map(&Map::woods(), &Shown {
+            places: vec![true; PLACES.len()],
+            paths: vec![true; PATHS.len()],
         });
         let (influence, hilltop) = (Influence::default(), Arrangement::new());
         let nothing = |_: &str| false;
