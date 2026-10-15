@@ -8,6 +8,9 @@ version is tagged.
 
 ### In the window
 
+- In the dress-up box on the Green, a costume picked out shows on whoever the pointer is over, so
+  it can be seen on them before the click puts it on; with "Take a costume off" picked, they are
+  shown without theirs. The box's pictures of each piece are half as large again.
 - The journal opens on its contents: how much has been found, then a line for each chapter (each
   place in the Woods, the pool, the meadow, the hedgerow, expeditions, the old track, and the
   plans, relics and growing things once there are any) with how it stands. Choosing a line opens
