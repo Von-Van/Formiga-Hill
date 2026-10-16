@@ -4,6 +4,14 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.67.11 (2026-10-16)
+
+Hill is built on Formiga Desktop 0.67.11 and still speaks travel version 5, so it takes the same
+trips as before.
+
+- Every download carries Hill's MIT licence: inside the macOS app, and as License.txt on the disk
+  image, in the portable Windows ZIP and beside the installed program.
+
 ## 0.67.9 (2026-10-16)
 
 Hill is built on Formiga Desktop 0.67.9 and still speaks travel version 5, so it takes the same
