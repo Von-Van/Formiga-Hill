@@ -37,6 +37,9 @@
               Type="integer"
               Value="$(TravelVersion)" />
         </Component>
+        <Component Id="HillLicense" Guid="828FA9B4-A9B0-4BC5-9882-F2FD24295D50">
+          <File Id="HillLicenseFile" Source="$(HillLicense)" Name="License.txt" KeyPath="yes" />
+        </Component>
       </Directory>
     </StandardDirectory>
 
@@ -63,6 +66,7 @@
 
     <Feature Id="MainFeature" Title="Formiga Hill" Level="1">
       <ComponentRef Id="HillApplication" />
+      <ComponentRef Id="HillLicense" />
       <ComponentRef Id="HillShortcut" />
     </Feature>
   </Package>

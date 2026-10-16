@@ -77,8 +77,20 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 Any of the pictures takes `--hour <0-24>` to see it at that hour.
 
 The README's two pictures are drawn this way, with Desktop's sample colony, and can be drawn
-again after the art changes: `--render-station docs/assets/station.png --hour 12` and
-`--render-green docs/assets/green.png --at 20 --hour 15`.
+again after the art changes. The station shows what Hill remembers of the colony, its display case
+and its Hilltop, read from Hill's data folder, so draw it with an empty scratch
+`FORMIGA_HILL_DATA_DIR`. That way a fresh checkout and a well-played one draw the same picture,
+and nobody's own memories end up in the README.
+
+```sh
+export FORMIGA_HILL_DATA_DIR="$(mktemp -d)"
+cargo run -p formiga-hill -- --render-station docs/assets/station.png --hour 12
+cargo run -p formiga-hill -- --render-green docs/assets/green.png --at 20 --hour 15
+```
+
+The Green is always drawn with a sample Hilltop, so only the station needs the scratch folder.
+`--sample-hilltop` would put that sample on the station's skyline too, instead of the empty Hilltop
+the README shows.
 
 The window itself, with its buttons, cards and speech, is pictured with `--snap <png>`: it opens,
 waits `--at` seconds (3 if not given), saves what it shows and closes, letting in nothing the keys
