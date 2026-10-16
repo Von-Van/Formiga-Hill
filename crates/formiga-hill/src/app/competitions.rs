@@ -108,7 +108,7 @@ fn is_by(text: &str) -> bool {
 
 /// Whether a package holds only competitions, so it can be changed or removed from here.
 fn only_competitions(package: &Package) -> bool {
-    package.stories.is_empty() && !package.competitions.is_empty()
+    package.stories.is_empty() && package.adventures.is_empty() && !package.competitions.is_empty()
 }
 
 /// Whether a competition can be changed and saved in its package's place: the package is in the
@@ -1019,6 +1019,23 @@ mod tests {
         assert!(!changeable(Some(Origin::Official), &one));
         // Saving one of two in the package's place would lose the other: it is copied instead.
         assert!(!changeable(Some(Origin::Folder), &package_of(2)));
+    }
+
+    #[test]
+    fn a_package_with_an_adventure_in_it_too_is_not_only_competitions() {
+        let mut package = package_of(1);
+        assert!(only_competitions(&package));
+        let mut draft = crate::adventure::draft::Draft::new("pond", MADE_HERE);
+        draft.title = "Down to the Pond".to_owned();
+        let pool = draft
+            .add_place(crate::expedition::map::Site::Pool, (290.0, 170.0))
+            .unwrap();
+        draft.places[pool].ending = true;
+        draft.join(0, pool).unwrap();
+        package.adventures.push(draft.adventure().unwrap());
+        // Changing, passing on or removing it from here would leave the adventure out.
+        assert!(!only_competitions(&package));
+        assert!(!changeable(Some(Origin::Folder), &package));
     }
 
     #[test]
