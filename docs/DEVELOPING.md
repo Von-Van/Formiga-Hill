@@ -76,6 +76,10 @@ cargo run -p formiga-hill -- --render-station station.png --at 3.6 --hour 21
 
 Any of the pictures takes `--hour <0-24>` to see it at that hour.
 
+The README's two pictures are drawn this way, with Desktop's sample colony, and can be drawn
+again after the art changes: `--render-station docs/assets/station.png --hour 12` and
+`--render-green docs/assets/green.png --at 20 --hour 15`.
+
 The window itself, with its buttons, cards and speech, is pictured with `--snap <png>`: it opens,
 waits `--at` seconds (3 if not given), saves what it shows and closes, letting in nothing the keys
 or pointer do. `--place` opens it somewhere other than the station, `--card` opens one of its
