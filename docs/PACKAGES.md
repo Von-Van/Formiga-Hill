@@ -395,7 +395,8 @@ Hill refuses an adventure, saying why, if:
 
 An adventure's words follow the same rules as a story's (see Localisation), with one name to use:
 `{leader}`, whoever leads the party. A line can have a version for each temperament, told in the
-leader's. Place and path names are plain, short and name nobody.
+leader's. What it is about is shown before anyone leads, so it is plain and names nobody; its
+title and place and path names are plain, short and name nobody too.
 
 An adventure gives nothing of its own. Whatever is found, caught or turned up on the way comes by
 the Woods' usual rules and goes home in the satchel as from any expedition; Hill remembers how
