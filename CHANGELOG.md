@@ -4,6 +4,23 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.67.9 (2026-10-16)
+
+Hill is built on Formiga Desktop 0.67.9 and still speaks travel version 5, so it takes the same
+trips as before. This version mends a few things found after 0.67.8.
+
+- The dress-up box on the Green shows its shaded right wall again.
+- With **Take a costume off** chosen, pointing at someone in a tall hat no longer makes the preview
+  flicker.
+- An adventure now arrives at the place it starts, so that place's words, an ending there or a
+  signpost there happen as they should.
+- An adventure's description and its names are checked as plain words, so `{leader}` no longer
+  shows word for word before anyone leads. A package that lists its kinds of content must list
+  stories to load stories.
+- In the Fairground, only a package holding exactly one competition and nothing else is changed in
+  place. Any other package is copied first, so saving never drops what else it held.
+- Hill now has its MIT licence in the repository, and its README shows the station and the Green.
+
 ## 0.67.8 (2026-10-15)
 
 Hill is built on Formiga Desktop 0.67.8 and still speaks travel version 5, so it takes the same
