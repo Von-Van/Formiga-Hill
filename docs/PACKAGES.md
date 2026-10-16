@@ -19,9 +19,10 @@ exactly this way, and each is a complete working example in
 best place to start, since it shows a mystery whose suspects are cast from the colony's own
 habits, temperaments and friendships.
 
-A package can carry Woods adventures too, in the same folder and format, and much of what follows
-holds for them as it does for stories; [A Woods adventure](#a-woods-adventure) says what is
-different.
+A package can carry Woods adventures and Fairground competitions too, in the same folder and
+format, and much of what follows holds for them as it does for stories;
+[A Woods adventure](#a-woods-adventure) and [A Fairground competition](#a-fairground-competition)
+say what is different.
 
 ## Writing a story in Hill
 
@@ -41,9 +42,9 @@ carried on by hand.
 
 ## Sharing a story, or anything else made at the Hill
 
-A story, an adventure, or anything else a package carries, is passed on as one plain text file
-ending `.formiga-hill-share`: the package's files, each
-written out as text in a TOML table, under `formiga_hill_share = 1`.
+A story, an adventure, a competition, or anything else a package carries, is passed on as one
+plain text file ending `.formiga-hill-share`: the package's files, each written out as text in a
+TOML table, under `formiga_hill_share = 1`.
 
 ```toml
 formiga_hill_share = 1
@@ -55,13 +56,16 @@ formiga_hill_share = 1
 ```
 
 Hill reads at most 2 MiB of one, holds its files to exactly the limits of a package folder below,
-and loads the package by the same loader before anything is written. The Clubhouse's **Story
-packages…** card opens one (dropping it on the window does too) and shows whose it is, what it
-holds, how its story begins and which souvenirs it can give, with ways to try the story first, add
-it, or turn it away. Adding it puts the package in the packages folder as `<package_id>.formiga-hill`,
-in place of any earlier version with the same id. Ids beginning `com.formiga.` are kept for Hill's
-own packages and are refused. **Take out…** on the same card removes a package from the folder
-again.
+and loads the package by the same loader before anything is written. There is one way in,
+whatever the file holds: the Clubhouse's **Story packages…** card (**Open a shared story…**), the
+Woods' tray under **Adventure** and the Fairground's **Competitions** card (each **Open a shared
+one…**), or dropping the file on the window, all open the same **Shared with you** card. It shows
+whose it is, what it holds, how each story begins and which souvenirs it can give, each adventure's
+map, and each competition's games, with ways to try a story first, add it, or turn it away.
+Adding it puts the package in the packages folder as `<package_id>.formiga-hill`, in place of any
+earlier version with the same id. Ids beginning `com.formiga.` are kept for Hill's own packages and
+are refused. **Take out…** on the Story packages card removes a package from the folder again, and
+a package holding only competitions can be removed from the Competitions card too.
 
 `formiga-hill --share-package my-story.formiga-hill my-story.formiga-hill-share` writes a share
 file from a package folder, and `--check-package` checks a share file as it does a folder.
@@ -396,13 +400,23 @@ leader's. Place and path names are plain, short and name nobody.
 An adventure gives nothing of its own. Whatever is found, caught or turned up on the way comes by
 the Woods' usual rules and goes home in the satchel as from any expedition; Hill remembers how
 often each adventure has been played and finished, and that is all.
-## A competition file
+
+## A Fairground competition
 
 A package can also carry competitions for the Fairground: a run of its own games, one after
 another, for points. The colony plays each game exactly as it always does, and the person
-watches. List `"competition"` in the manifest's `content_types`, and give each competition its own
-file in `entry_points`, beside any stories. The Fairground's Competitions card makes these
-packages for you, so most people never write one by hand.
+watches. Hill's own, *The Fairground Five* and *Heats and a Final*, are in
+[`crates/formiga-hill/content`](../crates/formiga-hill/content).
+
+There is no need to write one by hand either. The Fairground's **Competitions** card makes them
+(**Make a new one**: the games in order, who plays each, the points and how it is won, with how it
+would go with the colony visiting), changes or copies them, and passes one on as a file to share,
+as above. A competition made there is kept as a package in the packages folder, like one added
+from a file. What it writes is this format.
+
+The manifest lists `"competition"` in `content_types`, and each competition's own file in
+`entry_points`. A package may carry competitions beside stories and adventures; each file says
+which it is by its first table.
 
 ```toml
 [competition]
@@ -429,6 +443,7 @@ are refused, so nothing in one can say anything about a companion.
 
 Packages can't run code, read or write files, reach the network, start programs, change anything
 in Formiga Desktop, rewrite a companion's temperament, or make up history for it. These limits are
-what make it reasonable to install a story or an adventure from someone you don't know: the worst
-a package can do is tell a story badly, or lay out a dull walk. A package that fails to load is reported and left out, and it never
-stops Hill from opening.
+what make it reasonable to install a story, an adventure or a competition from someone you don't
+know: the worst a package can do is tell a story badly, lay out a dull walk, or order the
+Fairground's games dully. A package that fails to load is reported and left out, and it never stops
+Hill from opening.

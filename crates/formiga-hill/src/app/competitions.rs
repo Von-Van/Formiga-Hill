@@ -1,10 +1,11 @@
 //! The Fairground's competitions in the window: the card of them, Hill's own and any made here or
 //! taken in from a file, to run, change, copy, pass on or remove; the editor for making one, with
-//! its preview against this colony; a look over a file before anything in it is added; and the
-//! tray while one is run, with how it stands.
+//! its preview against this colony; and the tray while one is run, with how it stands.
 //!
 //! A competition made here is saved as a package in the packages folder, as any shared one is,
-//! so one made here and one from a friend are kept, set aside and removed the same way.
+//! so one made here and one from a friend are kept, set aside and removed the same way. A file
+//! someone gave is looked over on the same "Shared with you" card as a shared story or adventure
+//! (`super::shared`), which shows its competitions as `describe` does.
 
 use super::{Card, HillApp, listed, paper};
 use crate::cast::{Cast, Id};
@@ -28,7 +29,6 @@ const MADE_PREFIX: &str = "made.at.hill.";
 #[derive(Default)]
 pub(super) struct Competitions {
     editing: Option<Editing>,
-    looking: Option<Looking>,
     /// The package id the person has asked to remove, waiting for them to say so again.
     removing: Option<String>,
     /// What came of the last thing done on the card, to say at its top.
@@ -45,12 +45,6 @@ struct Editing {
     over: Option<(String, String)>,
 }
 
-/// A file being looked over before it is added, or why it could not be read.
-struct Looking {
-    from: String,
-    found: Result<sharing::Inspection, String>,
-}
-
 /// What the person did on the card, done once it is drawn.
 enum Act {
     Run(Format),
@@ -59,7 +53,6 @@ enum Act {
     Open,
     AskRemove(String),
     Remove(String),
-    Keep,
     Close,
     Save,
 }
@@ -338,12 +331,10 @@ impl HillApp {
         }
     }
 
-    /// The competitions card: the list, the editor, or a file being looked over.
+    /// The competitions card: the list, or the editor.
     pub(super) fn competitions_window(&mut self, ctx: &egui::Context, now: f32) {
         let title = if self.competitions.editing.is_some() {
             "Make a competition"
-        } else if self.competitions.looking.is_some() {
-            "A competition file"
         } else {
             "Competitions"
         };
@@ -353,8 +344,6 @@ impl HillApp {
             }
             if app.competitions.editing.is_some() {
                 app.editor(ui)
-            } else if app.competitions.looking.is_some() {
-                app.looking(ui)
             } else {
                 app.list(ui)
             }
@@ -463,7 +452,7 @@ impl HillApp {
                     over: None,
                 }));
             }
-            let open = paper::button(ui, "Open a file");
+            let open = paper::button(ui, "Open a shared one\u{2026}");
             if paper::explain(
                 ui,
                 open,
@@ -668,82 +657,6 @@ impl HillApp {
         act
     }
 
-    /// A file being looked over: what is in it, and whether to add it.
-    fn looking(&mut self, ui: &mut egui::Ui) -> Option<Act> {
-        let mut act = None;
-        let looking = self.competitions.looking.as_ref()?;
-        paper::aside(ui, format!("From {}", looking.from));
-        match &looking.found {
-            Err(problem) => {
-                paper::words(
-                    ui,
-                    "It can't be added: it isn't something Hill can take in.",
-                );
-                paper::faint(ui, problem);
-            }
-            Ok(inspection) => {
-                let summary = &inspection.summary;
-                paper::name(ui, &summary.title);
-                paper::aside(
-                    ui,
-                    format!("by {}  \u{b7}  version {}", summary.author, summary.version),
-                );
-                let package = &inspection.package;
-                if package.competitions.is_empty() {
-                    paper::words(ui, "There are no competitions in it.");
-                }
-                for format in &package.competitions {
-                    paper::heading(ui, &format.title);
-                    for line in format.told() {
-                        paper::words(ui, line);
-                    }
-                }
-                if !package.stories.is_empty() {
-                    let stories = package.stories.len();
-                    paper::aside(
-                        ui,
-                        format!(
-                            "It also has {stories} {} for the Clubhouse's notice board.",
-                            if stories == 1 { "story" } else { "stories" }
-                        ),
-                    );
-                }
-                paper::aside(
-                    ui,
-                    "It only orders the Fairground's own games and scores them: it can't \
-                     change anyone, or how they play.",
-                );
-                if self
-                    .library
-                    .packages
-                    .iter()
-                    .any(|known| known.id == summary.id)
-                {
-                    paper::faint(
-                        ui,
-                        "You have this one already: adding it puts this version in its place.",
-                    );
-                }
-            }
-        }
-        paper::rule(ui);
-        ui.horizontal_wrapped(|ui| {
-            let found = looking.found.is_ok();
-            let can_keep = self.packages_folder.is_some();
-            if found {
-                let keep = ui.add(paper::Button::new("Add it").enabled(can_keep));
-                if keep.clicked() {
-                    act = Some(Act::Keep);
-                }
-            }
-            let label = if found { "Don't add it" } else { "Back" };
-            if paper::button(ui, label).clicked() {
-                act = Some(Act::Close);
-            }
-        });
-        act
-    }
-
     /// Does what the person asked on the card.
     fn act(&mut self, act: Act, now: f32) {
         let state = &mut self.competitions;
@@ -761,10 +674,7 @@ impl HillApp {
                 state.removing = None;
                 state.editing = Some(editing);
             }
-            Act::Close => {
-                state.editing = None;
-                state.looking = None;
-            }
+            Act::Close => state.editing = None,
             Act::AskRemove(id) => state.removing = (!id.is_empty()).then_some(id),
             Act::Remove(id) => {
                 state.removing = None;
@@ -838,30 +748,8 @@ impl HillApp {
                     Err(problem) => format!("It couldn't be saved: {}.", problem.problem),
                 });
             }
-            Act::Open => {
-                let Some(path) = rfd::FileDialog::new()
-                    .set_title("Open a competition")
-                    .add_filter("Formiga Hill file", &[sharing::EXTENSION])
-                    .pick_file()
-                else {
-                    return;
-                };
-                state.looking = Some(look_over(&path));
-            }
-            Act::Keep => {
-                let Some(looking) = state.looking.take() else {
-                    return;
-                };
-                let (Ok(inspection), Some(folder)) = (&looking.found, &self.packages_folder) else {
-                    return;
-                };
-                let title = inspection.summary.title.clone();
-                state.said = Some(match put_in(&mut self.library, folder, &inspection.files) {
-                    Ok(Some(old)) => format!("Added {title}, in place of version {old}."),
-                    Ok(None) => format!("Added {title}."),
-                    Err(problem) => format!("It couldn't be added: {problem}."),
-                });
-            }
+            // Looked over where anything shared is, before it is added.
+            Act::Open => self.choose_shared_file(now),
         }
     }
 
@@ -878,19 +766,18 @@ impl HillApp {
     }
 }
 
-/// Reads a file and looks it over, without adding anything.
-fn look_over(path: &std::path::Path) -> Looking {
-    let from = path.file_name().map_or_else(
-        || path.display().to_string(),
-        |name| name.to_string_lossy().into_owned(),
+/// One competition in a shared package, as the "Shared with you" card shows it: its games in
+/// order, who plays each and how it is won.
+pub(super) fn describe(ui: &mut egui::Ui, format: &Format) {
+    paper::heading(ui, format!("At the Fairground: {}", format.title));
+    for line in format.told() {
+        paper::words(ui, line);
+    }
+    paper::aside(
+        ui,
+        "It only orders the Fairground's own games and scores them: it can't change anyone, or \
+         how they play.",
     );
-    let found = sharing::read(path)
-        .and_then(|files| sharing::inspect(files, &from))
-        .map_err(|problem| match problem.file {
-            Some(file) => format!("{file}: {}", problem.problem),
-            None => problem.problem,
-        });
-    Looking { from, found }
 }
 
 /// Lets a package into the packages `folder`, and into the library in place of any with its id.

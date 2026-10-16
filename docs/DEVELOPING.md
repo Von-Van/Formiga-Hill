@@ -81,8 +81,10 @@ waits `--at` seconds (3 if not given), saves what it shows and closes, letting i
 or pointer do. `--place` opens it somewhere other than the station, `--card` opens one of its
 cards (at the place it belongs to, if none is named), `--chapter <n>` opens the journal's nth
 chapter with `--card journal` (with `--card making`, the map editor's sample adventure with its
-nth place, then path, picked out), and `--story` begins the first story in the Clubhouse. If the picture can't be saved, it says why and fails. Give it a scratch
-`FORMIGA_HILL_DATA_DIR` so a review never touches the colony's memories.
+nth place, then path, picked out), `--card new-competition` opens the Fairground's competitions
+card with a new competition in its editor, and `--story` begins the first story in the Clubhouse.
+If the picture can't be saved, it says why and fails. Give it a scratch `FORMIGA_HILL_DATA_DIR` so
+a review never touches the colony's memories.
 
 ```sh
 FORMIGA_HILL_DATA_DIR=/tmp/hill-review \
@@ -113,7 +115,7 @@ crates/formiga-hill/src/
   station/           the station, the train, and its comings and goings
   green/             the Village Green
   clubhouse/         the Clubhouse and its fire
-  fairground/        the Fairground and its games
+  fairground/        the Fairground, its games, and competitions of them
   woods/             the glade, rummaging there, and the basket other outings draw with it
   fishing/           the pool, its fish, and angling
   meadow/            the meadow, its bugs, and catching them
@@ -125,7 +127,11 @@ crates/formiga-hill/src/
   clearing/          the secret
   finds/             everything the Woods turns up, and how each looks
   costume/           the dress-up box
-  story/             story packages: loading, casting, the script, the director
+  story/             packages: loading, casting, the script, the director, the story builder's
+                     draft
+  adventure.rs, adventure/
+                     Woods adventures read from packages, and the map editor's draft
+  sharing.rs         passing on and taking in what is made at the Hill, as one shared file
   memories.rs        what Hill remembers of each colony
   photos.rs          the album
   daylight.rs        the hour's light, and what glows after dark
@@ -136,7 +142,7 @@ crates/formiga-hill/src/
   icon.rs            the app icon: the Hill, in pixels
   sheet.rs           review sheets: pictures for checking by eye what tests can only count
 crates/formiga-hill/content/
-                     Hill's own story packages, in the community format
+                     Hill's own stories, adventures and competitions, in the community format
 packaging/, scripts/ the macOS app and the Windows installer
 docs/
 ```

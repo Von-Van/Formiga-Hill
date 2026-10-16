@@ -3,8 +3,10 @@
 //! away. Anything added can be removed again from the Clubhouse's Story packages card. The
 //! checking, keeping and removing are `crate::sharing`'s, the same for any kind of content Hill
 //! hosts, and so is this card: it opens wherever the person is, from any place's own button
-//! (`choose_shared_file`), and says what kinds of content a package holds; it shows a story's
-//! own details, and offers to try one, because stories are what the Clubhouse stages.
+//! (`choose_shared_file`), and says what kinds of content a package holds; it shows each story,
+//! Woods adventure and Fairground competition in it, and offers to try a story, because stories
+//! are what the Clubhouse stages. The Woods' and the Fairground's "Open a shared one…" buttons
+//! open this card too, so there is one way in for anything shared.
 
 use super::writing::Trying;
 use super::{Area, Card, HillApp, paper};
@@ -139,7 +141,7 @@ impl HillApp {
                         .content_types
                         .iter()
                         .map(String::as_str)
-                        .filter(|kind| !matches!(*kind, "story" | "adventure"))
+                        .filter(|kind| !matches!(*kind, "story" | "adventure" | "competition"))
                         .collect();
                     if !others.is_empty() {
                         paper::words(ui, format!("It holds: {}.", others.join(", ")));
@@ -152,6 +154,9 @@ impl HillApp {
                     }
                     for adventure in &inspection.package.adventures {
                         super::adventures::describe(ui, adventure);
+                    }
+                    for format in &inspection.package.competitions {
+                        super::competitions::describe(ui, format);
                     }
                     paper::rule(ui);
                     paper::faint(
@@ -188,7 +193,7 @@ impl HillApp {
         }
         if done {
             self.importing = None;
-            self.card = (self.area == Area::Clubhouse).then_some(Card::Shelf);
+            self.card = self.card_shared_from();
         }
     }
 
@@ -202,6 +207,7 @@ impl HillApp {
         };
         let title = inspection.summary.title.clone();
         let stories = !inspection.package.stories.is_empty();
+        let competitions = !inspection.package.competitions.is_empty();
         let here = self.area == Area::Clubhouse;
         match sharing::install(&folder, &inspection.files) {
             Ok(_) => {
@@ -211,17 +217,33 @@ impl HillApp {
                 self.notice = Some((
                     if stories {
                         format!("\u{201c}{title}\u{201d} is on the Clubhouse's notice board.")
+                    } else if competitions {
+                        format!("\u{201c}{title}\u{201d} is with the Fairground's competitions.")
                     } else {
                         format!("\u{201c}{title}\u{201d} is added.")
                     },
                     now,
                 ));
-                self.card = (here && stories).then_some(Card::Board);
+                self.card = if here && stories {
+                    Some(Card::Board)
+                } else {
+                    self.card_shared_from()
+                };
             }
             Err(error) => {
                 self.notice = Some((format!("It couldn't be added: {}.", error.problem), now));
-                self.card = here.then_some(Card::Shelf);
+                self.card = self.card_shared_from();
             }
+        }
+    }
+
+    /// The card a shared file is opened from at this place, to go back to once it is added or
+    /// turned away: the Clubhouse's Story packages, or the Fairground's competitions.
+    fn card_shared_from(&self) -> Option<Card> {
+        match self.area {
+            Area::Clubhouse => Some(Card::Shelf),
+            Area::Fairground => Some(Card::Competitions),
+            _ => None,
         }
     }
 

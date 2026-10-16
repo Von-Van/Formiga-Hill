@@ -119,8 +119,8 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
   --place <PLACE>          With --snap: open at the station, green, clubhouse, fairground, woods
                            or hilltop rather than the station
   --card <CARD>            With --snap: open the notices, departures, board, shelf, writing,
-                           dress-up, journal, plans, album, sound or making card, at its own
-                           place if none is given
+                           dress-up, journal, plans, album, sound, making, competitions or
+                           new-competition card, at its own place if none is given
   --story                  With --snap in the Clubhouse: begin the first story on the shelves
   --chapter <N>            With --snap --card journal: open the Nth chapter of its contents;
                            with --card writing, the Nth scene of a sample story; with --card
@@ -563,6 +563,15 @@ fn check_packages(folders: &[PathBuf]) -> Result<()> {
                             println!("    \"{green}\" is read as \"{clubhouse}\"");
                         }
                     }
+                }
+                for adventure in &package.adventures {
+                    println!("  \u{201c}{}\u{201d}, a Woods adventure", adventure.title);
+                }
+                for format in &package.competitions {
+                    println!(
+                        "  \u{201c}{}\u{201d}, a competition for the Fairground",
+                        format.title
+                    );
                 }
             }
             Err(problem) => {
