@@ -1156,8 +1156,11 @@ fn dress_up_box(scene: &mut Canvas) {
             (left + width, rim),
         ],
         |x, y| {
-            let wall_left = left + 2 - (y - back) * 2 / deep;
-            let wall_right = wall_left + width;
+            // The walls' tops are the first and last pixels the fill reaches on each row: the
+            // left edge where it crosses this row's centre, and as wide as the box from there.
+            let edge = (left + 2) as f32 - ((y - back) as f32 + 0.5) * 2.0 / deep as f32;
+            let wall_left = (edge - 0.5).ceil() as i32;
+            let wall_right = wall_left + width - 1;
             Some(if y == back || x == wall_left {
                 PAINT.light
             } else if x == wall_right {
@@ -1640,6 +1643,26 @@ mod tests {
         let top = solid.iter().map(|point| point.1).min().unwrap();
         let bottom = solid.iter().map(|point| point.1).max().unwrap();
         assert_eq!((left, top, right + 1, bottom + 1), DRESS_UP);
+    }
+
+    #[test]
+    fn the_dress_up_box_shows_its_right_wall_in_shade() {
+        let mut alone = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
+        dress_up_box(&mut alone);
+        let (left, top, right, bottom) = DRESS_UP;
+        let mut rows = 0;
+        for y in top..bottom {
+            let Some(last) = (left..right).rev().find(|&x| alone.get(x, y) == INSIDE) else {
+                continue;
+            };
+            rows += 1;
+            assert_eq!(
+                alone.get(last + 1, y),
+                PAINT.base,
+                "no right wall on row {y}"
+            );
+        }
+        assert!(rows >= 3, "only {rows} rows of the opening are dark");
     }
 
     #[test]

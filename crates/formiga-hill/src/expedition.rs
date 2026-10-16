@@ -678,11 +678,17 @@ impl Expedition {
         true
     }
 
-    /// Arrived somewhere: anything hidden there is found, a signpost is read if someone can,
-    /// and the party looks about.
+    /// Arrived somewhere along a path.
     fn arrive(&mut self, place: usize, now: f32) {
         self.at = place;
         self.route.push(place);
+        self.look_about(now);
+    }
+
+    /// At a place, walked in from the Hill or along a path: anything hidden there is found, an
+    /// ending is reached, a signpost is read if someone can, and the party looks about.
+    fn look_about(&mut self, now: f32) {
+        let place = self.at;
         if !self.sighted[place] {
             self.sighted[place] = true;
             self.events.push(Event::Found { place });
@@ -931,7 +937,7 @@ impl Expedition {
         self.paper.tick(cast, now);
         let there = self.trek_on(now);
         match self.phase {
-            Phase::Arriving { .. } if there => self.phase = Phase::Choosing,
+            Phase::Arriving { .. } if there => self.look_about(now),
             Phase::Walking { to, .. } if there => self.arrive(to, now),
             Phase::Homeward { .. } if there => self.phase = Phase::Over,
             _ => {}
@@ -2309,5 +2315,26 @@ mod tests {
             "{:?}",
             trip.phase()
         );
+    }
+
+    #[test]
+    fn the_place_walked_in_to_is_arrived_at_like_any_other() {
+        let cast = sample();
+        let mut map = Map::woods();
+        map.places[map.start].ending = true;
+        let outset = Outset {
+            map,
+            party: vec![cast.members[0].id],
+            influence: Influence::default(),
+            seed: 5,
+        };
+        let mut trip = Expedition::new(&cast, outset, Known::default(), 0.0);
+        arrived(&mut trip, &cast);
+        let start = trip.map().start;
+        let events = trip.take_events();
+        assert!(events.contains(&Event::Arrived { place: start }));
+        assert!(events.contains(&Event::Finished { place: start }));
+        assert!(trip.finished());
+        assert_eq!(trip.route(), &[start], "walking in is not a second visit");
     }
 }

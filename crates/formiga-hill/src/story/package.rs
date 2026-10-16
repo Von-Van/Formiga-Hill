@@ -402,6 +402,13 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
             competitions.push(format);
             continue;
         }
+        if !manifest.content_types.is_empty()
+            && !manifest.content_types.iter().any(|kind| kind == "story")
+        {
+            return Err(in_manifest(format!(
+                "\"{entry}\" is a story, so content_types must list \"story\""
+            )));
+        }
         let story = parse_story(story_text, &lines, min_cast, manifest.hill_api)
             .map_err(|problem| refuse(&package, Some(entry), problem))?;
         if !areas.is_empty() && !areas.contains(&story.area) {
@@ -566,6 +573,22 @@ mod tests {
             );
             assert!(load(&files, "test").is_err(), "{to} was accepted");
         }
+    }
+
+    #[test]
+    fn each_entry_point_is_of_a_kind_the_manifest_lists() {
+        let mut files = minimal();
+        let manifest = String::from_utf8(files["manifest.toml"].clone()).unwrap();
+        files.insert(
+            "manifest.toml".into(),
+            manifest
+                .replace(
+                    "content_types = [\"story\"]",
+                    "content_types = [\"adventure\"]",
+                )
+                .into_bytes(),
+        );
+        assert!(problem(&files).contains("content_types must list \"story\""));
     }
 
     #[test]

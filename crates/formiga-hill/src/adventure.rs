@@ -180,9 +180,24 @@ fn line(lines: &Lines, key: &str, what: &str) -> Result<Line, String> {
 /// A name, from a line: one short line of plain words, nobody named in it.
 fn name(lines: &Lines, key: &str, what: &str) -> Result<String, String> {
     let found = line(lines, key, what)?;
-    if !found.placeholders().is_empty() || found.text.chars().count() > 40 {
+    if !found.placeholders().is_empty()
+        || !found.variants.is_empty()
+        || found.text.chars().count() > 40
+    {
         return Err(format!(
-            "{what}: \"{key}\" is a name, so it must be short and name nobody"
+            "{what}: \"{key}\" is a name, so it must be short, plain and name nobody"
+        ));
+    }
+    Ok(found.text)
+}
+
+/// What an adventure is about, from a line: shown when choosing it, before anyone leads, so
+/// plain words that name nobody and are the same for every temperament.
+fn summary(lines: &Lines, key: &str, what: &str) -> Result<String, String> {
+    let found = line(lines, key, what)?;
+    if !found.placeholders().is_empty() || !found.variants.is_empty() {
+        return Err(format!(
+            "{what}: \"{key}\" is shown before anyone leads, so it must be plain and name nobody"
         ));
     }
     Ok(found.text)
@@ -197,7 +212,7 @@ pub fn parse(text: &str, lines: &Lines) -> Result<Adventure, String> {
     }
     let title = name(lines, &header.title, "adventure.title")?;
     let about = match &header.about {
-        Some(key) => line(lines, key, "adventure.about")?.text,
+        Some(key) => summary(lines, key, "adventure.about")?,
         None => String::new(),
     };
     if raw.places.len() < 2 || raw.places.len() > MOST_PLACES {
@@ -605,6 +620,25 @@ pub(crate) mod tests {
                 .unwrap_err()
                 .contains("only name {leader}")
         );
+    }
+
+    #[test]
+    fn what_an_adventure_is_about_names_nobody_and_reads_the_same_for_everyone() {
+        for about in [
+            "about = \"{leader} follows the lanterns.\"",
+            "about = { text = \"Follow the lanterns.\", grump = \"Lanterns, then.\" }",
+        ] {
+            let lines = Lines::parse(&LINES.replace(
+                "about = \"Follow the lantern light to the old pool.\"",
+                about,
+            ))
+            .unwrap();
+            let problem = parse(FILE, &lines).unwrap_err();
+            assert!(
+                problem.contains("before anyone leads"),
+                "{about}: {problem}"
+            );
+        }
     }
 
     #[test]

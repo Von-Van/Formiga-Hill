@@ -9,6 +9,7 @@ use crate::character::{Brushing, Offer};
 use crate::costume;
 use crate::playground::{Playground, distance};
 use eframe::egui;
+use std::collections::{HashMap, HashSet};
 
 /// What the person has picked out of the dress-up box to put on someone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -123,20 +124,8 @@ impl HillApp {
             .as_ref()
             .map(|(_, games)| games.hoopla.carried().to_vec())
             .unwrap_or_default();
-        let mut trying = self.costumes.clone();
-        if self.area == Area::Green
-            && let Some(id) = self.hovered
-        {
-            match self.picked {
-                Some(Pick::Piece(piece)) => {
-                    trying.insert(id, piece);
-                }
-                Some(Pick::TakeOff) => {
-                    trying.remove(&id);
-                }
-                None => {}
-            }
-        }
+        let over = self.hovered.filter(|_| self.area == Area::Green);
+        let trying = trying_on(&self.costumes, self.picked, over);
         let (costumes, groomed) = (&trying, &self.groomed);
         let grounds = [
             self.green.as_mut(),
@@ -188,5 +177,82 @@ impl HillApp {
                 app.picked = (!taking_off).then_some(Pick::TakeOff);
             }
         });
+    }
+}
+
+/// What everyone wears, with whatever was picked out of the box shown on whoever the pointer is
+/// over, or them shown with theirs off.
+fn trying_on(
+    costumes: &HashMap<Id, &'static str>,
+    picked: Option<Pick>,
+    over: Option<Id>,
+) -> HashMap<Id, &'static str> {
+    let mut trying = costumes.clone();
+    if let Some(id) = over {
+        match picked {
+            Some(Pick::Piece(piece)) => {
+                trying.insert(id, piece);
+            }
+            Some(Pick::TakeOff) => {
+                trying.remove(&id);
+            }
+            None => {}
+        }
+    }
+    trying
+}
+
+/// Who on the Green the pointer is over, and everyone there dressed to show it. They are pointed
+/// at as they are dressed, not as they are shown trying something on, or taking off a tall hat
+/// under the pointer would leave nobody under it, put the hat back, and so on, frame after frame.
+pub(super) fn point_on_green(
+    green: &mut Playground,
+    pointer: Option<(f32, f32)>,
+    now: f32,
+    costumes: &HashMap<Id, &'static str>,
+    groomed: &HashSet<Id>,
+    picked: Option<Pick>,
+) -> Option<Id> {
+    green.dress(costumes, groomed);
+    let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
+    green.dress(&trying_on(costumes, picked, hovered), groomed);
+    hovered
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cast::sample;
+
+    #[test]
+    fn taking_off_a_tall_hat_keeps_pointing_at_its_wearer() {
+        let cast = sample();
+        let mut green = crate::green::open(&cast, 0.0);
+        let id = green.ids()[0];
+        let costumes = HashMap::from([(id, "wizard_hat")]);
+        let groomed = HashSet::new();
+        green.dress(&costumes, &groomed);
+        let hatted = green.bounds(id, 0.0).unwrap();
+        green.dress(&HashMap::new(), &groomed);
+        let bare = green.bounds(id, 0.0).unwrap();
+        assert!(hatted.1 < bare.1, "the hat rises above its wearer");
+        // The top of the hat, above where its wearer is without it.
+        let at = Some(((hatted.0 + hatted.2) as f32 / 2.0, hatted.1 as f32 + 0.5));
+        for frame in 0..4 {
+            let hovered = point_on_green(
+                &mut green,
+                at,
+                0.0,
+                &costumes,
+                &groomed,
+                Some(Pick::TakeOff),
+            );
+            assert_eq!(hovered, Some(id), "lost the wearer on frame {frame}");
+            assert_eq!(
+                green.bounds(id, 0.0),
+                Some(bare),
+                "the hat is still shown on"
+            );
+        }
     }
 }

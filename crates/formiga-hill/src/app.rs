@@ -1240,7 +1240,14 @@ impl eframe::App for HillApp {
                         }
                         (Area::Green, Some(green), _) => {
                             green.set_pointer(pointer);
-                            let hovered = pointer.and_then(|(x, y)| green.actor_at(x, y, now));
+                            let hovered = finery::point_on_green(
+                                green,
+                                pointer,
+                                now,
+                                &self.costumes,
+                                &self.groomed,
+                                self.picked,
+                            );
                             if let Some(id) = hovered {
                                 ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
                                 if response.clicked() {
