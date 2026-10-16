@@ -1,6 +1,7 @@
 //! The Hill window: the station, the green, the Clubhouse, the Fairground, the Woods and the
 //! Hilltop, the colony in them, and the way home.
 
+mod adventures;
 mod arranging;
 mod bug_hunt;
 mod camera;
@@ -11,6 +12,7 @@ mod finery;
 mod fishing_trip;
 mod foraging;
 mod games;
+mod mapmaking;
 mod paper;
 mod plans;
 mod rummaging;
@@ -98,6 +100,8 @@ enum Card {
     Plans,
     Album,
     Sound,
+    /// The Woods' map editor, for an adventure being made.
+    Making,
 }
 
 /// For review only: where the window opens, with which card, and when its picture is taken.
@@ -123,7 +127,7 @@ pub const SNAP_PLACES: [&str; 6] = [
 ];
 
 /// What `--card` can name, in `Snap`.
-pub const SNAP_CARDS: [&str; 10] = [
+pub const SNAP_CARDS: [&str; 11] = [
     "notices",
     "departures",
     "board",
@@ -134,6 +138,7 @@ pub const SNAP_CARDS: [&str; 10] = [
     "plans",
     "album",
     "sound",
+    "making",
 ];
 
 /// Where a card can be open, for `Snap`: the places it belongs to, the first being where a
@@ -145,6 +150,7 @@ pub fn snap_card_places(card: &str) -> &'static [&'static str] {
         "dress-up" => &["green"],
         "plans" => &["hilltop"],
         "journal" => &["woods", "hilltop"],
+        "making" => &["woods"],
         _ => &[],
     }
 }
@@ -401,6 +407,7 @@ impl HillApp {
             Some("plans") => Some(Card::Plans),
             Some("album") => Some(Card::Album),
             Some("sound") => Some(Card::Sound),
+            Some("making") => Some(Card::Making),
             _ => None,
         };
         let story = snap.story;
@@ -427,6 +434,11 @@ impl HillApp {
         // The builder is pictured with a story open, at the scene named as its chapter.
         if card == Some(Card::Writing) {
             self.writing.open_sample(chapter);
+        }
+        // The map editor is pictured with an adventure half made, and the chapter's place or path
+        // picked out.
+        if card == Some(Card::Making) {
+            self.open_sample_making(chapter);
         }
     }
 
@@ -1038,7 +1050,16 @@ impl eframe::App for HillApp {
                     ctx.zoom_factor(),
                 )
                 .keep(&ctx);
-                let response = ui.allocate_rect(rect, egui::Sense::click());
+                // Places on a map being made are picked up and moved by dragging.
+                let making = self.area == Area::Woods
+                    && self.woods.making.is_some()
+                    && self.woods.expedition.is_none();
+                let sense = if making {
+                    egui::Sense::click_and_drag()
+                } else {
+                    egui::Sense::click()
+                };
+                let response = ui.allocate_rect(rect, sense);
                 let painter = ui.painter_at(rect);
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                 painter.image(texture, rect, uv, egui::Color32::WHITE);
@@ -1088,6 +1109,17 @@ impl eframe::App for HillApp {
                             }
                             if response.clicked() {
                                 self.woods_click(pointer, now);
+                            }
+                            if making
+                                && (response.drag_started()
+                                    || response.dragged()
+                                    || response.drag_stopped())
+                            {
+                                self.making_drag(
+                                    pointer.or(self.pointer),
+                                    response.drag_started(),
+                                    response.drag_stopped(),
+                                );
                             }
                             hovered.filter(|_| spot.is_none())
                         }
@@ -1345,6 +1377,7 @@ impl eframe::App for HillApp {
         self.notices_window(&ctx);
         self.departures_window(&ctx, now);
         self.sound_window(&ctx);
+        self.making_window(&ctx, now);
         self.take_snap(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {

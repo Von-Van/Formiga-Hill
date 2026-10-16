@@ -50,7 +50,7 @@ impl HillApp {
                 {
                     Importing::Refused(
                         label,
-                        "it claims to be one of Hill's own stories, which are already here".into(),
+                        "it claims to be one of Hill's own, which are already here".into(),
                     )
                 } else {
                     // Whatever loads holds only content this Hill knows how to host.
@@ -139,7 +139,7 @@ impl HillApp {
                         .content_types
                         .iter()
                         .map(String::as_str)
-                        .filter(|kind| *kind != "story")
+                        .filter(|kind| !matches!(*kind, "story" | "adventure"))
                         .collect();
                     if !others.is_empty() {
                         paper::words(ui, format!("It holds: {}.", others.join(", ")));
@@ -149,6 +149,9 @@ impl HillApp {
                         // A story called what its package is needs no second heading.
                         let named = stories.len() > 1 || story.title != summary.title;
                         describe(ui, story, named);
+                    }
+                    for adventure in &inspection.package.adventures {
+                        super::adventures::describe(ui, adventure);
                     }
                     paper::rule(ui);
                     paper::faint(
@@ -194,10 +197,7 @@ impl HillApp {
             return;
         };
         let Some(folder) = self.packages_folder.clone() else {
-            self.notice = Some((
-                "There is nowhere to keep stories on this computer.".into(),
-                now,
-            ));
+            self.notice = Some(("There is nowhere to keep it on this computer.".into(), now));
             return;
         };
         let title = inspection.summary.title.clone();

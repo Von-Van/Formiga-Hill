@@ -13,7 +13,7 @@ pub mod shelf;
 pub mod souvenirs;
 
 pub use director::Director;
-pub use package::{Files, Package, PackageError, check_files, limits, load, read_folder};
+pub use package::{Files, HILL_API, Package, PackageError, check_files, limits, load, read_folder};
 pub use script::Story;
 
 use std::path::{Path, PathBuf};
@@ -55,6 +55,30 @@ fn official() -> Vec<BuiltIn> {
             [
                 "manifest.toml",
                 "content/book-with-no-ending.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "lantern-walk.formiga-hill",
+            [
+                "manifest.toml",
+                "content/lantern-walk.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "singing-falls.formiga-hill",
+            [
+                "manifest.toml",
+                "content/singing-falls.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "owls-question.formiga-hill",
+            [
+                "manifest.toml",
+                "content/owls-question.toml",
                 "localization/en.toml",
             ]
         ),
@@ -151,6 +175,16 @@ impl Library {
     pub fn origin(&self, id: &str) -> Option<Origin> {
         let index = self.packages.iter().position(|package| package.id == id)?;
         self.origins.get(index).copied()
+    }
+
+    /// Every Woods adventure, with the package it came from.
+    pub fn adventures(&self) -> impl Iterator<Item = (&Package, &crate::adventure::Adventure)> {
+        self.packages.iter().flat_map(|package| {
+            package
+                .adventures
+                .iter()
+                .map(move |adventure| (package, adventure))
+        })
     }
 
     /// Every story, with the package it came from.

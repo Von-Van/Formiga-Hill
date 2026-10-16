@@ -1,0 +1,27 @@
+title = "Up to the Singing Falls"
+about = "Listen: from somewhere up the hill comes water that sounds like singing."
+
+[gate]
+arrive = "Through the gate, and a faint tune drifts down from the hills."
+
+[clover]
+name = "the clover field"
+arrive = { text = "Bees in the clover, humming along to the far-off tune.", oddball = "{leader} hums back at the bees. They seem to approve." }
+
+[log]
+arrive = "A good log for a rest. The singing is louder from here."
+
+[track]
+name = "the carters' track"
+arrive = "Old cart ruts lead on uphill, towards the singing."
+
+[glade]
+name = "the fern glade"
+
+[falls]
+name = "the singing falls"
+ending = { text = "The water sings as it falls, and {leader} sings along.", wallflower = "{leader} listens quietly, and very nearly sings.", showoff = "{leader} sings louder than the falls. The falls do not mind." }
+
+[ways]
+scramble = "the scramble up the rocks"
+ford = "the ford"

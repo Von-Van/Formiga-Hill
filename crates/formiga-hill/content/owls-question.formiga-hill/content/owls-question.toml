@@ -1,0 +1,61 @@
+# A short one with two endings: at the signpost an owl asks which way, and each way ends
+# somewhere different. The pond is hidden until somebody gets there.
+
+[adventure]
+id = "owls-question"
+title = "title"
+about = "about"
+start = "stile"
+
+[[places]]
+id = "stile"
+site = "edge"
+at = [36, 186]
+
+[[places]]
+id = "hedge"
+site = "hedgerow"
+at = [100, 196]
+name = "hedge.name"
+
+[[places]]
+id = "post"
+site = "signpost"
+at = [168, 150]
+name = "post.name"
+arrive = "post.arrive"
+
+[[places]]
+id = "oak"
+site = "glade"
+at = [116, 84]
+name = "oak.name"
+ending = "oak.ending"
+
+[[places]]
+id = "pond"
+site = "pool"
+at = [292, 128]
+name = "pond.name"
+hidden = true
+ending = "pond.ending"
+
+[[paths]]
+between = ["stile", "hedge"]
+bends = [[66, 194]]
+
+[[paths]]
+between = ["stile", "post"]
+bends = [[90, 168]]
+
+[[paths]]
+between = ["hedge", "post"]
+bends = [[140, 186]]
+
+[[paths]]
+between = ["post", "oak"]
+bends = [[150, 120]]
+
+[[paths]]
+between = ["post", "pond"]
+bends = [[214, 152], [254, 140]]

@@ -5,7 +5,7 @@ use super::{HillApp, capital, listed, lower, paper, plural};
 use crate::cast::Id;
 use crate::character::Character;
 use crate::expedition::legs::{Input, LegEvent, Play};
-use crate::expedition::map::{self, Opener, PLACES, Stop};
+use crate::expedition::map::{self, Map, Opener, PLACES, Stop};
 use crate::expedition::{self, BASKET, Droughts, Ending, Event, Expedition, Known, Outset, Phase};
 use crate::finds::{self, AFAR, Tier};
 use crate::memories::{ColonyMemories, Homecoming};
@@ -18,7 +18,7 @@ use std::collections::BTreeSet;
 
 impl HillApp {
     /// What the colony knows, for an expedition setting off or being planned.
-    fn known(&self) -> Known {
+    pub(super) fn known(&self) -> Known {
         let colony = self.memories.colony();
         Known {
             finds: colony.finds.keys().cloned().collect(),
@@ -63,6 +63,7 @@ impl HillApp {
         let influence = woods::influence(&colony.hilltop);
         let note = influence.notes.first().copied();
         let outset = Outset {
+            map: Map::woods(),
             party,
             influence,
             seed,
@@ -93,7 +94,9 @@ impl HillApp {
             if let Some(cue) = super::sound::expedition_heard(&event) {
                 self.sound.play(cue);
             }
-            if let Some(line) = tell(expedition, cast, event) {
+            if let Some(line) =
+                super::adventures::told(expedition, self.woods.playing.as_ref(), cast, event)
+            {
                 self.notice = Some((line, now));
             }
         }
@@ -110,25 +113,30 @@ impl HillApp {
         };
         // Leaving the Woods partway through a stop still brings its basket home.
         expedition.close_leg(now);
+        if let Some(playing) = self.woods.playing.take() {
+            self.finish_adventure(expedition, playing, now);
+            return;
+        }
+        let places = &expedition.map().places;
         let route: Vec<&str> = expedition
             .route()
             .iter()
-            .map(|place| PLACES[*place].id)
+            .map(|place| places[*place].id.as_ref())
             .collect();
         let stops: Vec<&str> = expedition
             .stops()
             .iter()
-            .map(|place| PLACES[*place].id)
+            .map(|place| places[*place].id.as_ref())
             .collect();
         let far: Vec<&str> = expedition
             .route()
             .iter()
-            .filter(|place| PLACES[**place].hidden)
-            .map(|place| PLACES[*place].id)
+            .filter(|place| places[**place].hidden)
+            .map(|place| places[*place].id.as_ref())
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let furthest = PLACES[expedition.furthest()];
+        let furthest = &places[expedition.furthest()];
         let found: Vec<(&str, u64)> = expedition
             .basket()
             .iter()
@@ -144,7 +152,7 @@ impl HillApp {
             party: expedition.party(),
             route: &route,
             stops: &stops,
-            furthest: (furthest.id, furthest.depth),
+            furthest: (&furthest.id, furthest.depth),
             far: &far,
             found: &found,
             fish: expedition.fish(),
@@ -188,12 +196,30 @@ impl HillApp {
         if let Some(expedition) = &mut self.woods.expedition {
             return Some(expedition.compose(now, pointer));
         }
-        if self.woods.activity != super::rummaging::Activity::Expedition {
+        let activity = self.woods.activity;
+        if !matches!(
+            activity,
+            super::rummaging::Activity::Expedition | super::rummaging::Activity::Adventure
+        ) {
+            return None;
+        }
+        let adventure = (activity == super::rummaging::Activity::Adventure)
+            .then(|| self.chosen_adventure())
+            .flatten()
+            .map(|(package, adventure)| {
+                (
+                    (package.id.clone(), adventure.id.clone()),
+                    adventure.map.clone(),
+                )
+            });
+        if activity == super::rummaging::Activity::Adventure && adventure.is_none() {
             return None;
         }
         // Planning: the map, showing the ways the chosen company would open, and the far places
         // the colony has found or can see from the Hilltop.
+        let (key, map) = adventure.unzip();
         let now_for = super::rummaging::PlannedFor {
+            adventure: key,
             party: self.woods.party.clone(),
             far_places: self.memories.colony().far_places.clone(),
             far_sight: expedition::far_sight(&self.hilltop_standing()),
@@ -205,7 +231,8 @@ impl HillApp {
             .is_none_or(|(planned_for, _)| *planned_for != now_for);
         if stale {
             let known = self.known();
-            let picture = expedition::planned(&self.arrival.cast, &now_for.party, &known);
+            let map = map.unwrap_or_else(Map::woods);
+            let picture = expedition::planned(&self.arrival.cast, &map, &now_for.party, &known);
             self.woods.plan = Some((now_for, picture));
         }
         let (_, picture) = self.woods.plan.as_ref()?;
@@ -243,7 +270,12 @@ impl HillApp {
                     if let Some(cue) = super::sound::expedition_heard(&event) {
                         self.sound.play(cue);
                     }
-                    if let Some(line) = tell(expedition, cast, event) {
+                    if let Some(line) = super::adventures::told(
+                        expedition,
+                        self.woods.playing.as_ref(),
+                        cast,
+                        event,
+                    ) {
                         self.notice = Some((line, now));
                     }
                 }
@@ -286,18 +318,18 @@ impl HillApp {
                     return Some((format!("Leave {} behind", lower(name)), (x, y + 14.0)));
                 }
                 let place = expedition.place_at(x, y)?;
-                let here = &PLACES[place];
+                let here = &expedition.map().places[place];
                 let label = if place == expedition.at() {
                     if expedition.can_stop() {
                         format!("{} \u{b7} {}", here.name, verb(here.stop))
                     } else if here.stop.played() {
                         format!("{} \u{b7} been here today", here.name)
                     } else {
-                        here.name.to_owned()
+                        here.name.to_string()
                     }
                 } else {
                     let name = if expedition.sighted(place) {
-                        here.name
+                        here.name.as_ref()
                     } else {
                         "somewhere in the mist"
                     };
@@ -338,16 +370,16 @@ impl HillApp {
             }
             Phase::Choosing => {
                 if expedition.can_stop() {
-                    let here = PLACES[expedition.at()].stop;
+                    let here = expedition.map().places[expedition.at()].stop;
                     stop = paper::button(ui, capital(verb(here))).clicked();
                 }
                 paper::hint(ui, "Click a place on the map to go there.");
             }
             Phase::Walking { to, .. } => {
                 let name = if expedition.sighted(to) {
-                    PLACES[to].name
+                    expedition.map().places[to].name.clone()
                 } else {
-                    "somewhere in the mist"
+                    "somewhere in the mist".into()
                 };
                 paper::slip(ui, format!("On the way to {name}\u{2026}"));
             }
@@ -395,7 +427,9 @@ impl HillApp {
             if let Some(cue) = super::sound::expedition_heard(&event) {
                 self.sound.play(cue);
             }
-            if let Some(line) = tell(expedition, cast, event) {
+            if let Some(line) =
+                super::adventures::told(expedition, self.woods.playing.as_ref(), cast, event)
+            {
                 self.notice = Some((line, now));
             }
         }
@@ -403,7 +437,7 @@ impl HillApp {
 }
 
 /// What a stop is for, as a button or a label: "Rummage here".
-fn verb(stop: Stop) -> &'static str {
+pub(super) fn verb(stop: Stop) -> &'static str {
     match stop {
         Stop::Rummage => "rummage here",
         Stop::Fish => "fish here",
@@ -577,13 +611,18 @@ fn leg_hover(expedition: &Expedition, (x, y): (f32, f32)) -> Option<(String, (f3
 }
 
 /// What to tell the person of something that happened, if anything.
-fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Option<String> {
+pub(super) fn tell(
+    expedition: &Expedition,
+    cast: &crate::cast::Cast,
+    event: Event,
+) -> Option<String> {
     let name = |id: Id| {
         cast.member(id)
             .map_or("Someone", |member| member.name.as_str())
             .to_owned()
     };
-    let place = |index: usize| PLACES[index].name;
+    let places = &expedition.map().places;
+    let place = |index: usize| places[index].name.as_ref();
     let find_name = |id: &str| finds::find(id).map_or("something", |find| find.name);
     Some(match event {
         Event::Opened { opener, who } => match opener {
@@ -618,7 +657,7 @@ fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Opti
             place(to)
         ),
         Event::Arrived { place: here } => {
-            let stop = PLACES[here].stop;
+            let stop = places[here].stop;
             if stop.played() && !expedition.stops().contains(&here) {
                 format!(
                     "{}. Click it to {}, or choose the way on.",
@@ -629,6 +668,8 @@ fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Opti
                 format!("{}.", capital(place(here)))
             }
         }
+        // An adventure's ending is told by the adventure itself.
+        Event::Finished { .. } => return None,
         Event::Found { place: far } => format!(
             "Out of the mist: {}! Nobody has come this far before.",
             place(far)
@@ -642,17 +683,19 @@ fn tell(expedition: &Expedition, cast: &crate::cast::Cast, event: Event) -> Opti
         Event::Began {
             place: here,
             leader,
-        } => match PLACES[here].stop {
-            Stop::Rummage => format!("{} leads the way into the glade.", name(leader)),
+        } => match places[here].stop {
+            Stop::Rummage => format!("{} leads the way into {}.", name(leader), place(here)),
             Stop::Fish => format!("{} takes the rod. A cast or two, then on.", name(leader)),
             Stop::Bugs => format!("{} has the net. One bug, then on.", name(leader)),
             Stop::Forage => format!(
-                "{} leads along the hedgerow. One patch, then on.",
-                name(leader)
+                "{} leads along {}. One patch, then on.",
+                name(leader),
+                place(here)
             ),
             Stop::Scavenge => format!(
-                "{} leads the way up the old track. A heap or two, then on.",
-                name(leader)
+                "{} leads the way up {}. A heap or two, then on.",
+                name(leader),
+                place(here)
             ),
             Stop::Rest => "Everyone sits along the fallen log.".to_owned(),
             Stop::Falls => format!("{} wades in at the foot of the falls.", name(leader)),
@@ -934,7 +977,7 @@ pub(super) fn journal(
 ) -> Vec<String> {
     let mut hints = Vec::new();
     if let Some(furthest) = &colony.furthest {
-        let place = map::place(&furthest.place).map_or("somewhere", |place| PLACES[place].name);
+        let place = map::place(&furthest.place).map_or("somewhere", |place| &PLACES[place].name);
         let party: Vec<String> = furthest.party.iter().map(|id| who(id)).collect();
         paper::aside(
             ui,
@@ -977,7 +1020,7 @@ pub(super) fn journal(
         let route: Vec<&str> = page
             .route
             .iter()
-            .map(|id| map::place(id).map_or("somewhere", |place| PLACES[place].name))
+            .map(|id| map::place(id).map_or("somewhere", |place| &*PLACES[place].name))
             .collect();
         let party: Vec<String> = page.party.iter().map(|id| who(id)).collect();
         paper::name(ui, format!("With {}", who_went(&party)));
