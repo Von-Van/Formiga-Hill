@@ -7,6 +7,8 @@ colony arrives by train, and Hill gives the same creatures a storybook village t
 together: a green for free play, a clubhouse for stories, a fairground, the Woods, and a hilltop
 that the colony slowly makes its own.
 
+![Desktop's sample colony on the platform at Formiga Hill station, with the Hilltop behind](docs/assets/station.png)
+
 Hill is a separate app rather than a new part of Desktop, and that decision shapes most of what
 follows. Desktop stays the home of the colony and the only place its records are kept. Hill
 borrows the colony for a visit, draws each companion exactly as Desktop does, and sends everyone
@@ -64,6 +66,8 @@ the little ones trail their parents. You can pat, offer a snack, throw a toy or 
 brush, and each companion answers in its own way and warms to you over the visit. A dress-up box
 lends hats, daisy chains and scarves for the visit only; Desktop's own accessories are never
 touched.
+
+![The sample colony at play on the Village Green, by the oak, the well and the picnic blanket](docs/assets/green.png)
 
 **The Clubhouse.** Stories are played out by the fire, each chosen from the Clubhouse's notice
 board. Hill comes with three: *The First Picnic*, *The Book with No Ending*, and *The Last Bun*, a
@@ -189,9 +193,16 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 Version 0.67.8 is current, and a fair amount is still open. The music and sounds are
 placeholders. Hill's own text is in English only. Community packages can add stories, Woods
 adventures and Fairground competitions, but not yet anything else, such as new games or places,
-and it is not yet clear what the right shape for those would be. The [changelog](CHANGELOG.md) keeps track of what changes from one version to the next.
+and it is not yet clear what the right shape for those would be. The [changelog](CHANGELOG.md)
+keeps track of what changes from one version to the next.
 
 ## Further reading
 
-- [docs/PACKAGES.md](docs/PACKAGES.md): writing a story for Hill, no code needed.
+- [docs/PACKAGES.md](docs/PACKAGES.md): writing a story, a Woods adventure or a Fairground
+  competition for Hill, no code needed.
 - [docs/DEVELOPING.md](docs/DEVELOPING.md): building, testing and finding your way around the code.
+
+## License
+
+MIT. See [LICENSE](LICENSE). Formiga is a personal project and does not take outside pull requests,
+but forks are welcome.
