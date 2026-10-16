@@ -111,6 +111,12 @@ fn only_competitions(package: &Package) -> bool {
     package.stories.is_empty() && !package.competitions.is_empty()
 }
 
+/// Whether a competition can be changed and saved in its package's place: the package is in the
+/// packages folder and holds it alone, so saving just it leaves nothing of the package out.
+fn changeable(origin: Option<Origin>, package: &Package) -> bool {
+    origin == Some(Origin::Folder) && only_competitions(package) && package.competitions.len() == 1
+}
+
 /// A name, or "someone" for anyone not here.
 fn name(cast: &Cast, id: Id) -> String {
     cast.member(id)
@@ -390,7 +396,7 @@ impl HillApp {
                 if paper::explain(ui, run, why).clicked() {
                     act = Some(Act::Run(format.clone()));
                 }
-                let changeable = origin == Some(Origin::Folder) && only_competitions(package);
+                let changeable = changeable(origin, package);
                 let label = if changeable { "Change" } else { "Copy" };
                 let change = paper::button(ui, label);
                 let about = if changeable {
@@ -991,6 +997,28 @@ mod tests {
         official.insert("manifest.toml".into(), manifest.into_bytes());
         assert!(put_in(&mut library, &folder, &official).is_err());
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// A package of `competitions` copies of the starter competition, and nothing else.
+    fn package_of(competitions: usize) -> Package {
+        Package {
+            id: new_package_id("x"),
+            title: "Games".to_owned(),
+            author: MADE_HERE.to_owned(),
+            version: "1".to_owned(),
+            stories: Vec::new(),
+            adventures: Vec::new(),
+            competitions: vec![Format::starter(); competitions],
+        }
+    }
+
+    #[test]
+    fn only_a_folder_package_of_one_competition_is_changed_in_its_place() {
+        let one = package_of(1);
+        assert!(changeable(Some(Origin::Folder), &one));
+        assert!(!changeable(Some(Origin::Official), &one));
+        // Saving one of two in the package's place would lose the other: it is copied instead.
+        assert!(!changeable(Some(Origin::Folder), &package_of(2)));
     }
 
     #[test]
