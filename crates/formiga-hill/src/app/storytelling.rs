@@ -278,6 +278,11 @@ impl HillApp {
                     1 => holds.push("1 Woods adventure".to_owned()),
                     count => holds.push(format!("{count} Woods adventures")),
                 }
+                match package.competitions.len() {
+                    0 => {}
+                    1 => holds.push("1 competition for the Fairground".to_owned()),
+                    count => holds.push(format!("{count} competitions for the Fairground")),
+                }
                 let about = format!(
                     "by {} \u{b7} version {} \u{b7} {}",
                     package.author,

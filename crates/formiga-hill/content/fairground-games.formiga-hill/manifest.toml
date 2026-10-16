@@ -1,0 +1,11 @@
+# Hill's own competitions for the Fairground, written exactly as any package author would write
+# them. A competition only orders the Fairground's games and scores them: the colony plays each
+# game as it always does.
+package_id = "com.formiga.hill.fairground-games"
+title = "Fairground competitions"
+author = "Formiga"
+version = "1.0.0"
+hill_api = 2
+content_types = ["competition"]
+entry_points = ["content/fairground-five.toml", "content/heats-and-a-final.toml"]
+default_locale = "en"

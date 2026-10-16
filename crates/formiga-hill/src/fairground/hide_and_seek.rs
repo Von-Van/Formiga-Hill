@@ -181,6 +181,8 @@ pub struct HideAndSeek {
     round: u64,
     /// Whoever was found first last time: "it" next time, as the rule goes.
     next_it: Option<Id>,
+    /// Who has been found this round, or last round, in the order they were found.
+    found_order: Vec<Id>,
 }
 
 impl HideAndSeek {
@@ -193,6 +195,7 @@ impl HideAndSeek {
             events: Vec::new(),
             round: 0,
             next_it: None,
+            found_order: Vec::new(),
         }
     }
 
@@ -218,6 +221,11 @@ impl HideAndSeek {
         )
     }
 
+    /// Who was found, this round so far or the last one, first found first.
+    pub fn found_order(&self) -> &[Id] {
+        &self.found_order
+    }
+
     pub fn place_name(&self, place: usize) -> &'static str {
         self.places
             .get(place)
@@ -240,11 +248,27 @@ impl HideAndSeek {
 
     /// Starts a round with `it` counting, or whoever's turn it is, or whoever is keenest.
     pub fn start(&mut self, ground: &mut Playground, it: Option<Id>, now: f32) {
-        let everyone = ground.ids();
+        self.start_among(ground, it, &[], now);
+    }
+
+    /// Starts a round among `players` only, or everyone if none are named: the rest watch.
+    pub fn start_among(
+        &mut self,
+        ground: &mut Playground,
+        it: Option<Id>,
+        players: &[Id],
+        now: f32,
+    ) {
+        let everyone: Vec<Id> = ground
+            .ids()
+            .into_iter()
+            .filter(|id| players.is_empty() || players.contains(id))
+            .collect();
         if everyone.len() < 2 {
             return;
         }
         self.round += 1;
+        self.found_order.clear();
         let mut dice = Dice::new(
             self.round.wrapping_mul(0x9e37_79b9) ^ everyone.iter().fold(0, |seed, id| seed ^ id),
         );
@@ -704,6 +728,7 @@ impl HideAndSeek {
         };
         let found_before = self.tally().0;
         self.hiders[index].found = true;
+        self.found_order.push(self.hiders[index].id);
         // Nobody else is behind there now.
         if let Some(s) = &mut self.seeker {
             s.checked.push(place);

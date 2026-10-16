@@ -388,6 +388,7 @@ impl HillApp {
             Some((_, games)) => happenings(games, &self.arrival.cast, &mut heard),
             None => return,
         };
+        let contest = self.contest_events();
         for (cue, loudness) in heard {
             self.sound.play_softly(cue, loudness);
         }
@@ -488,6 +489,11 @@ impl HillApp {
             };
             last = Some(line);
         }
+        // How the competition stands goes after how the game went, so both are read.
+        let last = match (last, contest) {
+            (Some(game), Some(contest)) => Some(format!("{game} {contest}")),
+            (game, contest) => game.or(contest),
+        };
         if let Some(line) = last {
             self.station
                 .show_keepsakes(&self.memories.colony().souvenirs);
@@ -527,7 +533,12 @@ impl HillApp {
         let cast = &self.arrival.cast;
         let mut start = false;
         let mut call_off = false;
+        let mut show_competitions = false;
         match games.playing() {
+            None if games.contest_on() => {
+                self.contest_tray(ui);
+                return;
+            }
             None => {
                 tools(ui, &mut self.tool);
                 let current = self.game;
@@ -559,6 +570,7 @@ impl HillApp {
                 };
                 let watch = ui.add(paper::Button::new("Watch").enabled(enough));
                 start = paper::explain(ui, watch, why).clicked();
+                show_competitions = true;
                 let game = self.game;
                 match game.players() {
                     Players::It => {
@@ -914,6 +926,11 @@ impl HillApp {
         }
         if call_off {
             games.stop(ground, now);
+        }
+        if show_competitions {
+            self.competitions_button(ui);
+        } else {
+            self.contest_slip(ui);
         }
     }
 
