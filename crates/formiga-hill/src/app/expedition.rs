@@ -656,6 +656,8 @@ pub(super) fn tell(
             name(who),
             place(to)
         ),
+        // Walked in from the Hill: the note on setting off still says what to do.
+        Event::Arrived { .. } if expedition.route().len() == 1 => return None,
         Event::Arrived { place: here } => {
             let stop = places[here].stop;
             if stop.played() && !expedition.stops().contains(&here) {
