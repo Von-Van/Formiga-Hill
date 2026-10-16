@@ -8,6 +8,7 @@
 
 use super::lines::Lines;
 use super::script::{Story, parse_story, staged_area};
+use crate::fairground::competition::{self, Format};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -59,6 +60,11 @@ pub struct Package {
     pub author: String,
     pub version: String,
     pub stories: Vec<Story>,
+    /// Woods adventures (see `crate::adventure`), which a package may carry beside stories.
+    pub adventures: Vec<crate::adventure::Adventure>,
+    /// Competitions for the Fairground, from a package whose content types include
+    /// `competition`.
+    pub competitions: Vec<Format>,
 }
 
 /// Reads a package folder into memory, refusing anything a text package should not contain.
@@ -160,6 +166,63 @@ fn walk(
     Ok(())
 }
 
+/// Checks package files that did not come from a folder, such as those in a share file, by the
+/// same rules `read_folder` reads a folder by: plain names, nothing hidden, only text files,
+/// folders nested at most a few deep, and nothing too large.
+pub fn check_files(files: &Files, label: &str) -> Result<(), PackageError> {
+    let refuse = |file: Option<&str>, problem: String| PackageError {
+        package: label.to_owned(),
+        file: file.map(str::to_owned),
+        problem,
+    };
+    if files.len() > limits::MAX_FILES {
+        return Err(refuse(None, "the package is larger than Hill takes".into()));
+    }
+    let mut total = 0;
+    for (path, bytes) in files {
+        let parts: Vec<&str> = path.split('/').collect();
+        if parts.len() > limits::MAX_DEPTH + 1 {
+            return Err(refuse(Some(path), "folders nest too deep".into()));
+        }
+        for part in &parts {
+            if part.is_empty() || part.starts_with('.') {
+                return Err(refuse(
+                    Some(path),
+                    "not a plain path inside a package".into(),
+                ));
+            }
+            if !part
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'_'))
+            {
+                return Err(refuse(
+                    Some(path),
+                    "file names may use only letters, digits, '.', '-' and '_'".into(),
+                ));
+            }
+        }
+        let extension = path.rsplit_once('.').map_or("", |(_, extension)| extension);
+        if !matches!(extension, "toml" | "md" | "txt") {
+            return Err(refuse(
+                Some(path),
+                "packages for this Hill carry only .toml, .md and .txt files".into(),
+            ));
+        }
+        let size = bytes.len() as u64;
+        if size > limits::MAX_FILE_BYTES {
+            return Err(refuse(
+                Some(path),
+                format!("larger than {} KiB", limits::MAX_FILE_BYTES / 1024),
+            ));
+        }
+        total += size;
+        if total > limits::MAX_PACKAGE_BYTES {
+            return Err(refuse(None, "the package is larger than Hill takes".into()));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Deserialize)]
 struct RawManifest {
     package_id: String,
@@ -247,7 +310,7 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
         )));
     }
     for content in &manifest.content_types {
-        if content != "story" {
+        if content != "story" && content != "adventure" && content != "competition" {
             return Err(in_manifest(format!(
                 "this Hill cannot host \"{content}\" content yet"
             )));
@@ -261,7 +324,7 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
     }
     if manifest.entry_points.is_empty() || manifest.entry_points.len() > limits::MAX_ENTRY_POINTS {
         return Err(in_manifest(format!(
-            "entry_points must list between 1 and {} story files",
+            "entry_points must list between 1 and {} story, adventure or competition files",
             limits::MAX_ENTRY_POINTS
         )));
     }
@@ -279,6 +342,8 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
 
     let min_cast = manifest.requirements.min_cast.unwrap_or(1).max(1);
     let mut stories = Vec::new();
+    let mut adventures: Vec<crate::adventure::Adventure> = Vec::new();
+    let mut competitions = Vec::new();
     for entry in &manifest.entry_points {
         if !entry.starts_with("content/") || !entry.ends_with(".toml") {
             return Err(in_manifest(format!(
@@ -287,6 +352,56 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
         }
         let story_text =
             text(files, entry).map_err(|problem| refuse(&package, Some(entry), problem))?;
+        // An adventure or a competition says so at its top; anything else is a story.
+        if crate::adventure::is_adventure(story_text) {
+            if !manifest
+                .content_types
+                .iter()
+                .any(|kind| kind == "adventure")
+            {
+                return Err(in_manifest(format!(
+                    "\"{entry}\" is an adventure, so content_types must list \"adventure\""
+                )));
+            }
+            let adventure = crate::adventure::parse(story_text, &lines)
+                .map_err(|problem| refuse(&package, Some(entry), problem))?;
+            if adventures.iter().any(|other| other.id == adventure.id) {
+                return Err(refuse(
+                    &package,
+                    Some(entry),
+                    format!("two adventures are called \"{}\"", adventure.id),
+                ));
+            }
+            adventures.push(adventure);
+            continue;
+        }
+        if competition::is_competition(story_text) {
+            if !manifest
+                .content_types
+                .iter()
+                .any(|kind| kind == "competition")
+            {
+                return Err(refuse(
+                    &package,
+                    Some(entry),
+                    "it is a competition, and content_types does not list \"competition\"".into(),
+                ));
+            }
+            let format = competition::parse(story_text, &lines)
+                .map_err(|problem| refuse(&package, Some(entry), problem))?;
+            if competitions
+                .iter()
+                .any(|other: &Format| other.id == format.id)
+            {
+                return Err(refuse(
+                    &package,
+                    Some(entry),
+                    format!("two competitions are called \"{}\"", format.id),
+                ));
+            }
+            competitions.push(format);
+            continue;
+        }
         let story = parse_story(story_text, &lines, min_cast, manifest.hill_api)
             .map_err(|problem| refuse(&package, Some(entry), problem))?;
         if !areas.is_empty() && !areas.contains(&story.area) {
@@ -315,6 +430,8 @@ pub fn load(files: &Files, label: &str) -> Result<Package, PackageError> {
         author: manifest.author.trim().to_owned(),
         version: manifest.version.trim().to_owned(),
         stories,
+        adventures,
+        competitions,
     })
 }
 

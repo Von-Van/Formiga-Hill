@@ -3,6 +3,7 @@
 //! home, belong to the Woods.) The person chooses a game and, at most, who plays it: hide-and-seek,
 //! the sack race, the high striker, hoopla, or the tug-of-war, whose sides the person may pick.
 
+pub mod competition;
 pub mod gear;
 mod hide_and_seek;
 pub mod high_striker;
@@ -16,6 +17,7 @@ use crate::cast::{Cast, Id};
 use crate::daylight::Nightlights;
 use crate::hilltop::Arrangement;
 use crate::playground::{Layout, Patch, Playground};
+use competition::Contest;
 use high_striker::HighStriker;
 use hoopla::Hoopla;
 use sack_race::SackRace;
@@ -219,6 +221,7 @@ pub fn open(cast: &Cast, now: f32) -> (Playground, Games) {
         high_striker: HighStriker::new(),
         hoopla: Hoopla::new(),
         tug_of_war: TugOfWar::new(),
+        contest: None,
     };
     games.set_out(&mut ground, now);
     (ground, games)
@@ -265,6 +268,21 @@ impl Game {
             Self::Hoopla => "Hoopla",
             Self::TugOfWar => "The tug-of-war",
         }
+    }
+
+    /// What the game is called in a competition's file.
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::HideAndSeek => "hide-and-seek",
+            Self::SackRace => "sack-race",
+            Self::HighStriker => "high-striker",
+            Self::Hoopla => "hoopla",
+            Self::TugOfWar => "tug-of-war",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|game| game.key() == key)
     }
 
     pub fn players(self) -> Players {
@@ -389,13 +407,15 @@ impl Picks {
     }
 }
 
-/// The Fairground's games. One is played at a time.
+/// The Fairground's games. One is played at a time, on its own or as part of a competition.
 pub struct Games {
     pub hide_and_seek: HideAndSeek,
     pub sack_race: SackRace,
     pub high_striker: HighStriker,
     pub hoopla: Hoopla,
     pub tug_of_war: TugOfWar,
+    /// The competition being run, if one is: kept until the person has been told how it ended.
+    pub contest: Option<Contest>,
 }
 
 impl Games {
@@ -439,6 +459,48 @@ impl Games {
         }
     }
 
+    /// Starts `game` among `players` only, everyone else watching: for a competition, where it is
+    /// the format's choice who plays rather than the person's, and nobody is "it" in particular.
+    pub fn start_among(
+        &mut self,
+        game: Game,
+        ground: &mut Playground,
+        cast: &Cast,
+        players: &[Id],
+        now: f32,
+    ) {
+        if self.playing().is_some() {
+            return;
+        }
+        match game {
+            Game::HideAndSeek => self.hide_and_seek.start_among(ground, None, players, now),
+            Game::TugOfWar => self.tug_of_war.start(ground, cast, players, None, now),
+            _ => self.start(game, ground, cast, players, now),
+        }
+    }
+
+    /// Starts a competition, unless a game is on.
+    pub fn run(&mut self, format: competition::Format, now: f32) {
+        if self.playing().is_none() && !self.contest_on() {
+            self.contest = Some(Contest::new(format, now));
+        }
+    }
+
+    /// Whether a competition is being run and is not yet over.
+    pub fn contest_on(&self) -> bool {
+        self.contest
+            .as_ref()
+            .is_some_and(|contest| !contest.is_over())
+    }
+
+    /// Runs the competition on, if one is on.
+    pub fn tick_contest(&mut self, ground: &mut Playground, cast: &Cast, now: f32) {
+        if let Some(mut contest) = self.contest.take() {
+            contest.tick(self, ground, cast, now);
+            self.contest = Some(contest);
+        }
+    }
+
     /// Starts the tug-of-war with the sides the person picked, or, if it picked none, everyone as
     /// the colony sorts itself.
     pub fn start_tug(
@@ -479,8 +541,11 @@ impl Games {
         ground.carry(self.hoopla.carried());
     }
 
-    /// Calls off whatever game is on.
+    /// Calls off whatever game is on, and the competition it is part of.
     pub fn stop(&mut self, ground: &mut Playground, now: f32) {
+        if let Some(contest) = &mut self.contest {
+            contest.call_off();
+        }
         match self.playing() {
             Some(Game::HideAndSeek) => self.hide_and_seek.stop(ground, now),
             Some(Game::SackRace) => self.sack_race.stop(ground, now),

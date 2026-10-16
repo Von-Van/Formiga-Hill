@@ -1,9 +1,11 @@
 //! The Hill window: the station, the green, the Clubhouse, the Fairground, the Woods and the
 //! Hilltop, the colony in them, and the way home.
 
+mod adventures;
 mod arranging;
 mod bug_hunt;
 mod camera;
+mod competitions;
 mod departures;
 mod encounter;
 mod expedition;
@@ -11,12 +13,15 @@ mod finery;
 mod fishing_trip;
 mod foraging;
 mod games;
+mod mapmaking;
 mod paper;
 mod plans;
 mod rummaging;
 mod scavenging;
+mod shared;
 mod sound;
 mod storytelling;
+mod writing;
 
 use crate::audio::Sound;
 use crate::cast::{Cast, Id};
@@ -88,11 +93,18 @@ enum Card {
     /// The Clubhouse's notice board of stories, and the shelf of story packages.
     Board,
     Shelf,
+    /// The Clubhouse's story builder, and a shared story being looked over before it is added.
+    Writing,
+    Import,
     DressUp,
     Journal,
     Plans,
     Album,
     Sound,
+    /// The Woods' map editor, for an adventure being made.
+    Making,
+    /// The Fairground's competitions, and the editor for making one.
+    Competitions,
 }
 
 /// For review only: where the window opens, with which card, and when its picture is taken.
@@ -118,16 +130,20 @@ pub const SNAP_PLACES: [&str; 6] = [
 ];
 
 /// What `--card` can name, in `Snap`.
-pub const SNAP_CARDS: [&str; 9] = [
+pub const SNAP_CARDS: [&str; 13] = [
     "notices",
     "departures",
     "board",
     "shelf",
+    "writing",
     "dress-up",
     "journal",
     "plans",
     "album",
     "sound",
+    "making",
+    "competitions",
+    "new-competition",
 ];
 
 /// Where a card can be open, for `Snap`: the places it belongs to, the first being where a
@@ -135,10 +151,12 @@ pub const SNAP_CARDS: [&str; 9] = [
 pub fn snap_card_places(card: &str) -> &'static [&'static str] {
     match card {
         "notices" | "departures" => &["station"],
-        "board" | "shelf" => &["clubhouse"],
+        "board" | "shelf" | "writing" => &["clubhouse"],
         "dress-up" => &["green"],
         "plans" => &["hilltop"],
+        "competitions" | "new-competition" => &["fairground"],
         "journal" => &["woods", "hilltop"],
+        "making" => &["woods"],
         _ => &[],
     }
 }
@@ -172,11 +190,19 @@ pub struct HillApp {
     /// The packages the person has set aside, and where community packages go.
     set_aside: SetAside,
     packages_folder: Option<std::path::PathBuf>,
+    /// The story builder, any story being tried rather than played, a shared story being looked
+    /// over, and a package the person has asked to take out, waiting to be sure.
+    writing: writing::Writing,
+    trying: Option<writing::Trying>,
+    importing: Option<shared::Importing>,
+    removing: Option<String>,
     /// The same, and the games played there.
     fairground: Option<(Playground, Games)>,
     /// The game chosen to watch next, and who the person has picked to play each game.
     game: Game,
     picks: Picks,
+    /// What the competitions card shows, and how the last competition ended.
+    competitions: competitions::Competitions,
     /// Who is going to the Woods, and the outing under way.
     woods: rummaging::Woods,
     /// The summit, made the first time anyone goes up.
@@ -282,9 +308,14 @@ impl HillApp {
             scene: egui::Rect::NOTHING,
             set_aside: SetAside::open(Memories::folder().as_deref()),
             packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
+            writing: writing::Writing::new(Memories::folder().as_deref()),
+            trying: None,
+            importing: None,
+            removing: None,
             fairground: None,
             game: Game::HideAndSeek,
             picks: Picks::default(),
+            competitions: competitions::Competitions::default(),
             woods: rummaging::Woods::default(),
             hilltop: None,
             clearing: None,
@@ -379,13 +410,17 @@ impl HillApp {
             Some("departures") => Some(Card::Departures),
             Some("board") => Some(Card::Board),
             Some("shelf") => Some(Card::Shelf),
+            Some("writing") => Some(Card::Writing),
             Some("dress-up") => Some(Card::DressUp),
             Some("journal") => Some(Card::Journal),
             Some("plans") => Some(Card::Plans),
             Some("album") => Some(Card::Album),
             Some("sound") => Some(Card::Sound),
+            Some("making") => Some(Card::Making),
+            Some("competitions" | "new-competition") => Some(Card::Competitions),
             _ => None,
         };
+        let new_competition = snap.card.as_deref() == Some("new-competition");
         let story = snap.story;
         let chapter = snap.chapter;
         if let Some(place) = place {
@@ -401,11 +436,21 @@ impl HillApp {
             self.start_story(&package, &story, now);
         }
         self.card = card;
+        self.snap_competitions(new_competition);
         if card == Some(Card::Journal)
             && let Some(chapter) = chapter.and_then(|n| self.chapters().get(n - 1).copied())
         {
             self.chapter = Some(chapter);
             self.last_chapter = Some(chapter);
+        }
+        // The builder is pictured with a story open, at the scene named as its chapter.
+        if card == Some(Card::Writing) {
+            self.writing.open_sample(chapter);
+        }
+        // The map editor is pictured with an adventure half made, and the chapter's place or path
+        // picked out.
+        if card == Some(Card::Making) {
+            self.open_sample_making(chapter);
         }
     }
 
@@ -563,9 +608,9 @@ impl HillApp {
         if area == Area::Station {
             self.pin_notices();
         }
-        // Walking away calls a game off.
+        // Walking away calls a game off, and any competition.
         if let Some((ground, games)) = &mut self.fairground
-            && games.playing().is_some()
+            && (games.playing().is_some() || games.contest_on())
         {
             games.stop(ground, now);
         }
@@ -585,6 +630,23 @@ impl HillApp {
             (Area::Hilltop, _, _) => self.compose_hilltop(now),
             (Area::Clearing, _, _) => self.compose_clearing(now),
             _ => self.station.compose(now),
+        }
+    }
+
+    /// Loads every story package again, after one has been added or taken out, and pins the
+    /// board up afresh.
+    fn reload_library(&mut self) {
+        self.library.reload();
+        for problem in &self.library.problems {
+            eprintln!("formiga-hill: a package was not loaded: {problem}");
+        }
+        let finished = &self.memories.colony().stories;
+        let pinned = self
+            .on_the_board()
+            .map(|(package, story)| finished.contains(&format!("{}/{}", package.id, story.id)))
+            .collect();
+        if let Some(room) = &mut self.clubhouse {
+            room.pin_up(pinned);
         }
     }
 
@@ -611,6 +673,7 @@ impl HillApp {
         let scene = self.scene;
         let page = match (card, self.chapter) {
             (Card::Journal, Some(chapter)) => format!("{chapter:?}"),
+            (Card::Writing, _) => self.writing.page_name(),
             _ => "contents".to_owned(),
         };
         let shown = paper::card(
@@ -848,7 +911,12 @@ impl eframe::App for HillApp {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         let mut mute = false;
+        // Keys typed into a story being written are words, not the Hill's shortcuts.
+        let typing = ctx.egui_wants_keyboard_input();
         ctx.input(|input| {
+            if typing {
+                return;
+            }
             let onwards =
                 input.key_pressed(egui::Key::Space) || input.key_pressed(egui::Key::Enter);
             // The camera comes out, and goes away, wherever the person is, a story included.
@@ -912,7 +980,7 @@ impl eframe::App for HillApp {
                     if input.key_pressed(egui::Key::Escape)
                         && self.area == Area::Fairground
                         && let Some((ground, games)) = &mut self.fairground
-                        && games.playing().is_some()
+                        && (games.playing().is_some() || games.contest_on())
                     {
                         games.stop(ground, now);
                     }
@@ -951,6 +1019,7 @@ impl eframe::App for HillApp {
         if let (Area::Fairground, Some((ground, game))) = (self.area, &mut self.fairground) {
             ground.tick(&self.arrival.cast, now);
             game.tick(ground, now);
+            game.tick_contest(ground, &self.arrival.cast, now);
         }
         self.fairground_events(now);
         if self.area == Area::Woods {
@@ -994,7 +1063,16 @@ impl eframe::App for HillApp {
                     ctx.zoom_factor(),
                 )
                 .keep(&ctx);
-                let response = ui.allocate_rect(rect, egui::Sense::click());
+                // Places on a map being made are picked up and moved by dragging.
+                let making = self.area == Area::Woods
+                    && self.woods.making.is_some()
+                    && self.woods.expedition.is_none();
+                let sense = if making {
+                    egui::Sense::click_and_drag()
+                } else {
+                    egui::Sense::click()
+                };
+                let response = ui.allocate_rect(rect, sense);
                 let painter = ui.painter_at(rect);
                 let uv = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0));
                 painter.image(texture, rect, uv, egui::Color32::WHITE);
@@ -1044,6 +1122,17 @@ impl eframe::App for HillApp {
                             }
                             if response.clicked() {
                                 self.woods_click(pointer, now);
+                            }
+                            if making
+                                && (response.drag_started()
+                                    || response.dragged()
+                                    || response.drag_stopped())
+                            {
+                                self.making_drag(
+                                    pointer.or(self.pointer),
+                                    response.drag_started(),
+                                    response.drag_stopped(),
+                                );
                             }
                             hovered.filter(|_| spot.is_none())
                         }
@@ -1294,10 +1383,15 @@ impl eframe::App for HillApp {
         self.journal_window(&ctx);
         self.plans_window(&ctx);
         self.board_window(&ctx, now);
-        self.shelf_window(&ctx);
+        self.shelf_window(&ctx, now);
+        self.writing_window(&ctx, now);
+        self.import_window(&ctx, now);
+        self.take_dropped(&ctx, now);
         self.notices_window(&ctx);
         self.departures_window(&ctx, now);
         self.sound_window(&ctx);
+        self.making_window(&ctx, now);
+        self.competitions_window(&ctx, now);
         self.take_snap(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {

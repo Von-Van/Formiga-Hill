@@ -38,8 +38,12 @@ A few other ideas guide the design:
   lets playing actually matter.
 - **The same creatures, not lookalikes.** Hill draws each traveller from the appearance Desktop
   sends, using Desktop's own art code. It never makes up a new one.
-- **Open to other people's stories.** Anyone can write a story for the Clubhouse as a small folder
-  of text files, with no code involved ([docs/PACKAGES.md](docs/PACKAGES.md)).
+- **Open to other people's stories, adventures and competitions.** Anyone can write a story for
+  the Clubhouse with its story builder, a step at a time from plain choices, lay out an adventure
+  on the Woods' map editor, or put a competition together from the Fairground's games, or write
+  any of them as a small folder of text files; either way no code is involved
+  ([docs/PACKAGES.md](docs/PACKAGES.md)). Each is shared as one file, and whoever opens it sees
+  what is in it before adding it.
 
 ## A visit
 
@@ -74,7 +78,10 @@ the players rather than from chance alone. In the sack race, for example, a lazy
 for a breather, and a show-off may wave to the crowd just short of the line and be overtaken. In
 tug-of-war the colony sorts itself into sides, friends together and rivals apart, and two who don't
 get on pull out of step. Each game keeps a souvenir the first time it is seen through, and its
-records go up on the station's boards.
+records go up on the station's boards. A competition runs several of the games one after another
+for points, with who plays each said without naming anyone: everyone, the keenest, or the leaders
+for a final. Hill has two of its own, and the Competitions card makes new ones to run, keep and
+share.
 
 **The Woods.** This is where you play, with a companion or two, for finds to take home. Who comes
 along changes how an outing goes and what turns up, but it never rules anything out: every find
@@ -95,6 +102,11 @@ can be found by any single companion.
   spends some of the day's light, and the stops along the way offer a short go at the other
   activities, a heap or two on the old track, or a picnic. Past the signpost, the Far Falls bring
   down things found nowhere else.
+- **Adventures.** Short outings someone has laid out on a map of their own, made from the Woods'
+  own places: a hedgerow, a glade, a signpost at a fork, a pool hidden in the mist, and one or
+  more endings to find. Each is walked as an expedition is, and whatever is found on the way
+  comes by the Woods' usual rules. Hill has three of its own, and the map editor in the Woods
+  makes new ones to try, keep and share.
 
 There is also a secret somewhere in the Woods, played completely straight. How to find it is left
 out of this page on purpose.
@@ -166,7 +178,8 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 | --- | --- |
 | `memories.json` | Each colony's finished stories, kept souvenirs, finds, journal, Hilltop and records |
 | `photos/` | Each colony's album |
-| `packages/` | Community story packages |
+| `packages/` | Community packages, including any added from a shared file, put on the board from the story builder, kept from the map editor or saved from the Competitions card |
+| `drafts/stories/`, `drafts/adventures/` | Stories being written in the story builder, and adventures being made in the map editor |
 | `packages.json` | Which of them are set aside |
 | `settings.json` | Music and sound levels, and whether they are muted, for the Hill as a whole |
 | `hosting.lock` | Held while a window is open |
@@ -174,9 +187,9 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 ## Where things stand
 
 Version 0.67.7 is current, and a fair amount is still open. The music and sounds are
-placeholders. Hill's own text is in English only. Community packages can add stories, but not yet
-anything else, such as new games or places, and it is not yet clear what the right shape for those
-would be. The [changelog](CHANGELOG.md) keeps track of what changes from one version to the next.
+placeholders. Hill's own text is in English only. Community packages can add stories, Woods
+adventures and Fairground competitions, but not yet anything else, such as new games or places,
+and it is not yet clear what the right shape for those would be. The [changelog](CHANGELOG.md) keeps track of what changes from one version to the next.
 
 ## Further reading
 

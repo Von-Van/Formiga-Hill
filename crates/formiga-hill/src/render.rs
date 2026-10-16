@@ -69,6 +69,7 @@ pub enum Area {
     Costumes,
     /// The Clubhouse, a story under way in it.
     Story,
+    Adventure,
 }
 
 /// The picture `--render-*` asks for: `area` drawn `at` seconds in at `hour` (at midday if none
@@ -186,6 +187,15 @@ pub fn draw(
             let library = story::Library::load(None, packages);
             story_moment(cast, story_to_draw(&library)?, at.unwrap_or(12.0), daylight)?
         }
+        Area::Adventure => {
+            let library = story::Library::load(None, packages);
+            adventure_moment(
+                cast,
+                adventure_to_draw(&library)?,
+                at.unwrap_or(10.0),
+                daylight,
+            )
+        }
     })
 }
 
@@ -201,6 +211,69 @@ fn story_to_draw(library: &story::Library) -> Result<&story::Story> {
         .last()
         .map(|(_, story)| story)
         .context("there is no story to play")
+}
+
+/// The last adventure loaded, which is the author's own when they name a package; one that
+/// would not load is reported instead.
+fn adventure_to_draw(library: &story::Library) -> Result<&crate::adventure::Adventure> {
+    if !library.problems.is_empty() {
+        let problems: Vec<String> = library.problems.iter().map(ToString::to_string).collect();
+        bail!("the package would not load:\n{}", problems.join("\n"));
+    }
+    library
+        .adventures()
+        .last()
+        .map(|(_, adventure)| adventure)
+        .context("there is no adventure to play")
+}
+
+/// An adventure `at` seconds in, played by a steady hand along the shortest way anyone could go
+/// to an ending, stopping wherever there is something to do on the way.
+fn adventure_moment(
+    cast: &Cast,
+    adventure: &crate::adventure::Adventure,
+    at: f32,
+    daylight: daylight::Daylight,
+) -> Canvas {
+    use expedition::{Expedition, Known, Outset, Phase};
+    let party: Vec<cast::Id> = cast.ids().take(expedition::PARTY).collect();
+    let outset = Outset {
+        map: adventure.map.clone(),
+        party,
+        influence: woods::influence(&sample_arrangement()),
+        seed: 3,
+    };
+    let mut trip = Expedition::new(cast, outset, Known::default(), 0.0);
+    trip.set_daylight(daylight);
+    let way = crate::adventure::shortest_way(&adventure.map);
+    let mut next = 1;
+    let mut now = 0.0;
+    while now < at {
+        now += 1.0 / 30.0;
+        let input = trip
+            .leg_mut()
+            .map(|leg| leg.steady(now))
+            .unwrap_or_default();
+        trip.tick(cast, input, now);
+        match trip.phase() {
+            Phase::Choosing if trip.can_stop() => {
+                trip.stop(cast, now);
+            }
+            Phase::Choosing if next < way.len() => {
+                trip.go(way[next], now);
+                next += 1;
+            }
+            Phase::Choosing => trip.head_home(now),
+            Phase::MakingRoom => {
+                trip.leave_behind(0, now);
+            }
+            _ => {}
+        }
+        for event in trip.take_events() {
+            println!("{now:6.1}s  {event:?}");
+        }
+    }
+    trip.compose(now, None)
 }
 
 /// A story `at` seconds in, with each line read after two and a half seconds and the first choice
@@ -837,6 +910,7 @@ fn expedition_moment(cast: &Cast, at: f32, daylight: daylight::Daylight) -> Canv
         ..Known::default()
     };
     let outset = Outset {
+        map: expedition::map::Map::woods(),
         party,
         influence: woods::influence(&hilltop),
         seed: 3,

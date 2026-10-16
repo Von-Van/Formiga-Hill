@@ -327,6 +327,106 @@ pub fn choice<T: PartialEq + Copy>(ui: &mut Ui, current: &mut T, value: T, text:
     response
 }
 
+// ---------------------------------------------------------------------------------------------
+// Fields
+// ---------------------------------------------------------------------------------------------
+
+/// Paper a little brighter than a card's, so a place to write stands out on one.
+const FIELD: Color32 = rgb(255, 252, 240);
+
+/// Somewhere to write a line of words: read in Hill's lettering like anything else on paper, and
+/// written in once clicked, until Enter, Escape or a click elsewhere. Words stay on one line, at
+/// most `most` letters; `width` holds it narrower than the room there is, in paper pixels.
+pub fn field(
+    ui: &mut Ui,
+    id: impl egui::AsIdSalt,
+    text: &mut String,
+    hint: &str,
+    most: usize,
+    width: Option<i32>,
+) -> Response {
+    let grain = Grain::of(ui.ctx());
+    let id = ui.make_persistent_id(id);
+    let starting = id.with("starting");
+    let room = grain.fit(ui.available_width()).max(40);
+    let width = width.map_or(room, |width| width.min(room)).max(24);
+    let editing = ui.data(|data| data.get_temp::<bool>(id)).unwrap_or(false);
+    if editing {
+        let slot = ui.painter().add(egui::Shape::Noop);
+        let output = egui::TextEdit::multiline(&mut *text)
+            .id(id)
+            .frame(egui::Frame::NONE)
+            .margin(egui::Margin::same(grain.len(3).round() as i8))
+            .desired_width(grain.len(width - 6))
+            .desired_rows(1)
+            .font(egui::FontId::proportional(grain.len(ASCENT + 3)))
+            .text_color(INK)
+            .return_key(None)
+            .show(ui);
+        let mut response = output.response.response;
+        if ui
+            .data(|data| data.get_temp::<bool>(starting))
+            .unwrap_or(false)
+        {
+            ui.data_mut(|data| data.remove::<bool>(starting));
+            response.request_focus();
+        } else if !response.has_focus() {
+            ui.data_mut(|data| data.remove::<bool>(id));
+        }
+        // One line, and no longer than it may be, however it was typed or pasted.
+        if text.contains(['\n', '\r', '\t']) || text.chars().count() > most {
+            let tidied: String = text
+                .chars()
+                .map(|c| if c.is_control() { ' ' } else { c })
+                .take(most)
+                .collect();
+            *text = tidied;
+            response.mark_changed();
+        }
+        if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
+            response.surrender_focus();
+        }
+        let rect = response.rect;
+        let size = (
+            (rect.width() / grain.point).ceil() as i32,
+            (rect.height() / grain.point).ceil() as i32,
+        );
+        let mut ink = Ink::new(ui.ctx(), rect.min, grain);
+        ink.frame((0, 0, size.0, size.1), FIELD, AMBER_DEEP, 1);
+        ink.paint_at(ui.painter(), slot);
+        return response;
+    }
+    let shown = if text.trim().is_empty() {
+        hint
+    } else {
+        text.as_str()
+    };
+    let lines = lettering::wrap(shown, width - 8);
+    let height = paragraph_height(lines.len()) + 7;
+    let (rect, response) = ui.allocate_exact_size(grain.size(width, height), Sense::click());
+    if ui.is_rect_visible(rect) {
+        let mut ink = Ink::new(ui.ctx(), rect.min, grain);
+        let fill = if response.hovered() { HOVER } else { FIELD };
+        ink.frame((0, 0, width, height), fill, OUTLINE, 1);
+        let color = if text.trim().is_empty() { MUTED } else { INK };
+        for (index, line) in lines.iter().enumerate() {
+            ink.text(4, 3 + index as i32 * LINE, line, color);
+        }
+        ink.paint(ui.painter());
+    }
+    if response.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::Text);
+    }
+    if response.clicked() {
+        ui.data_mut(|data| {
+            data.insert_temp(id, true);
+            data.insert_temp(starting, true);
+        });
+        ui.ctx().request_repaint();
+    }
+    response
+}
+
 /// A picture with its colours washed out, for something that cannot be used just now.
 fn faded(picture: &Canvas) -> Canvas {
     let mut out = picture.clone();

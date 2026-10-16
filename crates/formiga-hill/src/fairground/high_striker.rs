@@ -184,7 +184,7 @@ fn flight(height: f32) -> (f32, f32, f32) {
 }
 
 /// How keen a companion is to have a go: whoever is keenest goes first.
-fn keenness(character: &Character) -> f32 {
+pub(crate) fn keenness(character: &Character) -> f32 {
     let a = character.axes;
     let showy = if character.kind == TemperamentKind::Showoff {
         0.3

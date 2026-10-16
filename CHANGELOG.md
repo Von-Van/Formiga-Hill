@@ -4,6 +4,80 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.67.8 (2026-10-15)
+
+Hill is built on Formiga Desktop 0.67.8 and still speaks travel version 5, so it takes the same
+trips as before. Stories, Woods adventures and Fairground competitions can now be made at the Hill
+itself, tried with whoever is visiting, and passed on to someone else as one file.
+
+### Writing stories in the Clubhouse
+
+- **Write a story** in the Clubhouse opens the story builder, which makes a story from plain
+  choices rather than a file: who is in it and how each role is cast (the most curious, a close
+  friend of the lead, a little one if there is one), its scenes in order, and each scene's steps,
+  such as narration, a line said with a different version for any temperament, someone going
+  somewhere, a feeling or a pose, play, a pause, a choice for whoever is watching, or a souvenir.
+  Anything still missing is said in plain words, where it is.
+- **Try it** plays the story straight away with whoever is visiting and keeps nothing. **Put on
+  the board** adds it to the notice board for every colony, and **Share…** saves it as one file
+  to give to someone. A story being written is kept as a draft as it goes, so nothing is lost by
+  closing the card.
+- Words are typed on the cards themselves, in Hill's own lettering, and keys typed there don't set
+  off the Hill's shortcuts.
+
+### Woods adventures
+
+- Under **Adventure** in the Woods' tray, the colony can set off on an adventure: a short outing
+  laid out on a map of its own from the Woods' places, such as a hedgerow, a glade, a signpost at
+  a fork, a pool or the falls. Up to three companions come along, choosing at each fork and
+  stopping wherever there is something to do, until they reach an ending or head home. Some places
+  stay hidden in the mist until somebody gets there, and some paths are shortcuts only some
+  company takes, such as a little one or two close friends together; there is always another way
+  round.
+- Hill has three adventures of its own: *The Lantern Walk*, *Up to the Singing Falls* and *The
+  Owl's Question*.
+- Whatever is found on the way comes by the Woods' usual rules and goes home in the satchel as
+  from any expedition. Hill remembers how often each adventure has been played and finished.
+- **Make an adventure** opens the map editor, to put places down, join them with paths, name
+  everything, and see what is still to do. An adventure can be tried at once with whoever is
+  visiting, and nothing found on a try is kept; then it can be kept in the Woods or saved as one
+  file to share. Adventures being made are kept as drafts.
+
+### Fairground competitions
+
+- The Fairground's new **Competitions** card runs a competition: several of the Fairground's games
+  one after another, for points. The colony plays each game exactly as it always does, and you
+  watch. A slip on the tray says which game is next and how the points stand, a line after each
+  game says who scored, and the last competition's result stays on a slip beside the button.
+  **Call it off** stops one part way.
+- Who plays each game is said without naming anyone, so a competition works in any colony:
+  everyone, the few keenest on that game by their own temperaments, or the few with the most
+  points so far, for a final. A game too few can play is passed over.
+- Hill has two competitions of its own: *The Fairground Five*, every game once with everyone
+  playing, and *Heats and a Final*, two heats for the keenest four and then sack races between the
+  three in front, the first to 10 points winning.
+- **Make a new one** chooses the games in order, the rounds of each, who plays, the points for each
+  place and how it is won (the most points, or the first to a number), with how it would go with
+  the colony visiting: who would play each game, and any game too few could play. A competition
+  can be changed, copied from another (Hill's own included), passed on as a file, or removed.
+
+### Sharing
+
+- Anything made at the Hill, whether a story, an adventure or a competition, is passed on as one
+  plain text file ending `.formiga-hill-share`. Something shared can only be played at the Hill:
+  it can't run anything, look at your files, or change your colony.
+- A shared file is opened from the Clubhouse's Story packages card, from **Open a shared one…** in
+  the Woods or on the Competitions card, or by dropping it on the window. Whichever way, the same
+  **Shared with you** card shows whose it is and what it holds before anything is kept: how each
+  story begins and which souvenirs it can give, the shape of each adventure's map, and each
+  competition's games. A story can be tried first; then it is added or turned away. Adding a newer
+  version of something already here takes the old one's place.
+- The Story packages card counts the stories, Woods adventures and competitions in each package,
+  and **Take out…** removes one that was added.
+- For anyone writing by hand, the packages guide (`docs/PACKAGES.md` in this repository) now
+  describes adventure and competition files beside stories, and `formiga-hill --share-package`
+  writes a share file from a package folder.
+
 ## 0.67.7 (2026-10-15)
 
 Hill is built on Formiga Desktop 0.67.7 and still speaks travel version 5, so it takes the same

@@ -1,0 +1,20 @@
+# Two heats for the keenest, then a sack race between the three in front: the first to 10 wins.
+
+[competition]
+id = "heats-and-a-final"
+title = "heats-and-a-final"
+points = [5, 3, 1]
+win = "first-to:10"
+
+[[events]]
+game = "high-striker"
+players = "keenest:4"
+
+[[events]]
+game = "hoopla"
+players = "keenest:4"
+
+[[events]]
+game = "sack-race"
+rounds = 2
+players = "leaders:3"

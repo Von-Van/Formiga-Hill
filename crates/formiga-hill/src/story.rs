@@ -5,6 +5,7 @@
 
 mod casting;
 mod director;
+pub mod draft;
 pub mod lines;
 mod package;
 pub(crate) mod script;
@@ -12,9 +13,10 @@ pub mod shelf;
 pub mod souvenirs;
 
 pub use director::Director;
-pub use package::{Files, Package, PackageError, load, read_folder};
+pub use package::{Files, HILL_API, Package, PackageError, check_files, limits, load, read_folder};
 pub use script::Story;
 
+use crate::fairground::competition::Format;
 use std::path::{Path, PathBuf};
 
 /// Hill's own packages, built in. Each is a folder under `content/` loaded through the same reader
@@ -57,6 +59,39 @@ fn official() -> Vec<BuiltIn> {
                 "localization/en.toml",
             ]
         ),
+        built_in!(
+            "lantern-walk.formiga-hill",
+            [
+                "manifest.toml",
+                "content/lantern-walk.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "singing-falls.formiga-hill",
+            [
+                "manifest.toml",
+                "content/singing-falls.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "owls-question.formiga-hill",
+            [
+                "manifest.toml",
+                "content/owls-question.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "fairground-games.formiga-hill",
+            [
+                "manifest.toml",
+                "content/fairground-five.toml",
+                "content/heats-and-a-final.toml",
+                "localization/en.toml",
+            ]
+        ),
     ]
 }
 
@@ -78,13 +113,20 @@ pub struct Library {
     /// Where each package came from, in the same order.
     pub origins: Vec<Origin>,
     pub problems: Vec<PackageError>,
+    /// Where it was loaded from, to load it again from the same places.
+    folder: Option<PathBuf>,
+    named: Vec<PathBuf>,
 }
 
 impl Library {
     /// Hill's own packages, then whatever is in the packages `folder`, then any package folders
     /// named for testing or authoring.
     pub fn load(folder: Option<&Path>, extra: &[PathBuf]) -> Self {
-        let mut library = Self::default();
+        let mut library = Self {
+            folder: folder.map(Path::to_owned),
+            named: extra.to_vec(),
+            ..Self::default()
+        };
         for (name, files) in official() {
             let files: Files = files
                 .into_iter()
@@ -103,6 +145,12 @@ impl Library {
             library.read(path, Origin::Named);
         }
         library
+    }
+
+    /// Loads everything again from the same places, after a package has been added to the
+    /// packages folder or taken out of it.
+    pub fn reload(&mut self) {
+        *self = Self::load(self.folder.as_deref(), &self.named.clone());
     }
 
     fn read(&mut self, path: &Path, origin: Origin) {
@@ -139,11 +187,31 @@ impl Library {
         self.origins.get(index).copied()
     }
 
+    /// Every Woods adventure, with the package it came from.
+    pub fn adventures(&self) -> impl Iterator<Item = (&Package, &crate::adventure::Adventure)> {
+        self.packages.iter().flat_map(|package| {
+            package
+                .adventures
+                .iter()
+                .map(move |adventure| (package, adventure))
+        })
+    }
+
     /// Every story, with the package it came from.
     pub fn stories(&self) -> impl Iterator<Item = (&Package, &Story)> {
         self.packages
             .iter()
             .flat_map(|package| package.stories.iter().map(move |story| (package, story)))
+    }
+
+    /// Every competition for the Fairground, with the package it came from.
+    pub fn competitions(&self) -> impl Iterator<Item = (&Package, &Format)> {
+        self.packages.iter().flat_map(|package| {
+            package
+                .competitions
+                .iter()
+                .map(move |competition| (package, competition))
+        })
     }
 }
 
@@ -157,6 +225,7 @@ mod tests {
         let library = Library::load(None, &[]);
         assert!(library.problems.is_empty(), "{:?}", library.problems);
         assert!(library.stories().count() >= 1);
+        assert!(library.competitions().count() >= 1);
     }
 
     #[test]

@@ -8,7 +8,7 @@
 //! are lost in mist. Every place and path is painted where `map` puts it.
 
 use super::map::{
-    EDGE, FAR_FALLS, GLADE, HEDGEROW, LOG, MEADOW, OLD_TRACK, Opener, PATHS, PLACES, POOL,
+    EDGE, FAR_FALLS, GLADE, HEDGEROW, LOG, MEADOW, Map, OLD_TRACK, Opener, PATHS, PLACES, POOL,
     SIGNPOST, Way,
 };
 use crate::font::{GLYPH_WIDTH, draw_text};
@@ -20,26 +20,26 @@ use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
 use formiga_art::{Canvas, Rgba};
 use std::f32::consts::TAU;
 
-const WIDTH: i32 = SCENE_WIDTH as i32;
-const HEIGHT: i32 = SCENE_HEIGHT as i32;
+pub(super) const WIDTH: i32 = SCENE_WIDTH as i32;
+pub(super) const HEIGHT: i32 = SCENE_HEIGHT as i32;
 
-const PARCHMENT: Ramp = Ramp::new(0x8a7452, 0xb6a07a, 0xd8c69c, 0xe6d8b2, 0xf2e8cc);
+pub(super) const PARCHMENT: Ramp = Ramp::new(0x8a7452, 0xb6a07a, 0xd8c69c, 0xe6d8b2, 0xf2e8cc);
 const TABLE: Ramp = Ramp::new(0x241812, 0x34241a, 0x4a3424, 0x604630, 0x7a5c40);
-const TREE: Ramp = Ramp::new(0x2c4628, 0x426036, 0x5a7c46, 0x76985a, 0x98b676);
-const PINE: Ramp = Ramp::new(0x223a26, 0x324e34, 0x446642, 0x5c8052, 0x7a9c6a);
-const WATER: Ramp = Ramp::new(0x3a6474, 0x56828e, 0x76a2aa, 0x98c0c2, 0xc0dad8);
-const ROCK: Ramp = Ramp::new(0x5e5446, 0x7e7262, 0x9e927e, 0xbab09a, 0xd4cab4);
-const WOOD: Ramp = Ramp::new(0x4a3020, 0x6a4a30, 0x8a6644, 0xa6825a, 0xc0a074);
-const HEDGE: Ramp = Ramp::new(0x284224, 0x3a5a30, 0x50743e, 0x6a9050, 0x8aac68);
+pub(super) const TREE: Ramp = Ramp::new(0x2c4628, 0x426036, 0x5a7c46, 0x76985a, 0x98b676);
+pub(super) const PINE: Ramp = Ramp::new(0x223a26, 0x324e34, 0x446642, 0x5c8052, 0x7a9c6a);
+pub(super) const WATER: Ramp = Ramp::new(0x3a6474, 0x56828e, 0x76a2aa, 0x98c0c2, 0xc0dad8);
+pub(super) const ROCK: Ramp = Ramp::new(0x5e5446, 0x7e7262, 0x9e927e, 0xbab09a, 0xd4cab4);
+pub(super) const WOOD: Ramp = Ramp::new(0x4a3020, 0x6a4a30, 0x8a6644, 0xa6825a, 0xc0a074);
+pub(super) const HEDGE: Ramp = Ramp::new(0x284224, 0x3a5a30, 0x50743e, 0x6a9050, 0x8aac68);
 /// The inks: sepia for lettering and the open paths, a redder hand for the ways only some
 /// company takes, neither of them black.
-const INK: Rgba = rgb(0x5a3c28);
+pub(super) const INK: Rgba = rgb(0x5a3c28);
 const PATH_INK: Rgba = rgb(0x7a5234);
 const PATH_SHADE: Rgba = rgba(0x4a2e1c, 120);
-const SHORTCUT_INK: Rgba = rgb(0x8a2e1e);
+pub(super) const SHORTCUT_INK: Rgba = rgb(0x8a2e1e);
 const SHORTCUT_SHADE: Rgba = rgba(0x4a1810, 150);
-const FIELD_WASH: Rgba = rgb(0xc4c88a);
-const LANE: Ramp = Ramp::new(0x8a6a48, 0xa88a62, 0xc4a87e, 0xd6be96, 0xe6d2ae);
+pub(super) const FIELD_WASH: Rgba = rgb(0xc4c88a);
+pub(super) const LANE: Ramp = Ramp::new(0x8a6a48, 0xa88a62, 0xc4a87e, 0xd6be96, 0xe6d2ae);
 
 /// The parchment's edge, inside the table's border.
 const MARGIN: i32 = 3;
@@ -84,12 +84,22 @@ fn crag_foot(x: i32) -> i32 {
 /// What the map shows: which places are in sight, and which paths are drawn on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Shown {
-    pub places: [bool; PLACES.len()],
-    pub paths: [bool; PATHS.len()],
+    pub places: Vec<bool>,
+    pub paths: Vec<bool>,
 }
 
-/// The map, filling every pixel.
-pub fn map(shown: &Shown) -> Canvas {
+/// A map, filling every pixel: the Woods' own as the Woods are, or an adventure's drawn from its
+/// places.
+pub fn map(map: &Map, shown: &Shown) -> Canvas {
+    if map.is_woods() {
+        woods(shown)
+    } else {
+        super::drawn::map(map, shown)
+    }
+}
+
+/// The Woods' own map.
+fn woods(shown: &Shown) -> Canvas {
     let mut scene = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
     table(&mut scene);
     parchment(&mut scene);
@@ -100,17 +110,17 @@ pub fn map(shown: &Shown) -> Canvas {
     trees(&mut scene, shown);
     for (index, path) in PATHS.iter().enumerate() {
         if shown.paths[index] {
-            ink_path(&mut scene, path, shown);
+            ink_path(&mut scene, &PLACES, path, shown, true);
         }
     }
     edge(&mut scene);
     hedgerow(&mut scene);
     meadow(&mut scene);
-    glade(&mut scene);
-    log(&mut scene);
-    signpost(&mut scene);
-    pool(&mut scene);
-    old_track(&mut scene);
+    glade(&mut scene, PLACES[GLADE].at);
+    log(&mut scene, PLACES[LOG].at);
+    signpost(&mut scene, PLACES[SIGNPOST].at);
+    pool(&mut scene, POND);
+    old_track(&mut scene, PLACES[OLD_TRACK].at);
     if shown.places[FAR_FALLS] {
         falls(&mut scene);
     } else {
@@ -118,7 +128,7 @@ pub fn map(shown: &Shown) -> Canvas {
     }
     names(&mut scene, shown);
     cartouche(&mut scene);
-    compass(&mut scene);
+    compass(&mut scene, COMPASS);
     folds(&mut scene);
     scene
 }
@@ -128,7 +138,7 @@ pub fn map(shown: &Shown) -> Canvas {
 // ---------------------------------------------------------------------------------------------
 
 /// How far a point is from a line drawn through `points`.
-fn from_line(at: (f32, f32), points: &[(f32, f32)]) -> f32 {
+pub(super) fn from_line(at: (f32, f32), points: &[(f32, f32)]) -> f32 {
     points
         .windows(2)
         .map(|pair| {
@@ -146,7 +156,7 @@ fn from_line(at: (f32, f32), points: &[(f32, f32)]) -> f32 {
 }
 
 /// Every pixel along a line through `points`, one step at a time.
-fn traced(points: &[(f32, f32)]) -> Vec<(f32, f32)> {
+pub(super) fn traced(points: &[(f32, f32)]) -> Vec<(f32, f32)> {
     let mut out = Vec::new();
     for pair in points.windows(2) {
         let (a, b) = (pair[0], pair[1]);
@@ -163,7 +173,7 @@ fn traced(points: &[(f32, f32)]) -> Vec<(f32, f32)> {
 }
 
 /// Whether a point is on the parchment rather than the table.
-fn on_paper(x: i32, y: i32) -> bool {
+pub(super) fn on_paper(x: i32, y: i32) -> bool {
     let ragged = |along: i32, salt: u32| (noise(along.div_euclid(3), 0, salt) % 3) as i32;
     x >= MARGIN + ragged(y, 2002)
         && x < WIDTH - MARGIN - ragged(y, 2003)
@@ -172,7 +182,7 @@ fn on_paper(x: i32, y: i32) -> bool {
 }
 
 /// A wash of colour laid over the parchment, as watercolour is: `amount` of it, mottled.
-fn wash(scene: &mut Canvas, x: i32, y: i32, color: Rgba, amount: f32) {
+pub(super) fn wash(scene: &mut Canvas, x: i32, y: i32, color: Rgba, amount: f32) {
     let mottle = 0.8 + 0.4 * patches(x, y, (5, 4), 2006);
     let pixel = scene.get(x, y);
     scene.set(x, y, mix(pixel, color, (amount * mottle).min(1.0)));
@@ -183,7 +193,7 @@ fn wash(scene: &mut Canvas, x: i32, y: i32, color: Rgba, amount: f32) {
 // ---------------------------------------------------------------------------------------------
 
 /// The table the map lies on: dark wood in long planks, its grain running across.
-fn table(scene: &mut Canvas) {
+pub(super) fn table(scene: &mut Canvas) {
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
             let plank = y.div_euclid(9);
@@ -209,7 +219,7 @@ fn table(scene: &mut Canvas) {
 
 /// The sheet: warm cream, mottled and fibrous, browning towards its ragged edges, which cast a
 /// shadow on the table down and to the right.
-fn parchment(scene: &mut Canvas) {
+pub(super) fn parchment(scene: &mut Canvas) {
     for y in 0..HEIGHT {
         for x in 0..WIDTH {
             if on_paper(x - 2, y - 2) && !on_paper(x, y) {
@@ -261,7 +271,7 @@ fn parchment(scene: &mut Canvas) {
 }
 
 /// The folds the map has been kept in: a crease across and one down, each lit on one side.
-fn folds(scene: &mut Canvas) {
+pub(super) fn folds(scene: &mut Canvas) {
     let across = HEIGHT / 2;
     let down = WIDTH / 2;
     for x in 0..WIDTH {
@@ -428,7 +438,7 @@ fn lane_and_hedge(scene: &mut Canvas) {
 }
 
 /// A rounded bush or tree crown, shaded from the upper left, outlined in its own darkest green.
-fn bush(scene: &mut Canvas, (cx, cy): (i32, i32), radius: i32, ramp: Ramp, salt: u32) {
+pub(super) fn bush(scene: &mut Canvas, (cx, cy): (i32, i32), radius: i32, ramp: Ramp, salt: u32) {
     let ry = radius;
     for y in cy - ry - 1..=cy + ry + 1 {
         for x in cx - radius - 1..=cx + radius + 1 {
@@ -459,7 +469,7 @@ fn bush(scene: &mut Canvas, (cx, cy): (i32, i32), radius: i32, ramp: Ramp, salt:
 }
 
 /// A little conifer: a stack of shaded tiers on a short trunk.
-fn pine(scene: &mut Canvas, (cx, foot): (i32, i32), tall: i32) {
+pub(super) fn pine(scene: &mut Canvas, (cx, foot): (i32, i32), tall: i32) {
     vline(scene, cx, foot - 2, 3, WOOD.shadow);
     for row in 0..tall {
         let y = foot - 2 - row;
@@ -500,7 +510,7 @@ fn trees(scene: &mut Canvas, shown: &Shown) {
                 .iter()
                 .any(|place| distance(at, (place.at.0, place.at.1 - 10.0)) < 24.0);
             let near_path = PATHS.iter().enumerate().any(|(index, path)| {
-                shown.paths[index] && from_line(at, &path.walk_from(path.ends.0)) < 7.0
+                shown.paths[index] && from_line(at, &path.walk_from(&PLACES, path.ends.0)) < 7.0
             });
             let (fx, fy, frx, fry) = FIELD;
             let in_field =
@@ -572,9 +582,15 @@ fn trees(scene: &mut Canvas, shown: &Shown) {
 
 /// A path inked along its bends: an open one in dashes, a way only some company takes dotted
 /// in a redder hand with a mark of what it is. A path into the mist fades as it goes.
-fn ink_path(scene: &mut Canvas, path: &super::map::Path, shown: &Shown) {
+pub(super) fn ink_path(
+    scene: &mut Canvas,
+    places: &[super::map::Place],
+    path: &super::map::Path,
+    shown: &Shown,
+    woods: bool,
+) {
     let (a, b) = path.ends;
-    let points = path.walk_from(a);
+    let points = path.walk_from(places, a);
     let length: f32 = points.windows(2).map(|p| distance(p[0], p[1])).sum();
     let into_mist = !shown.places[a] || !shown.places[b];
     let toward_a = !shown.places[a];
@@ -619,14 +635,20 @@ fn ink_path(scene: &mut Canvas, path: &super::map::Path, shown: &Shown) {
     }
     if let Way::Shortcut(_, opener) = path.way {
         let mid = points[points.len() / 2];
-        mark(scene, opener, (mid.0 as i32, mid.1 as i32), &points);
+        mark(scene, opener, (mid.0 as i32, mid.1 as i32), &points, woods);
     }
 }
 
 /// What a way only some company takes is marked with, at its middle: paw prints along the deer
 /// track, stepping stones up the stream, a zigzag up the steep way, the old way's milestones, and
 /// a gap in the hedge.
-fn mark(scene: &mut Canvas, opener: Opener, (x, y): (i32, i32), points: &[(f32, f32)]) {
+fn mark(
+    scene: &mut Canvas,
+    opener: Opener,
+    (x, y): (i32, i32),
+    points: &[(f32, f32)],
+    woods: bool,
+) {
     match opener {
         Opener::Explorer => {
             for (dx, dy) in [(-6, 1), (-2, -1), (2, 1), (6, -1)] {
@@ -636,12 +658,19 @@ fn mark(scene: &mut Canvas, opener: Opener, (x, y): (i32, i32), points: &[(f32, 
             }
         }
         Opener::ClosePair => {
-            // Stones across the stream, stepped from one to the next up its bed.
-            for (sx, sy) in traced(&STREAM)
-                .into_iter()
-                .filter(|(_, sy)| (100.0..150.0).contains(sy))
-                .step_by(7)
-            {
+            // Stones across the stream, stepped from one to the next up its bed: on another map,
+            // along the middle of the way.
+            let stones: Vec<(f32, f32)> = if woods {
+                traced(&STREAM)
+                    .into_iter()
+                    .filter(|(_, sy)| (100.0..150.0).contains(sy))
+                    .collect()
+            } else {
+                let traced = traced(points);
+                let third = traced.len() / 3;
+                traced[third..traced.len() - third].to_vec()
+            };
+            for (sx, sy) in stones.into_iter().step_by(7) {
                 let (sx, sy) = (sx as i32, sy as i32);
                 ellipse(scene, sx, sy + 1, 3, 2, rgba(0x1a2a30, 90));
                 ellipse(scene, sx, sy, 3, 2, ROCK.edge);
@@ -762,8 +791,8 @@ fn meadow(scene: &mut Canvas) {
 }
 
 /// The glade: a clearing under the great oak, with the hollow log lying in it.
-fn glade(scene: &mut Canvas) {
-    let (x, y) = (PLACES[GLADE].at.0 as i32, PLACES[GLADE].at.1 as i32);
+pub(super) fn glade(scene: &mut Canvas, (x, y): (f32, f32)) {
+    let (x, y) = (x as i32, y as i32);
     for py in y - 22..y - 2 {
         for px in x - 22..x + 22 {
             let (u, v) = ((px - x) as f32 / 22.0, (py - (y - 12)) as f32 / 10.0);
@@ -799,8 +828,8 @@ fn glade(scene: &mut Canvas) {
 }
 
 /// The fallen log: a great trunk lying in its own little clearing, mushrooms on it.
-fn log(scene: &mut Canvas) {
-    let (x, y) = (PLACES[LOG].at.0 as i32, PLACES[LOG].at.1 as i32);
+pub(super) fn log(scene: &mut Canvas, (x, y): (f32, f32)) {
+    let (x, y) = (x as i32, y as i32);
     for py in y - 20..y - 2 {
         for px in x - 20..x + 20 {
             let (u, v) = ((px - x) as f32 / 20.0, (py - (y - 11)) as f32 / 9.0);
@@ -835,11 +864,8 @@ fn log(scene: &mut Canvas) {
 
 /// The old signpost at the fork: a weathered post with two boards on it, one pointing on further
 /// in, and its shadow on the ground.
-fn signpost(scene: &mut Canvas) {
-    let (x, foot) = (
-        PLACES[SIGNPOST].at.0 as i32,
-        PLACES[SIGNPOST].at.1 as i32 - 6,
-    );
+pub(super) fn signpost(scene: &mut Canvas, (x, y): (f32, f32)) {
+    let (x, foot) = (x as i32, y as i32 - 6);
     ellipse(scene, x + 2, foot, 4, 1, rgba(0x2a1c10, 70));
     // The post, lit on its left, with a cap.
     for y in foot - 16..foot {
@@ -880,8 +906,7 @@ fn signpost(scene: &mut Canvas) {
 }
 
 /// The pool: the pond, with lilies on it and a little fall where the stream comes in.
-fn pool(scene: &mut Canvas) {
-    let (cx, cy, rx, ry) = POND;
+pub(super) fn pool(scene: &mut Canvas, (cx, cy, rx, ry): (i32, i32, i32, i32)) {
     for y in cy - ry - 1..=cy + ry + 1 {
         for x in cx - rx - 1..=cx + rx + 1 {
             let (u, v) = (
@@ -925,8 +950,8 @@ fn pool(scene: &mut Canvas) {
 /// The old track: an overgrown cart track running off between the trees, worn into two ruts with
 /// grass down the middle, the woodcutter's tumbledown hut beside it with its roof fallen in, the
 /// old milestone, a run of tumbled wall, and the broken cart that never got any further.
-fn old_track(scene: &mut Canvas) {
-    let (x, y) = (PLACES[OLD_TRACK].at.0 as i32, PLACES[OLD_TRACK].at.1 as i32);
+pub(super) fn old_track(scene: &mut Canvas, (x, y): (f32, f32)) {
+    let (x, y) = (x as i32, y as i32);
     // Its own open ground, in a wash.
     for py in y - 38..y - 2 {
         for px in x - 28..x + 30 {
@@ -1110,7 +1135,12 @@ fn old_track(scene: &mut Canvas) {
 
 /// Paints rows of letters with their top-left at `at`, each letter a colour from `inks`; a
 /// letter not among them is left as it was.
-fn stamp_rows(scene: &mut Canvas, (x, y): (i32, i32), rows: &[&str], inks: &[(char, Rgba)]) {
+pub(super) fn stamp_rows(
+    scene: &mut Canvas,
+    (x, y): (i32, i32),
+    rows: &[&str],
+    inks: &[(char, Rgba)],
+) {
     for (dy, row) in rows.iter().enumerate() {
         for (dx, letter) in row.chars().enumerate() {
             if let Some(&(_, color)) = inks.iter().find(|(name, _)| *name == letter) {
@@ -1123,8 +1153,15 @@ fn stamp_rows(scene: &mut Canvas, (x, y): (i32, i32), rows: &[&str], inks: &[(ch
 /// The Far Falls, once in sight: the crag with the falls coming down it under the little arch,
 /// the plunge pool at its foot, and spray.
 fn falls(scene: &mut Canvas) {
-    let (fx, top) = FALLS_TOP;
-    let (px, py, prx, pry) = PLUNGE;
+    falls_at(scene, FALLS_TOP, PLUNGE);
+}
+
+/// Falls coming over at `top`, into a plunge pool at `plunge`.
+pub(super) fn falls_at(
+    scene: &mut Canvas,
+    (fx, top): (i32, i32),
+    (px, py, prx, pry): (i32, i32, i32, i32),
+) {
     // The crag face behind the falls, in shade.
     polygon(
         scene,
@@ -1178,7 +1215,7 @@ fn falls(scene: &mut Canvas) {
 }
 
 /// Mist over somewhere nobody has found yet: soft white billows, and a question mark.
-fn mist(scene: &mut Canvas, at: (f32, f32)) {
+pub(super) fn mist(scene: &mut Canvas, at: (f32, f32)) {
     let (cx, cy) = (at.0 as i32 + 6, at.1 as i32 - 30);
     for y in cy - 40..cy + 40 {
         for x in cx - 54..cx + 54 {
@@ -1244,7 +1281,7 @@ fn small_glyph(letter: char) -> Option<(i32, [u8; 5])> {
 
 /// A place's name lettered on the map, centred on `x` with its top at `y`: in ink, with the
 /// paper showing round it so it reads over trees and paths.
-fn label(scene: &mut Canvas, text: &str, (x, y): (i32, i32)) {
+pub(super) fn label(scene: &mut Canvas, text: &str, (x, y): (i32, i32)) {
     // Anything without a letter, a space say, is a gap as wide as one.
     let glyphs: Vec<(i32, [u8; 5])> = text
         .chars()
@@ -1307,7 +1344,11 @@ fn names(scene: &mut Canvas, shown: &Shown) {
 
 /// The title, top left: lettered on a little scroll.
 fn cartouche(scene: &mut Canvas) {
-    let (x, y, width, height) = CARTOUCHE;
+    scroll(scene, CARTOUCHE, "THE WOODS");
+}
+
+/// A title lettered on a little scroll, its ends curled under.
+pub(super) fn scroll(scene: &mut Canvas, (x, y, width, height): (i32, i32, i32, i32), text: &str) {
     // The scroll, its ends curled under.
     for py in y..y + height {
         for px in x..x + width {
@@ -1329,15 +1370,13 @@ fn cartouche(scene: &mut Canvas) {
             put(scene, end + dir * 2, y + dy + 1, PARCHMENT.edge);
         }
     }
-    let text = "THE WOODS";
     let left = x + (width - crate::font::text_width(text)) / 2;
     draw_text(scene, left + 1, y + 6, text, rgba(0x2a1a10, 70));
     draw_text(scene, left, y + 5, text, INK);
 }
 
 /// The compass, bottom right: a star of eight points, the north one marked.
-fn compass(scene: &mut Canvas) {
-    let (cx, cy) = COMPASS;
+pub(super) fn compass(scene: &mut Canvas, (cx, cy): (i32, i32)) {
     for step in 0..8 {
         let angle = step as f32 / 8.0 * TAU - TAU / 4.0;
         let long = if step % 2 == 0 { 12.0 } else { 7.0 };
@@ -1564,14 +1603,14 @@ mod tests {
     #[test]
     fn the_map_fills_every_pixel_and_shows_only_what_is_in_sight() {
         let all = Shown {
-            places: [true; PLACES.len()],
-            paths: [true; PATHS.len()],
+            places: vec![true; PLACES.len()],
+            paths: vec![true; PATHS.len()],
         };
-        let seen = map(&all);
+        let seen = map(&Map::woods(), &all);
         assert!(seen.pixels().iter().all(|pixel| pixel.a == 255));
         let mut misty = all.clone();
         misty.places[FAR_FALLS] = false;
-        let unseen = map(&misty);
+        let unseen = map(&Map::woods(), &misty);
         let (x, y) = (FALLS_TOP.0, FALLS_TOP.1 + 10);
         assert_ne!(
             seen.get(x, y),

@@ -1,4 +1,4 @@
-# Writing a story for Formiga Hill
+# Writing for Formiga Hill
 
 A story is a short scene, or a few, that the colony plays out in the Clubhouse at the Hill, a
 snug room with a fire where the person picks a story from the notice board. Stories are written as
@@ -18,6 +18,57 @@ exactly this way, and each is a complete working example in
 [`crates/formiga-hill/content`](../crates/formiga-hill/content). *The Last Bun* is probably the
 best place to start, since it shows a mystery whose suspects are cast from the colony's own
 habits, temperaments and friendships.
+
+A package can carry Woods adventures and Fairground competitions too, in the same folder and
+format, and much of what follows holds for them as it does for stories;
+[A Woods adventure](#a-woods-adventure) and [A Fairground competition](#a-fairground-competition)
+say what is different.
+
+## Writing a story in Hill
+
+The Clubhouse's **Write a story** button opens the story builder, which writes a package in exactly
+this format without anyone having to see it. A story is built from plain choices: who is in it and
+how each role is cast, its scenes in order, and each scene's steps, such as someone going to the
+rug, a line said (with a different version for any temperament), a feeling shown, or a choice for
+whoever is watching. **Try it** plays the story straight away with whoever is visiting and keeps
+nothing; **Put on the board** adds it to the packages folder, for every colony; **Share…** saves it
+as one file to pass on. Stories being written are kept as drafts in Hill's data folder, under
+`drafts/stories/`, as they are written.
+
+The builder says less than a story file can, on purpose: each role is cast by one choice (with
+`any` behind it unless it is left out when nobody fits), scenes follow one another unless one says
+where to go next, and a choice is the only way a story forks. Anything it writes can be opened and
+carried on by hand.
+
+## Sharing a story, or anything else made at the Hill
+
+A story, an adventure, a competition, or anything else a package carries, is passed on as one
+plain text file ending `.formiga-hill-share`: the package's files, each written out as text in a
+TOML table, under `formiga_hill_share = 1`.
+
+```toml
+formiga_hill_share = 1
+
+[files]
+"manifest.toml" = "package_id = \"org.example.lost-kite\"\n…"
+"content/lost-kite.toml" = "…"
+"localization/en.toml" = "…"
+```
+
+Hill reads at most 2 MiB of one, holds its files to exactly the limits of a package folder below,
+and loads the package by the same loader before anything is written. There is one way in,
+whatever the file holds: the Clubhouse's **Story packages…** card (**Open a shared story…**), the
+Woods' tray under **Adventure** and the Fairground's **Competitions** card (each **Open a shared
+one…**), or dropping the file on the window, all open the same **Shared with you** card. It shows
+whose it is, what it holds, how each story begins and which souvenirs it can give, each adventure's
+map, and each competition's games, with ways to try a story first, add it, or turn it away.
+Adding it puts the package in the packages folder as `<package_id>.formiga-hill`, in place of any
+earlier version with the same id. Ids beginning `com.formiga.` are kept for Hill's own packages and
+are refused. **Take out…** on the Story packages card removes a package from the folder again, and
+a package holding only competitions can be removed from the Competitions card too.
+
+`formiga-hill --share-package my-story.formiga-hill my-story.formiga-hill-share` writes a share
+file from a package folder, and `--check-package` checks a share file as it does a folder.
 
 ## Trying a story
 
@@ -264,10 +315,135 @@ lost by staying away. When the colony goes home, every souvenir it has kept goes
 Formiga Desktop's Journal, whichever story or game gave it: from Desktop 0.66.6, or from 0.67.0 for
 the Fairground's four newest.
 
+## A Woods adventure
+
+A package can also carry an adventure: a short outing in the Woods, laid out on a map of its own
+and walked the way an expedition is. The person picks it from the Woods' tray under
+**Adventure**, chooses up to three companions, and makes their way from place to place, choosing
+at each fork and stopping where there is something to do, until they reach an ending or head
+home. Hill's own, *The Lantern Walk*, *Up to the Singing Falls* and *The Owl's Question*, are in
+[`crates/formiga-hill/content`](../crates/formiga-hill/content) and written exactly this way.
+
+There is no need to write one by hand. The map editor in the Woods (**Adventure**, then **Make
+an adventure**) puts places down, joins them with paths and names everything, says what is still
+missing, lets it be tried at once with whoever is visiting (nothing found on a try is kept), and
+keeps it in the Woods or saves it as one file to share, as above. Adventures being made are kept as
+drafts in Hill's data folder, under `drafts/adventures/`. What it writes is this format.
+
+The manifest lists `"adventure"` in `content_types`, and the adventure's file in
+`entry_points`. A package may carry stories and adventures together; each file says which it is
+by its first table.
+
+```toml
+[adventure]
+id = "lantern-walk"
+title = "title"        # a line in the localisation file
+about = "about"        # optional: shown when choosing it
+start = "lane"         # where everyone comes in, up the lane from the Hill
+
+[[places]]
+id = "lane"
+site = "edge"
+at = [36, 186]         # where on the map, from [16, 48] to [368, 206]
+arrive = "lane.arrive" # optional: said on getting here
+
+[[places]]
+id = "pool"
+site = "pool"
+at = [300, 180]
+name = "pool.name"     # optional: otherwise "the pool"
+hidden = true          # out of sight in the mist until somebody gets there
+ending = "pool.ending" # getting here finishes the adventure; this is said
+
+[[paths]]
+between = ["lane", "pool"]
+bends = [[150, 200]]   # optional, up to 8: where it bends on the way
+length = 12            # optional: how much of the day it takes; otherwise as drawn
+
+[[paths]]
+between = ["lane", "pool"]
+way = "little_one"     # a shortcut only some company takes
+name = "ways.rabbit"   # what it is called
+```
+
+Each place is one of the Woods' own kinds, and what is done there is that place's own activity,
+played as it always is:
+
+| `site` | What it is | What is done there |
+| --- | --- | --- |
+| `edge` | A way in, with a stile | Nothing: it is where the lane comes in |
+| `hedgerow` | A hedge with a gate | A patch of foraging |
+| `meadow` | Open grass and flowers | Catching a bug |
+| `glade` | A clearing under an oak | A few searches, rummaging |
+| `log` | A fallen log | A picnic, a rest |
+| `signpost` | An old signpost at a fork | Nothing, but someone who reads old signs may read it |
+| `pool` | A pond | A cast or two |
+| `old_track` | An old cart track and the woodcutter's hut | A heap or two to scavenge |
+| `falls` | Falls coming down a crag | Wading in for what the water brings |
+
+A path is open to anyone unless its `way` says otherwise: `explorer` (an explorer, or anyone very
+curious), `little_one`, `close_pair` (two close friends together), `bold`, or `reader` (someone
+who reads old signs, once they have read a signpost at one end of it, which it must start from).
+A way only some company takes is a shortcut, never the only way: whoever comes, the adventure
+has to be playable.
+
+Hill refuses an adventure, saying why, if:
+- any place can't be reached from the start along open paths, by anyone on their own;
+- no ending is near enough to reach in a day's light, at the slowest pace;
+- it has no ending, its start is hidden, or a path names a place that isn't there;
+- it has more than 16 places or 32 paths, or places stand closer than 22 apart, or off the map.
+
+An adventure's words follow the same rules as a story's (see Localisation), with one name to use:
+`{leader}`, whoever leads the party. A line can have a version for each temperament, told in the
+leader's. Place and path names are plain, short and name nobody.
+
+An adventure gives nothing of its own. Whatever is found, caught or turned up on the way comes by
+the Woods' usual rules and goes home in the satchel as from any expedition; Hill remembers how
+often each adventure has been played and finished, and that is all.
+
+## A Fairground competition
+
+A package can also carry competitions for the Fairground: a run of its own games, one after
+another, for points. The colony plays each game exactly as it always does, and the person
+watches. Hill's own, *The Fairground Five* and *Heats and a Final*, are in
+[`crates/formiga-hill/content`](../crates/formiga-hill/content).
+
+There is no need to write one by hand either. The Fairground's **Competitions** card makes them
+(**Make a new one**: the games in order, who plays each, the points and how it is won, with how it
+would go with the colony visiting), changes or copies them, and passes one on as a file to share,
+as above. A competition made there is kept as a package in the packages folder, like one added
+from a file. What it writes is this format.
+
+The manifest lists `"competition"` in `content_types`, and each competition's own file in
+`entry_points`. A package may carry competitions beside stories and adventures; each file says
+which it is by its first table.
+
+```toml
+[competition]
+id = "summer-games"
+title = "title"          # a line in the localisation file: up to 40 characters, naming nobody
+points = [3, 2, 1]       # for 1st, 2nd and 3rd, from 1 to 6 places, each worth up to 10
+win = "most-points"      # or "first-to:10": the first to that many points, up to 99
+
+[[events]]               # from 1 to 8, played in order
+game = "sack-race"       # hide-and-seek, sack-race, high-striker, hoopla or tug-of-war
+rounds = 2               # from 1 to 3; 1 if left out
+players = "everyone"     # or "keenest:4", or "leaders:3"; everyone if left out
+```
+
+Who plays is said without naming anyone, so a competition means something in any colony:
+everyone, the few keenest on that game by their own temperaments, or the few with the most points
+so far, for a final. A game finishes in places: the order home in the sack race, the mark on the
+striker, rings rung at hoopla (a ring or more to be placed), the best hidden at hide-and-seek, and
+the winning side of the tug-of-war. Those level share a place, and the next place is as far down as
+there were of them. A game too few can play is passed over. Unknown fields in a competition file
+are refused, so nothing in one can say anything about a companion.
+
 ## What packages can't do
 
 Packages can't run code, read or write files, reach the network, start programs, change anything
 in Formiga Desktop, rewrite a companion's temperament, or make up history for it. These limits are
-what make it reasonable to install a story from someone you don't know: the worst a package can
-do is tell a story badly. A package that fails to load is reported and left out, and it never
-stops Hill from opening.
+what make it reasonable to install a story, an adventure or a competition from someone you don't
+know: the worst a package can do is tell a story badly, lay out a dull walk, or order the
+Fairground's games dully. A package that fails to load is reported and left out, and it never stops
+Hill from opening.

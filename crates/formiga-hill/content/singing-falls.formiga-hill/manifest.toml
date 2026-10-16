@@ -1,0 +1,9 @@
+# One of Hill's own Woods adventures, written exactly as any package author would write one.
+package_id = "com.formiga.hill.singing-falls"
+title = "Up to the Singing Falls"
+author = "Formiga"
+version = "1.0.0"
+hill_api = 2
+content_types = ["adventure"]
+entry_points = ["content/singing-falls.toml"]
+default_locale = "en"

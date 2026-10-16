@@ -1,0 +1,88 @@
+# Over the clover field for a rest on the log, or up the carters' track, to falls that sing. A
+# bold one scrambles straight up the rocks; two close friends cross the ford together.
+
+[adventure]
+id = "singing-falls"
+title = "title"
+about = "about"
+start = "gate"
+
+[[places]]
+id = "gate"
+site = "edge"
+at = [34, 190]
+arrive = "gate.arrive"
+
+[[places]]
+id = "clover"
+site = "meadow"
+at = [84, 132]
+name = "clover.name"
+arrive = "clover.arrive"
+
+[[places]]
+id = "log"
+site = "log"
+at = [156, 92]
+arrive = "log.arrive"
+
+[[places]]
+id = "track"
+site = "old_track"
+at = [176, 196]
+name = "track.name"
+arrive = "track.arrive"
+
+[[places]]
+id = "glade"
+site = "glade"
+at = [256, 160]
+name = "glade.name"
+
+[[places]]
+id = "falls"
+site = "falls"
+at = [322, 116]
+name = "falls.name"
+hidden = true
+ending = "falls.ending"
+
+[[paths]]
+between = ["gate", "clover"]
+bends = [[44, 160]]
+
+[[paths]]
+between = ["gate", "track"]
+bends = [[100, 200], [140, 200]]
+
+[[paths]]
+between = ["clover", "log"]
+bends = [[112, 104]]
+
+[[paths]]
+between = ["clover", "track"]
+bends = [[124, 164]]
+
+[[paths]]
+between = ["track", "glade"]
+bends = [[214, 184]]
+
+[[paths]]
+between = ["log", "glade"]
+bends = [[204, 112], [236, 136]]
+
+[[paths]]
+between = ["glade", "falls"]
+bends = [[290, 150], [308, 132]]
+
+[[paths]]
+between = ["log", "falls"]
+way = "bold"
+name = "ways.scramble"
+bends = [[210, 72], [272, 74]]
+
+[[paths]]
+between = ["track", "falls"]
+way = "close_pair"
+name = "ways.ford"
+bends = [[250, 198], [306, 174]]

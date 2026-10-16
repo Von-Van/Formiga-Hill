@@ -108,6 +108,9 @@ pub struct ColonyMemories {
     /// Visits to the far places in a row that brought home nothing new from afar.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub far_drought: u32,
+    /// Adventures played, by `<package id>/<adventure id>`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub adventures: BTreeMap<String, AdventureRecord>,
     /// The latest expeditions' pages in the journal, the latest last.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub expedition_pages: Vec<ExpeditionPage>,
@@ -195,6 +198,28 @@ pub struct Homecoming<'a> {
     pub bugs: &'a [(&'a str, f32, u64)],
     /// Torn maps found on the way, by who found each.
     pub maps: &'a [u64],
+}
+
+/// An adventure coming home: what `Memories::back_from_an_adventure` keeps of it.
+#[derive(Debug, Default)]
+pub struct AdventureHome<'a> {
+    /// The adventure, as `<package id>/<adventure id>`.
+    pub adventure: &'a str,
+    /// Whether one of its endings was reached.
+    pub finished: bool,
+    pub found: &'a [(&'a str, u64)],
+    pub fish: &'a [(&'a str, f32, u64)],
+    pub bugs: &'a [(&'a str, f32, u64)],
+    pub maps: &'a [u64],
+}
+
+/// How often an adventure has been set off on, and finished.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AdventureRecord {
+    #[serde(default)]
+    pub played: u32,
+    #[serde(default)]
+    pub finished: u32,
 }
 
 /// One kind of fish in the journal.
@@ -556,31 +581,7 @@ impl Memories {
                 colony.far_drought + 1
             };
         }
-        let mut caught = Vec::new();
-        for &(id, length, by) in home.fish {
-            let Some(fish) = crate::fishing::fish::fish(id) else {
-                continue;
-            };
-            let record = colony.fish.entry(fish.id.to_owned()).or_default();
-            if record.count == 0 {
-                record.first_by = by.to_string();
-            }
-            record.count += 1;
-            record.longest = record.longest.max(length);
-            caught.push(fish.id.to_owned());
-        }
-        for &(id, size, by) in home.bugs {
-            let Some(bug) = crate::meadow::bugs::bug(id) else {
-                continue;
-            };
-            let record = colony.bugs.entry(bug.id.to_owned()).or_default();
-            if record.count == 0 {
-                record.first_by = by.to_string();
-            }
-            record.count += 1;
-            record.biggest = record.biggest.max(size);
-            caught.push(bug.id.to_owned());
-        }
+        let caught = keep_caught(colony, home.fish, home.bugs);
         for by in home.maps {
             keep_map(colony, &id, *by);
         }
@@ -598,6 +599,30 @@ impl Memories {
         });
         let over = colony.expedition_pages.len().saturating_sub(PAGES_KEPT);
         colony.expedition_pages.drain(..over);
+        self.keep();
+        new
+    }
+
+    /// Remembers an adventure played: that it was set off on, and finished if it was, by its
+    /// package and its own id; and whatever came home, kept as an expedition's is. An adventure
+    /// is played on a map of its own, so the furthest yet, the far places and the expeditions'
+    /// pages are left as they are. Says which finds were new.
+    pub fn back_from_an_adventure(&mut self, home: &AdventureHome) -> Vec<&'static str> {
+        let id = self.colony.clone();
+        let colony = self.colony_mut();
+        let record = colony
+            .adventures
+            .entry(home.adventure.to_owned())
+            .or_default();
+        record.played += 1;
+        if home.finished {
+            record.finished += 1;
+        }
+        let new = keep_found(colony, home.found);
+        keep_caught(colony, home.fish, home.bugs);
+        for by in home.maps {
+            keep_map(colony, &id, *by);
+        }
         self.keep();
         new
     }
@@ -918,6 +943,40 @@ fn write(path: &Path, book: &Book) -> std::io::Result<()> {
     file.sync_all()?;
     drop(file);
     fs::rename(&temporary, path)
+}
+
+/// Fish and bugs caught on the way, into the journal as they were let go; says which kinds.
+fn keep_caught(
+    colony: &mut ColonyMemories,
+    fish: &[(&str, f32, u64)],
+    bugs: &[(&str, f32, u64)],
+) -> Vec<String> {
+    let mut caught = Vec::new();
+    for &(id, length, by) in fish {
+        let Some(fish) = crate::fishing::fish::fish(id) else {
+            continue;
+        };
+        let record = colony.fish.entry(fish.id.to_owned()).or_default();
+        if record.count == 0 {
+            record.first_by = by.to_string();
+        }
+        record.count += 1;
+        record.longest = record.longest.max(length);
+        caught.push(fish.id.to_owned());
+    }
+    for &(id, size, by) in bugs {
+        let Some(bug) = crate::meadow::bugs::bug(id) else {
+            continue;
+        };
+        let record = colony.bugs.entry(bug.id.to_owned()).or_default();
+        if record.count == 0 {
+            record.first_by = by.to_string();
+        }
+        record.count += 1;
+        record.biggest = record.biggest.max(size);
+        caught.push(bug.id.to_owned());
+    }
+    caught
 }
 
 #[cfg(test)]
@@ -1537,5 +1596,29 @@ mod tests {
         assert_eq!(memories.colony().visits, 0);
         assert!(dir.join("memories.json.unreadable").exists());
         fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_adventure_is_remembered_and_its_basket_kept_but_the_woods_records_are_left_alone() {
+        let dir = scratch("adventure");
+        let mut memories = Memories::open(Some(&dir), "colony");
+        let home = AdventureHome {
+            adventure: "org.example.pond/pond",
+            finished: true,
+            found: &[("acorn_stash", 7)],
+            ..AdventureHome::default()
+        };
+        let new = memories.back_from_an_adventure(&home);
+        assert_eq!(new, ["acorn_stash"]);
+        memories.back_from_an_adventure(&AdventureHome {
+            finished: false,
+            ..home
+        });
+        let colony = memories.colony();
+        let record = &colony.adventures["org.example.pond/pond"];
+        assert_eq!((record.played, record.finished), (2, 1));
+        assert_eq!(colony.satchel.get("acorn_stash"), Some(&2));
+        assert_eq!(colony.expeditions, 0);
+        assert!(colony.furthest.is_none() && colony.expedition_pages.is_empty());
     }
 }
