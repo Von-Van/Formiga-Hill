@@ -172,9 +172,9 @@ pub fn png(picture: &Canvas, scale: u32) -> Vec<u8> {
     bytes
 }
 
-/// `picture` saved at `path` as a PNG, `scale` times as big each way.
+/// `picture` saved at `path` as a PNG, `scale` times as big each way: whole, or not at all.
 pub fn write(path: &Path, picture: &Canvas, scale: u32) -> Result<()> {
-    fs::write(path, png(picture, scale))
+    crate::sharing::write_atomically(path, &png(picture, scale))
         .with_context(|| format!("could not create {}", path.display()))
 }
 
