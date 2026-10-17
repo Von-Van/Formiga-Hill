@@ -217,27 +217,33 @@ impl HillApp {
         Drafts::open(crate::memories::Memories::folder().as_deref(), DRAFTS)
     }
 
-    /// The adventures being made, by name and title, the latest worked on first.
-    fn adventure_drafts(&self) -> Vec<(String, String)> {
-        let drafts = self.drafts();
-        drafts
-            .list()
-            .into_iter()
-            .filter_map(|name| {
-                let draft = Draft::from_text(&drafts.load(&name)?)?;
-                let title = if draft.title.trim().is_empty() {
-                    "An adventure with no name yet".to_owned()
-                } else {
-                    draft.title.clone()
-                };
-                Some((name, title))
-            })
-            .collect()
+    /// The adventures being made, by name and title, the latest worked on first: read from the
+    /// drafts kept the first time they are asked for, and again only after one is kept or thrown
+    /// away, not every time the tray is drawn.
+    fn adventure_drafts(&mut self) -> &[(String, String)] {
+        if self.woods.begun.is_none() {
+            let drafts = self.drafts();
+            let begun = drafts
+                .list()
+                .into_iter()
+                .filter_map(|name| {
+                    let draft = Draft::from_text(&drafts.load(&name)?)?;
+                    let title = if draft.title.trim().is_empty() {
+                        "An adventure with no name yet".to_owned()
+                    } else {
+                        draft.title.clone()
+                    };
+                    Some((name, title))
+                })
+                .collect();
+            self.woods.begun = Some(begun);
+        }
+        self.woods.begun.as_deref().unwrap_or_default()
     }
 
     /// The Woods' tray's way into the map editor: a new adventure, or one being made.
     pub(super) fn making_choice(&mut self, ui: &mut egui::Ui) {
-        let begun = self.adventure_drafts();
+        let begun = self.adventure_drafts().to_vec();
         let mut open = None;
         let new = ui.add(paper::Button::new("Make an adventure"));
         if paper::explain(ui, new, "Lay out an adventure of your own on a map").clicked() {
@@ -275,7 +281,8 @@ impl HillApp {
         if let Some(last) = self
             .adventure_drafts()
             .first()
-            .and_then(|(name, _)| self.drafts().load(name))
+            .map(|(name, _)| name.clone())
+            .and_then(|name| self.drafts().load(&name))
             .and_then(|text| Draft::from_text(&text))
         {
             // Whoever made the last one most likely makes this one too.
@@ -337,13 +344,18 @@ impl HillApp {
     }
 
     /// Keeps the draft as it stands, so nothing made is lost.
-    fn keep_draft(&self) {
-        if let Some(making) = &self.woods.making
-            && !making.name.is_empty()
-            && let Err(error) = self.drafts().save(&making.name, &making.draft.to_text())
-        {
+    fn keep_draft(&mut self) {
+        let Some(making) = &self.woods.making else {
+            return;
+        };
+        if making.name.is_empty() {
+            return;
+        }
+        if let Err(error) = self.drafts().save(&making.name, &making.draft.to_text()) {
             eprintln!("formiga-hill: could not keep the adventure being made: {error}");
         }
+        // Its title, and which was worked on last, may have changed.
+        self.woods.begun = None;
     }
 
     /// The map being made, with whatever is picked out marked on it.
@@ -683,6 +695,7 @@ impl HillApp {
             Some(Act::ThrowAway) => {
                 if let Some(making) = self.woods.making.take() {
                     let _ = self.drafts().remove(&making.name);
+                    self.woods.begun = None;
                 }
                 self.card = None;
                 self.notice = Some((
