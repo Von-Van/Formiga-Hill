@@ -25,7 +25,7 @@ function Write-Checksum([string]$Path) {
 Push-Location $RepoDir
 try {
     rustup target add x86_64-pc-windows-msvc
-    cargo build --release -p formiga-hill --target x86_64-pc-windows-msvc
+    cargo build --release --locked -p formiga-hill --target x86_64-pc-windows-msvc
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
     # The travel version comes from the binary itself, so the installer can never claim another.
     # Hill is a windowed program with no console of its own, so its output is caught in a file
