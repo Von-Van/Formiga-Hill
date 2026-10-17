@@ -1,0 +1,63 @@
+# The Bottom of the Toy Box, in English. A line is plain text, or a table with `text` and a
+# version for any temperament that would say it differently. {role} becomes the name of whoever
+# plays that role.
+
+title = "The Bottom of the Toy Box"
+
+[tidy]
+intro = "The toy box in the Clubhouse is so full that the lid won't shut."
+out = "Out come the bricks, the ball, a sock with no partner, and a bag of marbles, which splits."
+roll = "Marbles roll everywhere. One goes all the way under the big armchair."
+choose_gather = "Gather them up together"
+choose_game = "Make a game of it"
+
+[tidy.sigh]
+text = "Everything just gets thrown in. No wonder it won't shut."
+guardian = "Right. Everything out, everything counted, everything back in properly."
+scholar = "There is a system for a toy box. Nobody here has ever used it."
+grump = "Who keeps putting things in here without folding them?"
+lazybones = "If we sit on the lid, it'll shut. Probably."
+
+[tidy.help]
+text = "I'll help! Everything out first!"
+troublemaker = "Everything out! All of it! At once!"
+showoff = "Let a professional handle this. Everything out!"
+explorer = "I wonder what's at the very bottom. Everything out!"
+oddball = "Toys, be free!"
+
+[gather]
+count = "Eleven, twelve... there should be thirteen. One's missing."
+
+[game]
+score = "I win! I've got the most marbles!"
+
+[game.count]
+text = "Very good. Now, there should be thirteen. Where's the last one?"
+grump = "Wonderful. Now where's the thirteenth?"
+sweetheart = "That was fun! But there should be thirteen. Where's the last one?"
+
+[under]
+where = "Everyone looks at the armchair. Under it, right at the back, something glints."
+got = "With one last stretch, {helper} rolls it out from under the chair."
+
+[under.stuck]
+text = "I can't reach! My arm's too short. Or the chair's too long."
+showoff = "Nearly... nearly... this is very difficult and I am doing it brilliantly."
+grump = "Who built this chair so low?"
+
+[small]
+under = "{small} wriggles right under the armchair and comes out dusty, holding the marble up high."
+
+[small.offer]
+text = "I can fit! Let me!"
+wallflower = "Um... I could fit under there, I think."
+
+[shut]
+lid = "Everything goes back in, folded and stacked, and this time the lid shuts."
+kept = "The marble goes in the display case, where it catches the firelight."
+
+[shut.marble]
+text = "Not this one. This one's too pretty for the toy box."
+scholar = "This one has a swirl of blue in it. Too fine for the toy box. It goes in the case."
+grump = "This one stays out. It's caused enough trouble."
+sweetheart = "This one's the prettiest. Let's keep it somewhere special."
