@@ -26,8 +26,8 @@ pub struct Making {
     pub name: String,
     pub tool: Tool,
     pub selected: Selected,
-    /// A place being moved, as it is dragged.
-    pub dragging: Option<usize>,
+    /// A place being moved, by number, as it is dragged.
+    pub dragging: Option<u32>,
     /// The map as last drawn, and what it was drawn from.
     picture: Option<(Map, Canvas)>,
 }
@@ -38,15 +38,151 @@ pub enum Tool {
     Pick,
     /// Clicking puts a place of this kind down.
     Put(Site),
-    /// Clicking one place then another joins them; the first, once clicked.
-    Join(Option<usize>),
+    /// Clicking one place then another joins them; the first, by number, once clicked.
+    Join(Option<u32>),
 }
 
+/// Whatever is picked out on the map. A place goes by its number, which it keeps however the
+/// places around it come and go.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Selected {
     Nothing,
-    Place(usize),
+    Place(u32),
     Path(usize),
+}
+
+impl Making {
+    /// The number of the place standing at this index.
+    fn number(&self, index: usize) -> u32 {
+        self.draft.places[index].number
+    }
+
+    /// Lets go of anything no longer on the map: a place taken off, or a path taken away.
+    fn tidy(&mut self) {
+        let gone = |number: u32| self.draft.index(number).is_none();
+        if let Tool::Join(Some(from)) = self.tool
+            && gone(from)
+        {
+            self.tool = Tool::Join(None);
+        }
+        let selected_gone = match self.selected {
+            Selected::Place(number) => gone(number),
+            Selected::Path(index) => index >= self.draft.paths.len(),
+            Selected::Nothing => false,
+        };
+        if selected_gone {
+            self.selected = Selected::Nothing;
+        }
+        if self.dragging.is_some_and(gone) {
+            self.dragging = None;
+        }
+    }
+
+    /// Takes up the draft as it was, or as it will be again, from Undo or Redo, keeping its
+    /// version as it is. Whatever was picked out, joined from or dragged is let go of at once: it
+    /// may not be on the map now, or a path may be another by the same index.
+    fn step_to(&mut self, draft: Draft) {
+        let version = self.draft.version;
+        self.draft = draft;
+        self.draft.version = version;
+        self.selected = Selected::Nothing;
+        self.dragging = None;
+        if matches!(self.tool, Tool::Join(Some(_))) {
+            self.tool = Tool::Join(None);
+        }
+    }
+
+    /// A click on the map: anything to say about it, and whether the draft changed.
+    fn click(&mut self, at: (f32, f32)) -> (Option<String>, bool) {
+        self.tidy();
+        let place = self.draft.place_at(at);
+        let mut said = None;
+        let mut changed = false;
+        match self.tool {
+            Tool::Put(site) => match place {
+                Some(index) => self.selected = Selected::Place(self.number(index)),
+                None => match self.draft.add_place(site, at) {
+                    Ok(index) => {
+                        let number = self.number(index);
+                        self.selected = Selected::Place(number);
+                        // One place at a time: then join it up.
+                        self.tool = Tool::Join(Some(number));
+                        said = Some(
+                            "Now click another place to join this one to it, or click the map \
+                             to put the next place."
+                                .to_owned(),
+                        );
+                        changed = true;
+                    }
+                    Err(problem) => said = Some(problem),
+                },
+            },
+            Tool::Join(from) => match (from.and_then(|from| self.draft.index(from)), place) {
+                (Some(from), Some(to)) if to != from => {
+                    match self.draft.join(from, to) {
+                        Ok(path) => {
+                            self.selected = Selected::Path(path);
+                            changed = true;
+                        }
+                        Err(problem) => said = Some(problem),
+                    }
+                    self.tool = Tool::Join(Some(self.number(to)));
+                }
+                (Some(_), Some(_)) => self.tool = Tool::Join(None),
+                (None, Some(index)) => {
+                    let number = self.number(index);
+                    self.tool = Tool::Join(Some(number));
+                    self.selected = Selected::Place(number);
+                }
+                (Some(_), None) => {
+                    self.tool = Tool::Pick;
+                    self.selected = Selected::Nothing;
+                }
+                (None, None) => {}
+            },
+            Tool::Pick => {
+                self.selected = match (place, self.draft.path_at(at)) {
+                    (Some(index), _) => Selected::Place(self.number(index)),
+                    (None, Some(path)) => Selected::Path(path),
+                    (None, None) => Selected::Nothing,
+                };
+            }
+        }
+        (said, changed)
+    }
+
+    /// What is under the pointer, said over it.
+    fn hover(&self, at: (f32, f32)) -> Option<String> {
+        let draft = &self.draft;
+        let from = match self.tool {
+            Tool::Join(Some(from)) => draft.index(from),
+            _ => None,
+        };
+        let label = match (self.tool, from, draft.place_at(at)) {
+            (Tool::Put(site), _, None) => format!("Put {} here", site.name()),
+            (_, Some(from), Some(to)) if from != to => format!(
+                "Join {} to {}",
+                draft.places[from].called(),
+                draft.places[to].called()
+            ),
+            (_, _, Some(index)) => {
+                let place = &draft.places[index];
+                let mut label = place.called();
+                if index == draft.start {
+                    label.push_str(" \u{b7} the way in");
+                }
+                if place.hidden {
+                    label.push_str(" \u{b7} hidden");
+                }
+                if place.ending {
+                    label.push_str(" \u{b7} an ending");
+                }
+                label
+            }
+            _ => return None,
+        };
+        Some(label)
+    }
 }
 
 /// Each kind of place, as the tray offers it: what it is, and what is done there.
@@ -182,7 +318,7 @@ impl HillApp {
         let draft = Draft::sample();
         let places = draft.places.len();
         let selected = match chapter {
-            Some(n) if n >= 1 && n <= places => Selected::Place(n - 1),
+            Some(n) if n >= 1 && n <= places => Selected::Place(draft.places[n - 1].number),
             Some(n) if n > places && n - places <= draft.paths.len() => {
                 Selected::Path(n - places - 1)
             }
@@ -252,13 +388,14 @@ impl HillApp {
                 );
             }
         };
-        if let Selected::Place(index) = making.selected
-            && let Some(place) = map.places.get(index)
+        // The map's places stand in the same order as the draft's.
+        if let Selected::Place(number) = making.selected
+            && let Some(place) = making.draft.index(number).and_then(|i| map.places.get(i))
         {
             ring(&mut scene, place.at, rgb(0xf5d25e));
         }
         if let Tool::Join(Some(from)) = making.tool
-            && let Some(place) = map.places.get(from)
+            && let Some(place) = making.draft.index(from).and_then(|i| map.places.get(i))
         {
             ring(&mut scene, place.at, rgb(0xf5d25e));
             if let Some(to) = pointer {
@@ -285,58 +422,7 @@ impl HillApp {
         let Some(making) = &mut self.woods.making else {
             return;
         };
-        let place = making.draft.place_at(at);
-        let mut said = None;
-        let mut changed = false;
-        match making.tool {
-            Tool::Put(site) => match place {
-                Some(index) => making.selected = Selected::Place(index),
-                None => match making.draft.add_place(site, at) {
-                    Ok(index) => {
-                        making.selected = Selected::Place(index);
-                        // One place at a time: then join it up.
-                        making.tool = Tool::Join(Some(index));
-                        said = Some(
-                            "Now click another place to join this one to it, or click the map \
-                             to put the next place."
-                                .to_owned(),
-                        );
-                        changed = true;
-                    }
-                    Err(problem) => said = Some(problem),
-                },
-            },
-            Tool::Join(None) => {
-                if let Some(index) = place {
-                    making.tool = Tool::Join(Some(index));
-                    making.selected = Selected::Place(index);
-                }
-            }
-            Tool::Join(Some(from)) => match place {
-                Some(to) if to != from => {
-                    match making.draft.join(from, to) {
-                        Ok(path) => {
-                            making.selected = Selected::Path(path);
-                            changed = true;
-                        }
-                        Err(problem) => said = Some(problem),
-                    }
-                    making.tool = Tool::Join(Some(to));
-                }
-                Some(_) => making.tool = Tool::Join(None),
-                None => {
-                    making.tool = Tool::Pick;
-                    making.selected = Selected::Nothing;
-                }
-            },
-            Tool::Pick => {
-                making.selected = match (place, making.draft.path_at(at)) {
-                    (Some(index), _) => Selected::Place(index),
-                    (None, Some(path)) => Selected::Path(path),
-                    (None, None) => Selected::Nothing,
-                };
-            }
-        }
+        let (said, changed) = making.click(at);
         if let Some(line) = said {
             self.notice = Some((line, now));
         }
@@ -362,12 +448,16 @@ impl HillApp {
             return;
         };
         if started {
-            making.dragging = pointer.and_then(|at| making.draft.place_at(at));
-            if let Some(index) = making.dragging {
-                making.selected = Selected::Place(index);
+            making.dragging = pointer
+                .and_then(|at| making.draft.place_at(at))
+                .map(|index| making.number(index));
+            if let Some(number) = making.dragging {
+                making.selected = Selected::Place(number);
             }
         }
-        if let (Some(index), Some(at)) = (making.dragging, pointer) {
+        if let (Some(index), Some(at)) =
+            (making.dragging.and_then(|n| making.draft.index(n)), pointer)
+        {
             making.draft.move_place(index, (at.0, at.1 + 6.0));
         }
         if stopped && making.dragging.take().is_some() {
@@ -382,29 +472,7 @@ impl HillApp {
             return None;
         }
         let at = pointer?;
-        let label = match (making.tool, making.draft.place_at(at)) {
-            (Tool::Put(site), None) => format!("Put {} here", site.name()),
-            (Tool::Join(Some(from)), Some(to)) if from != to => format!(
-                "Join {} to {}",
-                making.draft.places[from].called(),
-                making.draft.places[to].called()
-            ),
-            (_, Some(index)) => {
-                let place = &making.draft.places[index];
-                let mut label = place.called();
-                if index == making.draft.start {
-                    label.push_str(" \u{b7} the way in");
-                }
-                if place.hidden {
-                    label.push_str(" \u{b7} hidden");
-                }
-                if place.ending {
-                    label.push_str(" \u{b7} an ending");
-                }
-                label
-            }
-            _ => return None,
-        };
+        let label = making.hover(at)?;
         Some((label, (at.0, at.1 - 18.0)))
     }
 
@@ -464,14 +532,7 @@ impl HillApp {
         let back = history.buttons(ui, &making.draft);
         making.draft.version = version;
         let undone = back.is_some_and(|back| {
-            making.draft = back;
-            making.draft.version = version;
-            // Whatever was picked out, joined from or dragged may not be on the map now.
-            making.selected = Selected::Nothing;
-            making.dragging = None;
-            if matches!(making.tool, Tool::Join(Some(_))) {
-                making.tool = Tool::Join(None);
-            }
+            making.step_to(back);
             true
         });
         let hint = match making.tool {
@@ -521,14 +582,22 @@ impl HillApp {
             };
             let draft = &mut making.draft;
             // Whatever is picked out on the map, or else the adventure itself.
-            match making.selected {
-                Selected::Place(index) if index < draft.places.len() => {
+            let place = match making.selected {
+                Selected::Place(number) => draft.index(number),
+                _ => None,
+            };
+            let path = match making.selected {
+                Selected::Path(index) if index < draft.paths.len() => Some(index),
+                _ => None,
+            };
+            match (place, path) {
+                (Some(index), _) => {
                     changed |= place_card(ui, draft, index, &mut making.selected);
                 }
-                Selected::Path(index) if index < draft.paths.len() => {
+                (None, Some(index)) => {
                     changed |= path_card(ui, draft, index, &mut making.selected);
                 }
-                _ => {
+                (None, None) => {
                     paper::faint(ui, "Called");
                     changed |= field(
                         ui,
@@ -601,6 +670,9 @@ impl HillApp {
                 act = Some(Act::ThrowAway);
             }
         });
+        if let Some(making) = &mut self.woods.making {
+            making.tidy();
+        }
         if changed {
             self.keep_draft();
         }
@@ -894,5 +966,85 @@ fn veil(scene: &mut Canvas, (x, y): (f32, f32)) {
                 put(scene, px, py, rgba(0xf4f0e4, ((1.0 - r) * 120.0) as u8));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A new adventure in the editor, with a glade and a pool put down after the way in, joining
+    /// from the pool as the editor does after putting it.
+    fn making() -> Making {
+        let mut making = Making {
+            draft: Draft::new("abc", "Someone"),
+            name: String::new(),
+            tool: Tool::Put(Site::Glade),
+            selected: Selected::Nothing,
+            dragging: None,
+            picture: None,
+        };
+        making.click((150.0, 150.0));
+        making.tool = Tool::Put(Site::Pool);
+        making.click((290.0, 170.0));
+        assert_eq!(making.draft.places.len(), 3);
+        making
+    }
+
+    fn at(making: &Making, index: usize) -> (f32, f32) {
+        making.draft.places[index].at
+    }
+
+    #[test]
+    fn taking_off_the_place_just_put_lets_go_of_it() {
+        let mut making = making();
+        let pool = making.draft.places[2].number;
+        assert_eq!(making.tool, Tool::Join(Some(pool)));
+        assert_eq!(making.selected, Selected::Place(pool));
+        assert!(making.draft.remove_place(2));
+        // Pointing at what is left, before anything else happens, names it plainly.
+        let glade = at(&making, 1);
+        assert_eq!(making.hover(glade).as_deref(), Some("the glade"));
+        making.tidy();
+        assert_eq!(making.tool, Tool::Join(None));
+        assert_eq!(making.selected, Selected::Nothing);
+    }
+
+    #[test]
+    fn undoing_the_place_just_put_lets_go_of_it() {
+        let mut making = making();
+        making.draft.version = 3;
+        let pool = making.draft.places[2].number;
+        let mut before = making.draft.clone();
+        assert!(before.remove_place(2));
+        before.version = 0;
+        making.dragging = Some(pool);
+        making.step_to(before);
+        assert_eq!(making.draft.places.len(), 2);
+        assert_eq!(making.draft.version, 3, "the version stays as it was");
+        assert_eq!(making.tool, Tool::Join(None));
+        assert_eq!(making.selected, Selected::Nothing);
+        assert_eq!(making.dragging, None);
+        // Pointing at what is left, before anything else happens, names it plainly.
+        let glade = at(&making, 1);
+        assert_eq!(making.hover(glade).as_deref(), Some("the glade"));
+    }
+
+    #[test]
+    fn taking_off_a_place_never_joins_from_whichever_moved_into_its_place() {
+        let mut making = making();
+        // Joining from the glade, which is then taken off the map: the pool moves up into its
+        // place among the places.
+        let glade = at(&making, 1);
+        making.tool = Tool::Join(None);
+        making.click(glade);
+        assert!(making.draft.remove_place(1));
+        let way_in = at(&making, 0);
+        let said = making.hover(way_in).unwrap();
+        assert!(!said.starts_with("Join"), "{said}");
+        let paths = making.draft.paths.len();
+        making.click(way_in);
+        assert_eq!(making.draft.paths.len(), paths, "no path to the pool");
+        assert_eq!(making.tool, Tool::Join(Some(making.draft.places[0].number)));
     }
 }
