@@ -21,7 +21,7 @@ pub enum Pick {
 impl HillApp {
     /// The ground on show, if it is somewhere companions can be groomed or dressed right now:
     /// not in the middle of a story or a game.
-    fn ground_for_finery(&mut self) -> Option<&mut Playground> {
+    pub(super) fn ground_for_finery(&mut self) -> Option<&mut Playground> {
         match self.area {
             Area::Green => self.green.as_mut(),
             Area::Clubhouse if self.story.is_none() => {

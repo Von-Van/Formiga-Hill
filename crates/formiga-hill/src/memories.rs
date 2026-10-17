@@ -150,8 +150,9 @@ fn is_zero(count: &u32) -> bool {
     *count == 0
 }
 
-/// How many expeditions' pages the journal keeps, the oldest giving way.
-pub const PAGES_KEPT: usize = 12;
+/// How many expeditions' pages the journal keeps, the oldest giving way; the journal says so once
+/// any have.
+pub const PAGES_KEPT: usize = 40;
 
 /// The furthest into the Woods an expedition has gone.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

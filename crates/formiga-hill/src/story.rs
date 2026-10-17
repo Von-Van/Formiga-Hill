@@ -12,7 +12,7 @@ pub(crate) mod script;
 pub mod shelf;
 pub mod souvenirs;
 
-pub use director::Director;
+pub use director::{Director, feel};
 pub use package::{Files, HILL_API, Package, PackageError, check_files, limits, load, read_folder};
 pub use script::Story;
 

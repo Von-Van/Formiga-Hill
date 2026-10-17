@@ -1,6 +1,7 @@
 //! The Fairground's tray: which game to watch and who plays it, the game under way, and what the
 //! person is told as it goes; and what Hill remembers of each game once it is seen through.
 
+use super::departures::Outing;
 use super::{HillApp, clock, listed, ordinal, paper, tools};
 use crate::audio::Cue;
 use crate::cast::{Cast, Id};
@@ -393,12 +394,17 @@ impl HillApp {
             self.sound.play_softly(cue, loudness);
         }
         let mut last = None;
+        let mut wished: Vec<(Outing, Vec<Id>)> = Vec::new();
         for told in told {
             let cast = &self.arrival.cast;
             let who = |id: Id| name(cast, Some(id));
             let line = match told {
                 Told::Line(line) => line,
                 Told::AllFound { it, took } => {
+                    wished.push((
+                        Outing::HideAndSeek,
+                        cast.members.iter().map(|m| m.id).collect(),
+                    ));
                     let first = !self.kept(Game::HideAndSeek.souvenir());
                     let quickest = it.is_some_and(|it| self.memories.found_everyone(it, took));
                     let mut line = format!("{} found everyone in {}", name(cast, it), clock(took));
@@ -410,6 +416,10 @@ impl HillApp {
                     line
                 }
                 Told::AllHome { results, took } => {
+                    wished.push((
+                        Outing::SackRace,
+                        results.iter().map(|(id, _)| *id).collect(),
+                    ));
                     let winner = results.first().map(|(id, _)| *id);
                     let first = !self.kept(Game::SackRace.souvenir());
                     let quicker: Vec<String> =
@@ -426,6 +436,10 @@ impl HillApp {
                     line
                 }
                 Told::AllDone { ranking } => {
+                    wished.push((
+                        Outing::HighStriker,
+                        ranking.iter().map(|(id, _)| *id).collect(),
+                    ));
                     let first = !self.kept(Game::HighStriker.souvenir());
                     let higher: Vec<String> = self
                         .memories
@@ -498,6 +512,9 @@ impl HillApp {
             self.station
                 .show_keepsakes(&self.memories.colony().souvenirs);
             self.notice = Some((line, now));
+        }
+        for (outing, players) in wished {
+            self.grant(outing, &players, now);
         }
     }
 
