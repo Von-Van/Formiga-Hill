@@ -403,6 +403,69 @@ mod tests {
     }
 
     #[test]
+    fn the_stars_never_come_out_over_the_hilltop_on_a_skyline() {
+        use crate::playground::Playground;
+        let cast = crate::cast::Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let party: Vec<_> = cast.members.iter().map(|member| member.id).collect();
+        let empty = Arrangement::new();
+        let every = Standing::every();
+        let grown: Arrangement = (0..SPOTS.len())
+            .map(|spot| (spot as u8, every[spot % every.len()].clone()))
+            .collect();
+        type Show = fn(&mut Playground, &Arrangement);
+        let places: [(&str, Playground, Show); 5] = [
+            (
+                "the green",
+                crate::green::open(&cast, 0.0),
+                crate::green::show_hilltop,
+            ),
+            (
+                "the fairground",
+                crate::fairground::open(&cast, 0.0).0,
+                crate::fairground::show_hilltop,
+            ),
+            (
+                "the meadow",
+                crate::meadow::open(&cast, &party, 0.0, &empty),
+                crate::meadow::show_hilltop,
+            ),
+            (
+                "the hedgerow",
+                crate::hedgerow::open(&cast, &party, 0.0, &empty),
+                crate::hedgerow::show_hilltop,
+            ),
+            (
+                "the old track",
+                crate::track::open(&cast, &party, 0.0, &empty),
+                crate::track::show_hilltop,
+            ),
+        ];
+        for (name, mut ground, show) in places {
+            let before = ground.backdrop().clone();
+            let stale = ground.night_sky().expect("no night sky").clone();
+            show(&mut ground, &grown);
+            let (after, sky) = (ground.backdrop(), ground.night_sky().unwrap());
+            let mut against_the_sky = 0;
+            for y in 0..after.height() as i32 {
+                for x in 0..after.width() as i32 {
+                    if before.get(x, y) == after.get(x, y) {
+                        continue;
+                    }
+                    if stale.get(x, y).a > 0 {
+                        against_the_sky += 1;
+                    }
+                    assert_eq!(
+                        sky.get(x, y).a,
+                        0,
+                        "{name}: night sky over the Hilltop at {x}, {y}"
+                    );
+                }
+            }
+            assert!(against_the_sky > 0, "{name}: nothing stood against the sky");
+        }
+    }
+
+    #[test]
     fn clicking_near_a_spot_finds_it() {
         for (index, (x, y)) in SPOTS.iter().enumerate() {
             assert_eq!(spot_at(*x, *y - 10.0), Some(index as u8));

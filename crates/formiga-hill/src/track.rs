@@ -166,7 +166,9 @@ pub fn open(cast: &Cast, party: &[Id], now: f32, hilltop: &Arrangement) -> Playg
 
 /// Shows what stands on the Hilltop now, through the gap at the end of the track.
 pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
-    ground.set_backdrop(scenery::backdrop(hilltop));
+    let backdrop = scenery::backdrop(hilltop);
+    let sky = scenery::night_sky(&backdrop);
+    ground.set_backdrop_and_sky(backdrop, sky);
 }
 
 /// Where anyone can walk on a treasure hunt: the ground at a fork, in a nook, or at the dig.
