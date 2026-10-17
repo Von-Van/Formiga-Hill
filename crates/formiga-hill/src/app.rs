@@ -556,41 +556,36 @@ impl HillApp {
             self.green.as_mut(),
             self.fairground.as_mut().map(|(ground, _)| ground),
             self.hilltop.as_mut(),
-            self.woods.empty.as_mut(),
-            self.woods.pool.as_mut(),
-            self.woods.meadow.as_mut(),
-            self.woods.hedgerow.as_mut(),
-            self.woods.track.as_mut(),
         ];
-        for ground in grounds.into_iter().flatten() {
+        for ground in grounds
+            .into_iter()
+            .flatten()
+            .chain(self.woods.grounds_mut())
+        {
             ground.set_daylight(daylight);
         }
-        if let Some((ground, rummage)) = &mut self.woods.outing {
-            ground.set_daylight(daylight);
-            rummage.set_hour_dark(daylight.darkness());
+        // What is under way in the Woods goes by how dark the hour is, too.
+        let dark = daylight.darkness();
+        if let Some((_, rummage)) = &mut self.woods.outing {
+            rummage.set_hour_dark(dark);
         }
-        if let Some((ground, trip)) = &mut self.woods.fishing {
-            ground.set_daylight(daylight);
-            trip.set_hour_dark(daylight.darkness());
+        if let Some((_, trip)) = &mut self.woods.fishing {
+            trip.set_hour_dark(dark);
         }
-        if let Some((ground, hunt)) = &mut self.woods.hunt {
-            ground.set_daylight(daylight);
-            hunt.set_hour_dark(daylight.darkness());
+        if let Some((_, hunt)) = &mut self.woods.hunt {
+            hunt.set_hour_dark(dark);
         }
-        if let Some((ground, foray)) = &mut self.woods.foray {
-            ground.set_daylight(daylight);
-            foray.set_hour_dark(daylight.darkness());
+        if let Some((_, foray)) = &mut self.woods.foray {
+            foray.set_hour_dark(dark);
         }
         if let Some(expedition) = &mut self.woods.expedition {
             expedition.set_daylight(daylight);
         }
-        if let Some((ground, scavenge)) = &mut self.woods.scavenge {
-            ground.set_daylight(daylight);
-            scavenge.set_hour_dark(daylight.darkness());
+        if let Some((_, scavenge)) = &mut self.woods.scavenge {
+            scavenge.set_hour_dark(dark);
         }
-        if let Some((ground, hunt)) = &mut self.woods.treasure {
-            ground.set_daylight(daylight);
-            hunt.set_hour_dark(daylight.darkness());
+        if let Some((_, hunt)) = &mut self.woods.treasure {
+            hunt.set_hour_dark(dark);
         }
     }
 
