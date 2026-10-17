@@ -1025,7 +1025,7 @@ fn find(path: &Path) -> Found {
 /// aside before is never overwritten by the next, which matters when the first was the one
 /// worth keeping: a book from a newer Hill, set aside by an older one that then started afresh,
 /// is still there after the fresh book is set aside in its turn.
-fn set_aside(path: &Path) -> PathBuf {
+pub fn set_aside(path: &Path) -> PathBuf {
     let named = |number: u32| {
         let mut aside = path.as_os_str().to_owned();
         aside.push(".unreadable");
