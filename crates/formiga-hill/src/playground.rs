@@ -638,6 +638,27 @@ impl Playground {
         Some(self.actors[index].bounds(now))
     }
 
+    /// Every layer of the place that stays still, by name: what is painted once and then laid
+    /// down every frame, for checking that it is painted the same as before.
+    #[cfg(test)]
+    pub fn layers(&self) -> Vec<(&'static str, Canvas)> {
+        let mut fixtures = Canvas::new(self.backdrop.width(), self.backdrop.height());
+        for fixture in &self.fixtures {
+            blit(&mut fixtures, &fixture.sprite, fixture.at.0, fixture.at.1);
+        }
+        let mut layers = vec![
+            ("backdrop", self.backdrop.clone()),
+            ("foreground", self.foreground.clone()),
+            ("still", self.still.clone()),
+            ("fixtures", fixtures),
+        ];
+        if let Some(nightlights) = &self.nightlights {
+            layers.push(("lamps", nightlights.lamps.clone()));
+            layers.push(("sky", nightlights.sky.clone()));
+        }
+        layers
+    }
+
     /// The props standing here, for seeing who is behind what.
     #[cfg(test)]
     pub fn props(&self) -> &[Prop] {
