@@ -4,6 +4,17 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.67.14 (2026-10-17)
+
+Hill is built on Formiga Desktop 0.67.14 and still speaks travel version 5, so it takes the same
+trips as before.
+
+- A shared story, adventure or competition file holding two names that differ only in capitals,
+  or a name used for both a file and a folder, is turned away with a plain reason before anything
+  is written, so the version already installed keeps working.
+- A memory book Hill can't read is set aside under a name of its own each time, so an earlier one
+  set aside is never written over.
+
 ## 0.67.11 (2026-10-16)
 
 Hill is built on Formiga Desktop 0.67.11 and still speaks travel version 5, so it takes the same
