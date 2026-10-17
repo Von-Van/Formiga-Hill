@@ -1,3 +1,7 @@
+// No console window behind Hill's own on Windows, as with Desktop. Anything run for its output,
+// as the packaging script runs --travel-version, has its output caught rather than shown.
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 //! Formiga Hill: somewhere the colony goes to spend time together.
 
 mod actor;
