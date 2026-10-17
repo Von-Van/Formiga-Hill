@@ -456,6 +456,19 @@ impl HillApp {
         {
             making.tool = Tool::Pick;
         }
+        // Undo and Redo, over the map and every word on it.
+        let history = &mut self.woods.making_history;
+        history.feed(ui.ctx(), &making.name, &making.draft);
+        let undone = history.buttons(ui, &making.draft).is_some_and(|back| {
+            making.draft = back;
+            // Whatever was picked out, joined from or dragged may not be on the map now.
+            making.selected = Selected::Nothing;
+            making.dragging = None;
+            if matches!(making.tool, Tool::Join(Some(_))) {
+                making.tool = Tool::Join(None);
+            }
+            true
+        });
         let hint = match making.tool {
             Tool::Put(_) => "Click the map to put it there. Drag a place to move it.",
             Tool::Join(None) => "Click a place, then another, to join them with a path.",
@@ -463,6 +476,9 @@ impl HillApp {
             Tool::Pick => "Click a place or a path to change it. Drag a place to move it.",
         };
         paper::hint(ui, hint);
+        if undone {
+            self.keep_draft();
+        }
         let card = self.showing(Card::Making);
         if ui
             .add(paper::Button::new("Details").selected(card))
