@@ -146,9 +146,9 @@ and a telescope brings rare signs out sooner.
 | Free play (the green, the Clubhouse, the Fairground) | 1 to 4: pat, snack, toy, brush |
 | A story | Space or Enter to go on; 1 to 4 to choose |
 | The Fairground | Esc calls a game off |
-| The Woods | Space to try, to strike, or to swing; hold the pointer, ↑ or W to creep up on a bug |
+| The Woods | Left and Right step through whatever a click would choose (a spot to search, where to cast, a bug, something ripe, a heap, a way at a fork), and Enter chooses it; Space to try, to strike, or to swing; hold the pointer, ↑ or W to creep up on a bug |
 | The Hilltop | Esc puts down whatever you are holding |
-| Anywhere | C for the camera, and Esc to put it away; M mutes the sound, or brings it back |
+| Anywhere | C for the camera, and Esc to put it away; M mutes the sound, or brings it back; K, or the ? button, opens a card of every key |
 
 ## Getting there
 
