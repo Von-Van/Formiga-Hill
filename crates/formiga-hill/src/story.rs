@@ -60,6 +60,38 @@ fn official() -> Vec<BuiltIn> {
             ]
         ),
         built_in!(
+            "penny-in-the-well.formiga-hill",
+            [
+                "manifest.toml",
+                "content/penny-in-the-well.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "acorn-in-the-storm.formiga-hill",
+            [
+                "manifest.toml",
+                "content/acorn-in-the-storm.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "feather-on-the-swing.formiga-hill",
+            [
+                "manifest.toml",
+                "content/feather-on-the-swing.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
+            "bottom-of-the-toy-box.formiga-hill",
+            [
+                "manifest.toml",
+                "content/bottom-of-the-toy-box.toml",
+                "localization/en.toml",
+            ]
+        ),
+        built_in!(
             "lantern-walk.formiga-hill",
             [
                 "manifest.toml",

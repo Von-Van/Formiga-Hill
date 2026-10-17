@@ -1,0 +1,13 @@
+# A stormy evening in the Clubhouse, written exactly as any package author would write one.
+package_id = "com.formiga.hill.acorn-in-the-storm"
+title = "The Acorn in the Storm"
+author = "Formiga"
+version = "1.0.0"
+hill_api = 2
+content_types = ["story"]
+entry_points = ["content/acorn-in-the-storm.toml"]
+default_locale = "en"
+
+[requirements]
+min_cast = 2
+areas = ["clubhouse"]
