@@ -288,6 +288,38 @@ mod tests {
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 
+    /// Desktop tells its person to update Hill only from a refusal that answers its own trip:
+    /// the session, and the hash of the exact bytes it wrote, even though Hill could not read
+    /// them.
+    #[test]
+    fn a_snapshot_from_a_newer_desktop_is_refused_with_the_version_hill_reads() {
+        let snapshot = formiga_travel::sample::snapshot();
+        let dir = left_by_desktop(&snapshot);
+        let mut newer: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.join(SNAPSHOT_FILE)).unwrap()).unwrap();
+        newer["version"] = (TRAVEL_FORMAT_VERSION + 1).into();
+        newer["min_reader_version"] = (TRAVEL_FORMAT_VERSION + 1).into();
+        let bytes = serde_json::to_vec(&newer).unwrap();
+        std::fs::write(dir.join(SNAPSHOT_FILE), &bytes).unwrap();
+
+        assert!(arrive(&dir, false).is_err());
+        let ack: Acknowledgement = read_document(&dir.join(ACK_FILE)).unwrap();
+        assert_eq!(
+            ack.refusal,
+            Some(AckRefusal::UnsupportedVersion {
+                reads: TRAVEL_FORMAT_VERSION
+            })
+        );
+        let seal = SnapshotSeal {
+            session_id: snapshot.session_id.clone(),
+            snapshot_sha256: sha256_hex(&bytes),
+            created_at_utc: snapshot.created_at_utc,
+        };
+        assert!(ack.answers(&seal), "the refusal answers Desktop's trip");
+        assert!(!dir.join(RECEIPT_FILE).exists());
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
     #[test]
     fn a_trip_while_another_colony_is_visiting_is_refused_as_busy() {
         let snapshot = formiga_travel::sample::snapshot();

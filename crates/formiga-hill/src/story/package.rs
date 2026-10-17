@@ -179,6 +179,9 @@ pub fn check_files(files: &Files, label: &str) -> Result<(), PackageError> {
         return Err(refuse(None, "the package is larger than Hill takes".into()));
     }
     let mut total = 0;
+    // Every file and folder named so far, by its name in small letters: as spelt, and whether
+    // it is a folder.
+    let mut place: BTreeMap<String, (String, bool)> = BTreeMap::new();
     for (path, bytes) in files {
         let parts: Vec<&str> = path.split('/').collect();
         if parts.len() > limits::MAX_DEPTH + 1 {
@@ -199,6 +202,34 @@ pub fn check_files(files: &Files, label: &str) -> Result<(), PackageError> {
                     Some(path),
                     "file names may use only letters, digits, '.', '-' and '_'".into(),
                 ));
+            }
+        }
+        // The computers Hill runs on mostly do not tell capitals apart in a name, so two paths
+        // spelt alike but for capitals would be written as one file there, and one that is both
+        // a file and a folder could not be written at all: the package let in would not be the
+        // package that was looked over, and could take the place of one that worked.
+        for end in 1..=parts.len() {
+            let spelling = parts[..end].join("/");
+            let folder = end < parts.len();
+            match place.get(&spelling.to_ascii_lowercase()) {
+                Some((other, _)) if *other != spelling => {
+                    return Err(refuse(
+                        Some(path),
+                        format!(
+                            "\"{other}\" is spelt the same but for capitals, which most computers keep as one"
+                        ),
+                    ));
+                }
+                Some((_, was_folder)) if *was_folder != folder => {
+                    return Err(refuse(
+                        Some(path),
+                        format!("\"{spelling}\" cannot be a file and a folder at once"),
+                    ));
+                }
+                Some(_) => {}
+                None => {
+                    place.insert(spelling.to_ascii_lowercase(), (spelling, folder));
+                }
             }
         }
         let extension = path.rsplit_once('.').map_or("", |(_, extension)| extension);

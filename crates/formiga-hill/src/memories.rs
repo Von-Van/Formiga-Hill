@@ -924,11 +924,29 @@ fn read(path: &Path) -> Book {
         .filter(|book| book.version <= VERSION);
     parsed.unwrap_or_else(|| {
         // Keep what was there for whoever wants to look at it, and start again.
-        let mut aside = path.as_os_str().to_owned();
-        aside.push(".unreadable");
-        let _ = fs::rename(path, PathBuf::from(aside));
+        let _ = fs::rename(path, set_aside(path));
         Book::default()
     })
+}
+
+/// Where to set an unreadable book aside: beside it, under a name nothing has yet. A book set
+/// aside before is never overwritten by the next, which matters when the first was the one
+/// worth keeping: a book from a newer Hill, set aside by an older one that then started afresh,
+/// is still there after the fresh book is set aside in its turn.
+fn set_aside(path: &Path) -> PathBuf {
+    let named = |number: u32| {
+        let mut aside = path.as_os_str().to_owned();
+        aside.push(".unreadable");
+        if number > 1 {
+            aside.push(format!("-{number}"));
+        }
+        PathBuf::from(aside)
+    };
+    let mut number = 1;
+    while fs::symlink_metadata(named(number)).is_ok() {
+        number += 1;
+    }
+    named(number)
 }
 
 fn write(path: &Path, book: &Book) -> std::io::Result<()> {
@@ -1595,6 +1613,30 @@ mod tests {
         let memories = Memories::open(Some(&dir), "c");
         assert_eq!(memories.colony().visits, 0);
         assert!(dir.join("memories.json.unreadable").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_book_set_aside_is_never_overwritten_by_the_next() {
+        let dir = scratch("aside-twice");
+        fs::create_dir_all(&dir).unwrap();
+        // A newer Hill's book, which this one cannot read: set aside, and a fresh one begun.
+        let newer = br#"{"version": 99, "colonies": {"c": {"visits": 40}}}"#;
+        fs::write(dir.join(FILE), newer).unwrap();
+        Memories::open(Some(&dir), "c").arrived();
+        // The fresh book is unreadable in its turn: the newer Hill wrote over it, say, or the
+        // disk let it down.
+        fs::write(dir.join(FILE), b"not json at all").unwrap();
+        assert_eq!(Memories::open(Some(&dir), "c").colony().visits, 0);
+        assert_eq!(
+            fs::read(dir.join("memories.json.unreadable")).unwrap(),
+            newer,
+            "the first book set aside is still there"
+        );
+        assert_eq!(
+            fs::read(dir.join("memories.json.unreadable-2")).unwrap(),
+            b"not json at all"
+        );
         fs::remove_dir_all(dir).unwrap();
     }
 
