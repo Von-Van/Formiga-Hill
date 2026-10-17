@@ -55,6 +55,10 @@ const UNTENDED_SECS: f32 = 8.0;
 const ADMIRE_SECS: f32 = 2.2;
 /// With reduced motion, fish move in steps this far apart rather than gliding.
 const STEP_SECS: f32 = 1.5;
+/// With more time to catch, a bite lasts this much longer, and a fish strains the line this much
+/// less.
+const GENTLE_WINDOW: f32 = 1.8;
+const GENTLE_GRIP: f32 = 0.7;
 /// How near the rod tip a fish is landed, before the net.
 const LANDING: f32 = 10.0;
 
@@ -270,6 +274,7 @@ impl Angling {
         let calm = angler.map_or(0.5, |c| 1.0 - c.axes.energy);
         let playful = angler.map_or(0.5, |c| c.axes.playfulness);
         let strong = angler.map_or(0.5, |c| (c.axes.energy + c.axes.feistiness) / 2.0);
+        let gentle = ground.gentle();
         Self {
             party,
             swimmers,
@@ -294,10 +299,10 @@ impl Angling {
                 .map(|find| find.id)
                 .filter(|id| found_before(id))
                 .collect(),
-            window: 0.85 + 0.5 * patience,
+            window: (0.85 + 0.5 * patience) * if gentle { GENTLE_WINDOW } else { 1.0 },
             stray: 4.0 + 14.0 * (1.0 - (0.6 * patience + 0.4 * calm)),
             lure: 0.8 + 0.5 * playful,
-            grip: 1.2 - 0.4 * strong,
+            grip: (1.2 - 0.4 * strong) * if gentle { GENTLE_GRIP } else { 1.0 },
             reach: if characters.len() > 1 { 12.0 } else { 0.0 },
             dozing: false,
             characters,

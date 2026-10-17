@@ -19,7 +19,7 @@ mod wav;
 
 pub use cues::Cue;
 pub use music::{Music, Track};
-pub use settings::Levels;
+pub use settings::{Levels, Play};
 pub use wav::render_sounds;
 
 use mixer::Command;
@@ -92,6 +92,16 @@ impl Sound {
         if self.music.is_some() && levels.music_gain() > 0.0 {
             self.send(Command::Music(self.music), true);
         }
+    }
+
+    /// How the Hill plays for the person, kept with the sound.
+    pub fn playing(&self) -> Play {
+        self.settings.play()
+    }
+
+    /// Takes how the Hill plays at once; `keep` writes it down.
+    pub fn set_playing(&mut self, play: Play) {
+        self.settings.set_play(play);
     }
 
     /// Writes the levels down, if they have changed.

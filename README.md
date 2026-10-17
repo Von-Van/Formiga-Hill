@@ -136,7 +136,9 @@ and a telescope brings rare signs out sooner.
   story in a box over whoever says it. Like Desktop's speech bubbles, the paper is the same in
   light and dark.
 - Desktop's reduced motion and text size carry over. With reduced motion, Hill uses held poses
-  and cuts rather than simply slowing the animation down.
+  and cuts rather than simply slowing the animation down. The Sound and play card adds Hill's
+  own: **More time to catch**, which gives longer for every find, fish and bug in the Woods, and
+  larger text than Desktop's.
 
 ### Controls
 
@@ -185,7 +187,7 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 | `packages/` | Community packages, including any added from a shared file, put on the board from the story builder, kept from the map editor or saved from the Competitions card |
 | `drafts/stories/`, `drafts/adventures/` | Stories being written in the story builder, and adventures being made in the map editor |
 | `packages.json` | Which of them are set aside |
-| `settings.json` | Music and sound levels, and whether they are muted, for the Hill as a whole |
+| `settings.json` | Music and sound levels, whether they are muted, more time to catch and the text size, for the Hill as a whole |
 | `hosting.lock` | Held while a window is open |
 
 ## Where things stand

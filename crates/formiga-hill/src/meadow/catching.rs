@@ -31,6 +31,8 @@ use crate::woods::rummage::{delighted, dim};
 use formiga_art::{Canvas, ExpressionKind};
 use formiga_core::{Gesture, TemperamentKind};
 
+/// With more time to catch, how much of their usual nerve bugs keep as the net creeps up.
+const GENTLE_NERVE: f32 = 0.6;
 /// The light an outing starts with, what it costs to creep and to swing, and how much goes each
 /// second.
 pub const LIGHT: f32 = 100.0;
@@ -343,6 +345,12 @@ impl Hunt {
             )
         });
         let hush = (0.3 * calm + 0.2 * steady + if quiet_kind { 0.15 } else { 0.0 }).min(0.6);
+        // With more time to catch, bugs are slower to take fright.
+        let hush = if ground.gentle() {
+            1.0 - (1.0 - hush) * GENTLE_NERVE
+        } else {
+            hush
+        };
         let creep = netter.map_or(16.0, |c| 12.0 + 14.0 * c.axes.energy);
         let reach = match characters.len() {
             0 | 1 => 0.0,
