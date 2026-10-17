@@ -13,6 +13,7 @@ mod finery;
 mod fishing_trip;
 mod foraging;
 mod games;
+mod keys;
 mod mapmaking;
 mod paper;
 mod plans;
@@ -105,6 +106,8 @@ enum Card {
     Making,
     /// The Fairground's competitions, and the editor for making one.
     Competitions,
+    /// Every key the Hill answers to.
+    Keys,
 }
 
 /// For review only: where the window opens, with which card, and when its picture is taken.
@@ -130,7 +133,7 @@ pub const SNAP_PLACES: [&str; 6] = [
 ];
 
 /// What `--card` can name, in `Snap`.
-pub const SNAP_CARDS: [&str; 13] = [
+pub const SNAP_CARDS: [&str; 14] = [
     "notices",
     "departures",
     "board",
@@ -144,6 +147,7 @@ pub const SNAP_CARDS: [&str; 13] = [
     "making",
     "competitions",
     "new-competition",
+    "keys",
 ];
 
 /// Where a card can be open, for `Snap`: the places it belongs to, the first being where a
@@ -215,8 +219,12 @@ pub struct HillApp {
     crafting: plans::Crafting,
     /// Where each piece on the Hilltop is drawn, for pointing at them.
     piece_bounds: Vec<(u8, (i32, i32, i32, i32))>,
-    /// Where the pointer is over the scene, in scene pixels.
+    /// Where the pointer is over the scene, in scene pixels: the mouse's, or what the keyboard
+    /// has chosen in the Woods, and where the mouse was when it did.
     pointer: Option<(f32, f32)>,
+    mouse: Option<(f32, f32)>,
+    aim: Option<keys::Target>,
+    aim_mouse: Option<(f32, f32)>,
     /// When the last frame was drawn, for anything that moves by how long a key is held.
     last_frame: f32,
     area: Area,
@@ -323,6 +331,9 @@ impl HillApp {
             crafting: plans::Crafting::default(),
             piece_bounds: Vec::new(),
             pointer: None,
+            mouse: None,
+            aim: None,
+            aim_mouse: None,
             last_frame: 0.0,
             area: Area::Station,
             tool: Offer::Pet,
@@ -416,6 +427,7 @@ impl HillApp {
             Some("plans") => Some(Card::Plans),
             Some("album") => Some(Card::Album),
             Some("sound") => Some(Card::Sound),
+            Some("keys") => Some(Card::Keys),
             Some("making") => Some(Card::Making),
             Some("competitions" | "new-competition") => Some(Card::Competitions),
             _ => None,
@@ -723,6 +735,7 @@ impl HillApp {
             self.places_menu(ui, settled, now);
         }
         self.sound_button(ui);
+        self.keys_button(ui);
         if !in_clearing {
             self.camera_buttons(ui);
         }
@@ -924,6 +937,9 @@ impl eframe::App for HillApp {
                 self.camera.out = !self.camera.out;
             }
             mute |= input.key_pressed(egui::Key::M);
+            if input.key_pressed(egui::Key::K) {
+                self.toggle(Card::Keys);
+            }
             // Escape goes back a step: out of a chapter to the card's contents, and from there
             // closes the card.
             if input.key_pressed(egui::Key::Escape) {
@@ -958,6 +974,7 @@ impl eframe::App for HillApp {
                     if self.area == Area::Woods && input.key_pressed(egui::Key::Space) {
                         self.woods_strike(now);
                     }
+                    self.woods_keys(input, now);
                     if self.area == Area::Clearing {
                         if onwards {
                             self.clearing_read_on();
@@ -1083,6 +1100,8 @@ impl eframe::App for HillApp {
                     let scene = (pos - rect.min) / point;
                     (scene.x, scene.y)
                 });
+                let pressed = ctx.input(|input| input.pointer.any_pressed());
+                let pointer = self.keyboard_pointer(pointer, pressed);
                 let tag = |text: &str, centre: egui::Pos2| paper::tag(&ctx, &painter, text, centre);
 
                 let mut fixture = None;
@@ -1396,6 +1415,7 @@ impl eframe::App for HillApp {
         self.take_dropped(&ctx, now);
         self.notices_window(&ctx);
         self.departures_window(&ctx, now);
+        self.keys_window(&ctx);
         self.sound_window(&ctx);
         self.making_window(&ctx, now);
         self.competitions_window(&ctx, now);
