@@ -251,6 +251,38 @@ mod tests {
         assert!(cast.members[0].has_trait(Trait::NightOwl));
     }
 
+    /// A companion reshaped in Formiga Farm comes up the hill as itself, not as the nearest
+    /// companion: the same creatures, not lookalikes.
+    #[test]
+    fn a_farm_creature_arrives_as_its_own_form() {
+        use formiga_art::{BodyClip, CreatureRenderer};
+        use formiga_core::ActionKind;
+        let snapshot = formiga_travel::project_colony(
+            &formiga_travel::sample::farm_colony(3),
+            formiga_travel::SessionId::parse(formiga_travel::sample::SESSION).unwrap(),
+            formiga_travel::sample::MADE,
+            "sample colony",
+        )
+        .unwrap();
+        let cast = Cast::new(snapshot).unwrap();
+        let sculpted: Vec<_> = cast
+            .members
+            .iter()
+            .filter(|member| member.creature.appearance.sculpt.is_some())
+            .collect();
+        assert_eq!(sculpted.len(), 1);
+        let genome = &sculpted[0].creature.appearance;
+        let clip = BodyClip::Action(ActionKind::Idle);
+        let drawn = CreatureRenderer::render_body_frame(genome, clip, 0, false);
+        let lookalike = formiga_core::AppearanceGenome {
+            sculpt: None,
+            ..genome.clone()
+        };
+        let instead = CreatureRenderer::render_body_frame(&lookalike, clip, 0, false);
+        assert!(drawn.canvas.alpha_bounds().is_some());
+        assert_ne!(drawn.canvas, instead.canvas);
+    }
+
     #[test]
     fn everyone_in_the_sample_can_be_drawn() {
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
