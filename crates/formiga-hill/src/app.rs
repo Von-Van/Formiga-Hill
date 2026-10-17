@@ -21,6 +21,7 @@ mod scavenging;
 mod shared;
 mod sound;
 mod storytelling;
+mod welcome;
 mod writing;
 
 use crate::audio::Sound;
@@ -87,6 +88,9 @@ const AREAS: [(Area, &str); 6] = [
 /// A card laid over the scene in place of a window. One at a time, so none hides another.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Card {
+    /// Where a colony of the person's own comes from, over the sample colony's arrival, when
+    /// Hill was opened on its own rather than by Desktop.
+    Welcome,
     /// The station's notice board, and its departures board.
     Notices,
     Departures,
@@ -130,7 +134,8 @@ pub const SNAP_PLACES: [&str; 6] = [
 ];
 
 /// What `--card` can name, in `Snap`.
-pub const SNAP_CARDS: [&str; 13] = [
+pub const SNAP_CARDS: [&str; 14] = [
+    "welcome",
     "notices",
     "departures",
     "board",
@@ -150,7 +155,7 @@ pub const SNAP_CARDS: [&str; 13] = [
 /// picture of it opens when no place is named. Empty for a card that is open anywhere.
 pub fn snap_card_places(card: &str) -> &'static [&'static str] {
     match card {
-        "notices" | "departures" => &["station"],
+        "welcome" | "notices" | "departures" => &["station"],
         "board" | "shelf" | "writing" => &["clubhouse"],
         "dress-up" => &["green"],
         "plans" => &["hilltop"],
@@ -406,6 +411,7 @@ impl HillApp {
             _ => None,
         };
         let card = match snap.card.as_deref() {
+            Some("welcome") => Some(Card::Welcome),
             Some("notices") => Some(Card::Notices),
             Some("departures") => Some(Card::Departures),
             Some("board") => Some(Card::Board),
@@ -452,6 +458,13 @@ impl HillApp {
         if card == Some(Card::Making) {
             self.open_sample_making(chapter);
         }
+    }
+
+    /// Opens on the welcome card: Hill was opened on its own, so the sample colony is arriving
+    /// in place of the person's own, and the card says how theirs comes.
+    pub fn welcome(mut self) -> Self {
+        self.card = Some(Card::Welcome);
+        self
     }
 
     /// Asks for the review picture once it is time, and saves it and closes when it comes.
@@ -1399,6 +1412,7 @@ impl eframe::App for HillApp {
         self.sound_window(&ctx);
         self.making_window(&ctx, now);
         self.competitions_window(&ctx, now);
+        self.welcome_window(&ctx);
         self.take_snap(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {

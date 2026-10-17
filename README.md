@@ -164,6 +164,10 @@ and a telescope brings rare signs out sooner.
 The downloads are not signed yet. On macOS, open the app the first time with Control-click → Open;
 on Windows, SmartScreen may ask before it runs.
 
+Opened on its own, from Applications or the Start menu, Hill says that your colony comes from
+Formiga Desktop and how to send it, and offers a look around with Desktop's sample colony in the
+meantime.
+
 Hill hosts one colony at a time. A trip that arrives while a Hill window is already open is
 politely refused, so Desktop can try again later. If Hill closes unexpectedly, or is force-quit,
 Desktop brings the colony home exactly as it left.
