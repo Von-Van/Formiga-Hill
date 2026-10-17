@@ -531,6 +531,29 @@ mod tests {
         assert!(check(&files, "x").is_err());
     }
 
+    /// On a Mac or a Windows PC "MANIFEST.toml" and "manifest.toml" are one file, so a package
+    /// with both would be written as one that does not load, in place of the one that did.
+    #[test]
+    fn names_alike_but_for_capitals_are_refused_before_anything_is_written() {
+        let folder = scratch("capitals");
+        let kept = install(&folder, &community()).unwrap();
+        for (path, problem) in [
+            ("MANIFEST.toml", "but for capitals"),
+            ("Content/extra.toml", "but for capitals"),
+            ("localization/EN.toml", "but for capitals"),
+            ("manifest.toml/inside.toml", "a file and a folder"),
+        ] {
+            let mut files = community();
+            files.insert(path.into(), b"x = 1".to_vec());
+            let refused = check(&files, "x").unwrap_err();
+            assert!(refused.problem.contains(problem), "{path}: {refused}");
+            assert!(install(&folder, &files).is_err(), "{path} was let in");
+        }
+        let library = story::Library::load(Some(&folder), &[]);
+        assert!(library.problems.is_empty(), "{:?}", library.problems);
+        assert_eq!(installed(&folder, "org.example.picnic"), Some(kept.path));
+    }
+
     #[test]
     fn a_package_is_installed_replaced_and_removed_by_its_id() {
         let folder = scratch("install");

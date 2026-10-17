@@ -109,7 +109,8 @@ my-story.formiga-hill/
 ```
 
 Only `.toml`, `.md` and `.txt` files are allowed. File names use letters, digits, `.`, `-` and
-`_`. Links aren't allowed, folders nest at most three deep, a file is at most 128 KiB, and a whole
+`_`, and no two names in a package may differ only in capitals, which most computers keep as one
+file. Links aren't allowed, folders nest at most three deep, a file is at most 128 KiB, and a whole
 package at most 1 MiB.
 
 ## `manifest.toml`
