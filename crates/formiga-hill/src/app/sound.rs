@@ -4,7 +4,7 @@
 //! played where they are told, beside their notices.
 
 use super::{Area, Card, HillApp, paper};
-use crate::audio::{Cue, Music, Track};
+use crate::audio::{Cue, Music, Play, Track};
 use crate::character::Offer;
 use crate::clearing::sovereign::State;
 use crate::station::Heard;
@@ -268,9 +268,9 @@ impl HillApp {
     pub(super) fn sound_button(&mut self, ui: &mut egui::Ui) {
         let muted = self.sound.levels().muted;
         let (picture, name) = if muted {
-            (paper::pictures::QUIET, "Sound (muted)  M")
+            (paper::pictures::QUIET, "Sound and play (muted)  M")
         } else {
-            (paper::pictures::SOUND, "Sound  M mutes")
+            (paper::pictures::SOUND, "Sound and play  M mutes")
         };
         let response = ui.add(
             paper::Button::new("")
@@ -295,7 +295,9 @@ impl HillApp {
         // Whether the master or the sounds' level was let go, to be heard at its new level.
         let mut set = false;
         let silent = self.sound.silent();
-        self.show_card(ctx, Card::Sound, "Sound", 0.36, |_, ui| {
+        let played = self.sound.playing();
+        let mut play = played;
+        self.show_card(ctx, Card::Sound, "Sound and play", 0.36, |_, ui| {
             // The music is heard at its new level as it is moved; the others with a click once
             // they are let go.
             for (label, level, clicks) in [
@@ -322,7 +324,40 @@ impl HillApp {
                     "There is nothing here to play sound on, so the Hill is quiet.",
                 );
             }
+            paper::rule(ui);
+            paper::name(ui, "Playing");
+            if ui
+                .add(paper::Button::new("More time to catch").selected(play.gentle))
+                .clicked()
+            {
+                play.gentle = !play.gentle;
+            }
+            paper::aside(
+                ui,
+                "In the Woods, finds, fish and bugs give you longer. From the next outing.",
+            );
+            paper::spaced(ui);
+            ui.horizontal_wrapped(|ui| {
+                for (scale, label) in [
+                    (None, "Text as in Desktop"),
+                    (Some(Play::TEXT_SCALES[0]), "Larger"),
+                    (Some(Play::TEXT_SCALES[1]), "Largest"),
+                ] {
+                    if ui
+                        .add(paper::Button::new(label).selected(play.text_scale == scale))
+                        .clicked()
+                    {
+                        play.text_scale = scale;
+                    }
+                }
+            });
         });
+        if play != played {
+            self.sound.set_playing(play);
+            self.arrival.cast.gentle = play.gentle;
+            let desktop = self.arrival.cast.snapshot.presentation.text_scale_percent;
+            ctx.set_zoom_factor(f32::from(play.text_scale(desktop)) / 100.0);
+        }
         if levels != before {
             self.sound.set_levels(levels);
         }
