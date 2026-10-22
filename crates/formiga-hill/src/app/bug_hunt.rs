@@ -154,6 +154,7 @@ impl HillApp {
             line.push_str(" Something from the net is in the satchel, for the Hilltop.");
         }
         self.notice = Some((line, now));
+        self.grant(super::departures::Outing::BugCatching, hunt.party(), now);
     }
 
     pub(super) fn compose_meadow(&mut self, now: f32) -> Option<Canvas> {

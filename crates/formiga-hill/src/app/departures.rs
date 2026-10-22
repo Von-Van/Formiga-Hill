@@ -6,10 +6,12 @@
 
 use super::games::{reached, rings_rung};
 use super::{Area, Card, HillApp, Visit, clock, listed, ordinal, paper};
+use crate::cast::Id;
 use crate::character::Character;
 use crate::hilltop::Standing;
 use crate::memories::Trouble;
 use crate::station::Fixture;
+use crate::story::souvenirs;
 use eframe::egui;
 use formiga_core::TemperamentKind;
 
@@ -138,19 +140,43 @@ impl Outing {
 }
 
 /// What a companion would most like to do: the Hilltop only once something stands there.
-pub(super) fn keen_on(character: &Character, hilltop_stands: bool) -> Outing {
-    Outing::ALL
+#[cfg(test)]
+fn keen_on(character: &Character, hilltop_stands: bool) -> Outing {
+    liked(character, hilltop_stands)[0]
+}
+
+/// Everything a companion might like to do, most liked first: the Hilltop only once something
+/// stands there.
+fn liked(character: &Character, hilltop_stands: bool) -> Vec<Outing> {
+    let mut outings: Vec<Outing> = Outing::ALL
         .into_iter()
         .filter(|outing| hilltop_stands || *outing != Outing::Hilltop)
-        .max_by(|a, b| a.appeal(character).total_cmp(&b.appeal(character)))
-        .unwrap_or(Outing::Picnic)
+        .collect();
+    outings.sort_by(|a, b| b.appeal(character).total_cmp(&a.appeal(character)));
+    outings
+}
+
+/// What a companion wishes for this visit: one of the three things it likes best, the best
+/// liked most often, rolled afresh each visit from `visit` and `who`, so the notice board has
+/// something new to say and the same visit always says the same.
+pub(super) fn wish(character: &Character, hilltop_stands: bool, visit: u32, who: u64) -> Outing {
+    let liked = liked(character, hilltop_stands);
+    let mut dice =
+        crate::dice::Dice::new(who ^ u64::from(visit).wrapping_mul(0x2545_f491_4f6c_dd1d));
+    let weights = [3.0, 2.0, 1.0];
+    let pick = dice
+        .weighted(&weights[..liked.len().min(weights.len())])
+        .unwrap_or(0);
+    liked[pick]
 }
 
 /// Everything the two boards read, gathered once.
 #[derive(Clone, Debug, Default)]
 pub(super) struct Board {
-    /// Each traveller, and what it would most like to do.
+    /// Each traveller, and what it wishes for this visit.
     pub wishes: Vec<(String, Outing)>,
+    /// Those whose wish has come true this visit.
+    pub granted: Vec<String>,
     pub visits: u32,
     /// Stories on the Clubhouse board, and the titles of those not yet told.
     pub stories: usize,
@@ -274,7 +300,7 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
         let names: Vec<&str> = board
             .wishes
             .iter()
-            .filter(|(_, wish)| *wish == outing)
+            .filter(|(name, wish)| *wish == outing && !board.granted.contains(name))
             .map(|(name, _)| name.as_str())
             .collect();
         if !names.is_empty() {
@@ -284,6 +310,12 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
                 outing.wish()
             ));
         }
+    }
+    let granted: Vec<&str> = board.granted.iter().map(String::as_str).collect();
+    match granted.as_slice() {
+        [] => {}
+        [one] => wishes.push(format!("{one} had a wish come true today.")),
+        many => wishes.push(format!("{} had wishes come true today.", listed(many))),
     }
     if !wishes.is_empty() {
         notes.push(notice("Wishes", wishes.join("\n")));
@@ -395,13 +427,41 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
     notes
 }
 
+/// The display case's blanks, told by where they come from: a hint, never a name, so each is
+/// still a surprise.
+fn still_to_find(missing: &[&str]) -> Vec<String> {
+    let mut lines = Vec::new();
+    let from_stories = missing
+        .iter()
+        .filter(|id| souvenirs::won_at(id).is_none())
+        .count();
+    match from_stories {
+        0 => {}
+        1 => lines.push("One kept at the end of a story in the Clubhouse".to_owned()),
+        n => lines.push(format!("{n} kept at the end of stories in the Clubhouse")),
+    }
+    let games: Vec<&str> = missing
+        .iter()
+        .filter_map(|id| souvenirs::won_at(id))
+        .collect();
+    match games.as_slice() {
+        [] => {}
+        [one] => lines.push(format!("One won at {one}, at the Fairground")),
+        many => lines.push(format!(
+            "One each won at {}, at the Fairground",
+            listed(many)
+        )),
+    }
+    lines
+}
+
 /// The departures board: every other place, what is on there, and who would like to go.
 pub(super) fn departures(board: &Board) -> Vec<Departure> {
     let keen = |area: Area| -> Vec<String> {
         board
             .wishes
             .iter()
-            .filter(|(_, wish)| wish.area() == area)
+            .filter(|(name, wish)| wish.area() == area && !board.granted.contains(name))
             .map(|(name, wish)| match wish.short() {
                 Some(what) => format!("{name} ({what})"),
                 None => name.clone(),
@@ -494,15 +554,17 @@ impl HillApp {
     /// What the boards read, from the snapshot and Hill's memories of this colony.
     pub(super) fn board(&self) -> Board {
         let colony = self.memories.colony();
-        let hilltop_stands = !colony.hilltop.is_empty();
         let cast = &self.arrival.cast;
         let wishes = cast
             .members
             .iter()
-            .map(|member| {
-                let character = Character::of(member);
-                (member.name.clone(), keen_on(&character, hilltop_stands))
-            })
+            .filter_map(|member| Some((member.name.clone(), *self.wishes.get(&member.id)?)))
+            .collect();
+        let granted = cast
+            .members
+            .iter()
+            .filter(|member| self.granted.contains(&member.id))
+            .map(|member| member.name.clone())
             .collect();
         let mut stories = 0;
         let mut untold = Vec::new();
@@ -529,6 +591,7 @@ impl HillApp {
         };
         Board {
             wishes,
+            granted,
             visits: colony.visits,
             stories,
             untold,
@@ -551,6 +614,82 @@ impl HillApp {
         }
     }
 
+    /// What each traveller wishes for this visit, chosen once as the train comes in.
+    pub(super) fn make_wishes(&mut self) {
+        let colony = self.memories.colony();
+        let hilltop_stands = !colony.hilltop.is_empty();
+        let visit = colony.visits;
+        self.wishes = self
+            .arrival
+            .cast
+            .members
+            .iter()
+            .map(|member| {
+                let character = Character::of(member);
+                (
+                    member.id,
+                    wish(&character, hilltop_stands, visit, member.id),
+                )
+            })
+            .collect();
+    }
+
+    /// Whoever among `who` wished for `outing` has had it: each shows it, the way it shows being
+    /// fond of something, the next time it is out and about, and the notice over the trays says
+    /// so. A wish is an invitation, never a task: nothing is lost if one never comes true.
+    pub(super) fn grant(&mut self, outing: Outing, who: &[Id], now: f32) {
+        let mut names = Vec::new();
+        for &id in who {
+            if self.wishes.get(&id) == Some(&outing) && self.granted.insert(id) {
+                self.hearts.push(id);
+                if let Some(member) = self.arrival.cast.member(id) {
+                    names.push(member.name.clone());
+                }
+            }
+        }
+        if names.is_empty() {
+            return;
+        }
+        let names: Vec<&str> = names.iter().map(String::as_str).collect();
+        let line = match names.as_slice() {
+            [one] => format!("That was just what {one} wished for."),
+            many => format!("That was just what {} wished for.", listed(many)),
+        };
+        self.notice = Some(match self.notice.take() {
+            Some((before, at)) if at == now => (format!("{before} {line}"), now),
+            _ => (line, now),
+        });
+        self.pin_notices();
+    }
+
+    /// Everyone whose wish has come true shows how pleased it is, once it is somewhere it is free
+    /// to.
+    pub(super) fn show_hearts(&mut self, now: f32) {
+        if self.hearts.is_empty() {
+            return;
+        }
+        let mut hearts = std::mem::take(&mut self.hearts);
+        if let Some(ground) = self.ground_for_finery() {
+            let here = ground.ids();
+            hearts.retain(|id| {
+                if !here.contains(id) {
+                    return true;
+                }
+                let fond = ground.character(*id).map(|character| {
+                    crate::story::feel(character, crate::story::script::Feeling::Fond)
+                        .into_iter()
+                        .map(crate::actor::Step::Beat)
+                        .collect()
+                });
+                if let Some(steps) = fond {
+                    ground.direct(*id, steps, now);
+                }
+                false
+            });
+        }
+        self.hearts = hearts;
+    }
+
     /// Pins a note on the station's notice board for each notice.
     pub(super) fn pin_notices(&mut self) {
         let notes = notices(&self.board()).len();
@@ -562,7 +701,7 @@ impl HillApp {
         match fixture {
             Fixture::Notices => self.card = Some(Card::Notices),
             Fixture::Departures => self.card = Some(Card::Departures),
-            Fixture::Case => {}
+            Fixture::Case => self.card = Some(Card::Case),
         }
     }
 
@@ -578,6 +717,35 @@ impl HillApp {
                 }
                 ui.add(paper::Words::new(&note.heading).color(paper::FOREST));
                 paper::words(ui, &note.text);
+            }
+        });
+    }
+
+    /// The display case, looked at closely: every souvenir the Hill gives, those kept named and
+    /// the rest a blank with where it comes from, so there is always something to look forward
+    /// to and never a list of chores.
+    pub(super) fn case_window(&mut self, ctx: &egui::Context) {
+        if self.area != Area::Station {
+            return;
+        }
+        let kept = &self.memories.colony().souvenirs;
+        let (have, missing): (Vec<&str>, Vec<&str>) = souvenirs::ids()
+            .into_iter()
+            .partition(|id| kept.iter().any(|k| k == id));
+        let have: Vec<&str> = have.into_iter().filter_map(souvenirs::name).collect();
+        let lines = still_to_find(&missing);
+        let all = souvenirs::ids().len();
+        self.show_card(ctx, Card::Case, "The display case", 0.42, |_, ui| {
+            paper::aside(ui, format!("{} of {all} kept", have.len()));
+            for name in &have {
+                ui.add(paper::Words::new(*name).color(paper::FOREST));
+            }
+            if !lines.is_empty() {
+                paper::rule(ui);
+                paper::name(ui, "Still to find");
+                for line in &lines {
+                    paper::words(ui, line);
+                }
             }
         });
     }
@@ -672,6 +840,54 @@ mod tests {
         striker.axes.curiosity = 0.0;
         seen.insert(keen_on(&striker, true));
         assert_eq!(seen.len(), Outing::ALL.len(), "only {seen:?}");
+    }
+
+    #[test]
+    fn a_wish_is_one_of_the_best_liked_and_changes_from_visit_to_visit() {
+        for (index, character) in sample().iter().enumerate() {
+            let best = &liked(character, true)[..3];
+            let who = index as u64 + 1;
+            let wishes: std::collections::BTreeSet<Outing> = (1..=30)
+                .map(|visit| wish(character, true, visit, who))
+                .collect();
+            assert!(wishes.iter().all(|w| best.contains(w)), "{wishes:?}");
+            assert!(wishes.len() >= 2, "always {wishes:?}");
+            assert_eq!(wish(character, true, 7, who), wish(character, true, 7, who));
+            assert!((1..=30).all(|visit| wish(character, false, visit, who) != Outing::Hilltop));
+        }
+    }
+
+    #[test]
+    fn a_wish_come_true_is_told_and_not_asked_again() {
+        let board = Board {
+            wishes: vec![
+                ("Fern".into(), Outing::Fishing),
+                ("Moss".into(), Outing::Fishing),
+            ],
+            granted: vec!["Fern".into()],
+            ..Board::default()
+        };
+        let notes = notices(&board);
+        let wishes = notes.iter().find(|note| note.heading == "Wishes").unwrap();
+        assert!(wishes.text.contains("Moss would like to go fishing"));
+        assert!(wishes.text.contains("Fern had a wish come true today."));
+        let woods = departures(&board)
+            .into_iter()
+            .find(|row| row.area == Area::Woods)
+            .unwrap();
+        assert_eq!(woods.keen, ["Moss (fishing)"]);
+    }
+
+    #[test]
+    fn the_display_case_says_where_its_blanks_come_from_without_naming_them() {
+        assert_eq!(
+            still_to_find(&["well_penny", "oak_acorn", souvenirs::TUG_ROPE]),
+            [
+                "2 kept at the end of stories in the Clubhouse",
+                "One won at the tug-of-war, at the Fairground"
+            ]
+        );
+        assert!(still_to_find(&[]).is_empty());
     }
 
     #[test]

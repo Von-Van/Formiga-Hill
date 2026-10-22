@@ -202,6 +202,7 @@ impl HillApp {
             ),
         };
         self.notice = Some((line, now));
+        self.grant(super::departures::Outing::Foraging, foray.party(), now);
     }
 
     /// The hedgerow with a foray under way: what grows there as it ripens, and the thing under
