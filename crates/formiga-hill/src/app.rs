@@ -355,11 +355,14 @@ impl HillApp {
         app
     }
 
-    /// The way home. Writes the receipt once, however the visit ends.
+    /// The way home. Keeps anything still in a basket in the Woods, then writes the receipt
+    /// once, however the visit ends.
     fn depart(&mut self) {
         if std::mem::replace(&mut self.departed, true) {
             return;
         }
+        let now = self.now();
+        self.bring_the_basket_home(now);
         if let Visit::Trip(trip) = &self.arrival.visit
             && let Err(error) = trip.come_home(&self.memories.colony().souvenirs)
         {
@@ -582,27 +585,7 @@ impl HillApp {
             self.open_hilltop(now);
         }
         // Leaving the Woods brings the basket home; leaving the Hilltop puts down what was held.
-        if self.woods.outing.is_some() {
-            self.finish_outing(now);
-        }
-        if self.woods.fishing.is_some() {
-            self.finish_fishing(now);
-        }
-        if self.woods.hunt.is_some() {
-            self.finish_bug_hunt(now);
-        }
-        if self.woods.foray.is_some() {
-            self.finish_foraging(now);
-        }
-        if self.woods.expedition.is_some() {
-            self.finish_expedition(now);
-        }
-        if self.woods.scavenge.is_some() {
-            self.finish_scavenging(now);
-        }
-        if self.woods.treasure.is_some() {
-            self.finish_treasure(now);
-        }
+        self.bring_the_basket_home(now);
         self.placing = None;
         self.card = None;
         if area == Area::Station {
@@ -616,6 +599,19 @@ impl HillApp {
         }
         self.area = area;
         self.shown_frames.clear();
+    }
+
+    /// Ends whatever is under way in the Woods and keeps what it found: into the journal and the
+    /// satchel, written to the memories at once. However the colony leaves the Woods, by walking
+    /// away, by the window closing or by Desktop calling everyone home, nothing found is lost.
+    fn bring_the_basket_home(&mut self, now: f32) {
+        self.finish_outing(now);
+        self.finish_fishing(now);
+        self.finish_bug_hunt(now);
+        self.finish_foraging(now);
+        self.finish_expedition(now);
+        self.finish_scavenging(now);
+        self.finish_treasure(now);
     }
 
     fn compose(&mut self, now: f32) -> Canvas {
@@ -902,7 +898,9 @@ impl eframe::App for HillApp {
         self.keep_hours(now);
         self.station.update(now);
         if !self.departed && self.recalled(now) {
-            // Desktop has the colony already: close, and write nothing.
+            // Desktop has the colony already: close, and write nothing to the trip. Whatever the
+            // Woods turned up is still Hill's to keep.
+            self.bring_the_basket_home(now);
             self.departed = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
