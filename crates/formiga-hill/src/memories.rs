@@ -290,8 +290,8 @@ pub enum Trouble {
     /// The book couldn't be read and there was no good copy to go back to: it is set aside, and a
     /// fresh one begun.
     StartedAfresh,
-    /// The book was kept by a newer Hill: it is left just as it is, and nothing is written to it
-    /// this visit.
+    /// The book, or the only copy to go back to, was kept by a newer Hill: both are left just as
+    /// they are, and nothing is written this visit.
     Newer,
 }
 
@@ -341,19 +341,43 @@ impl Memories {
                 memories.path = None;
                 memories.trouble = Some(Trouble::Newer);
             }
-            Found::Unreadable => {
-                // Keep what was there for whoever wants to look at it.
-                let _ = fs::rename(&path, set_aside(&path));
-                if let Found::Good(book) = find(&last_good) {
-                    memories.book = book;
-                    memories.trouble = Some(Trouble::WentBack);
-                    memories.keep();
-                } else {
-                    memories.trouble = Some(Trouble::StartedAfresh);
+            Found::Unreadable => match find(&last_good) {
+                // The only copy to go back to is a newer Hill's, which this one cannot read:
+                // leave the book and the copy just as they are, for the newer Hill to go back to.
+                Found::Newer => {
+                    memories.path = None;
+                    memories.trouble = Some(Trouble::Newer);
                 }
-            }
+                found => {
+                    // Keep what was there for whoever wants to look at it.
+                    let _ = fs::rename(&path, set_aside(&path));
+                    if let Found::Good(book) = found {
+                        memories.book = book;
+                        memories.trouble = Some(Trouble::WentBack);
+                        memories.keep();
+                    } else {
+                        memories.trouble = Some(Trouble::StartedAfresh);
+                    }
+                }
+            },
         }
         memories
+    }
+
+    /// Reads the memories kept in `folder` for `colony` only to look at them, as a picture drawn
+    /// without a window does. Nothing is written, set aside or copied, so a visit going on in a
+    /// window keeps its copy from the start of that visit. A book that can't be read looks empty.
+    pub fn look(folder: Option<&Path>, colony: &str) -> Self {
+        let book = match folder.map(|folder| find(&folder.join(FILE))) {
+            Some(Found::Good(book)) => book,
+            _ => Book::default(),
+        };
+        Self {
+            path: None,
+            colony: colony.to_owned(),
+            book,
+            trouble: None,
+        }
     }
 
     /// What went wrong with the book on opening it, if anything.
@@ -1723,6 +1747,51 @@ mod tests {
         assert_eq!(fs::read(dir.join(FILE)).unwrap(), newer, "nothing written");
         assert!(!dir.join("memories.json.unreadable").exists());
         assert!(!dir.join(LAST_GOOD).exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_book_whose_only_copy_is_a_newer_hills_leaves_both_alone() {
+        let dir = scratch("newer-last-good");
+        fs::create_dir_all(&dir).unwrap();
+        let newer = br#"{"version": 99, "colonies": {"c": {"visits": "forty"}}}"#;
+        fs::write(dir.join(LAST_GOOD), newer).unwrap();
+        fs::write(dir.join(FILE), b"not json at all").unwrap();
+        let mut memories = Memories::open(Some(&dir), "c");
+        assert_eq!(memories.trouble(), Some(Trouble::Newer));
+        memories.arrived();
+        memories.back_from_the_woods(&[7], &["acorn_stash"]);
+        assert_eq!(
+            fs::read(dir.join(LAST_GOOD)).unwrap(),
+            newer,
+            "the copy kept"
+        );
+        assert_eq!(fs::read(dir.join(FILE)).unwrap(), b"not json at all");
+        assert!(!dir.join("memories.json.unreadable").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn looking_at_the_memories_writes_nothing() {
+        let dir = scratch("look");
+        Memories::open(Some(&dir), "c").arrived();
+        Memories::open(Some(&dir), "c").arrived();
+        let kept = fs::read(dir.join(LAST_GOOD)).unwrap();
+        let book = fs::read(dir.join(FILE)).unwrap();
+        let looked = Memories::look(Some(&dir), "c");
+        assert_eq!(looked.colony().visits, 2);
+        assert_eq!(looked.trouble(), None);
+        assert_eq!(
+            fs::read(dir.join(LAST_GOOD)).unwrap(),
+            kept,
+            "the copy left as it was"
+        );
+        assert_eq!(fs::read(dir.join(FILE)).unwrap(), book);
+
+        fs::write(dir.join(FILE), b"not json at all").unwrap();
+        assert_eq!(Memories::look(Some(&dir), "c").colony().visits, 0);
+        assert_eq!(fs::read(dir.join(FILE)).unwrap(), b"not json at all");
+        assert!(!dir.join("memories.json.unreadable").exists());
         fs::remove_dir_all(dir).unwrap();
     }
 
