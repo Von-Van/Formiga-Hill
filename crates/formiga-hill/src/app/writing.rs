@@ -50,6 +50,8 @@ pub(super) struct Writing {
     changed: bool,
     /// Asked to throw the open draft away, waiting to be sure.
     throwing_away: bool,
+    /// The open draft as it was, to step back to.
+    history: super::undo::History<Draft>,
 }
 
 impl Writing {
@@ -201,6 +203,9 @@ impl HillApp {
     }
 
     fn writing_page(&mut self, ui: &mut egui::Ui) -> Option<Ask> {
+        if self.writing.page != Page::Drafts {
+            self.writing_undo(ui);
+        }
         match self.writing.page {
             Page::Drafts => {
                 self.drafts_page(ui);
@@ -211,6 +216,29 @@ impl HillApp {
                 self.scene_page(ui, number);
                 None
             }
+        }
+    }
+
+    /// Undo and Redo over the open story, on every page of it.
+    fn writing_undo(&mut self, ui: &mut egui::Ui) {
+        let writing = &mut self.writing;
+        let Some(draft) = writing.open.as_mut() else {
+            return;
+        };
+        let name = draft.package_id.clone();
+        // Not over its version, which counts what has been shared or put on the board: it stays
+        // as it is, so no version is ever given out twice.
+        let version = std::mem::take(&mut draft.version);
+        writing.history.feed(ui.ctx(), &name, draft);
+        let history = &mut writing.history;
+        let back = ui.horizontal(|ui| history.buttons(ui, draft)).inner;
+        draft.version = version;
+        if let Some(back) = back {
+            *draft = back;
+            draft.version = version;
+            writing.changed = true;
+            writing.naming = None;
+            writing.throwing_away = false;
         }
     }
 

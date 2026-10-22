@@ -21,6 +21,7 @@ mod scavenging;
 mod shared;
 mod sound;
 mod storytelling;
+mod undo;
 mod writing;
 
 use crate::audio::Sound;
