@@ -278,6 +278,7 @@ impl HillApp {
             line.push_str(" And rolled up in a hollow with them: a torn map!");
         }
         self.notice = Some((line, now));
+        self.grant(super::departures::Outing::Rummaging, rummage.party(), now);
     }
 
     pub(super) fn compose_woods(&mut self, now: f32) -> Canvas {

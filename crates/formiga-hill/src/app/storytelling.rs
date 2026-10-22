@@ -153,6 +153,8 @@ impl HillApp {
             if let Some(room) = &mut self.clubhouse {
                 room.pin_up(pinned);
             }
+            let everyone: Vec<_> = self.arrival.cast.members.iter().map(|m| m.id).collect();
+            self.grant(super::departures::Outing::Stories, &everyone, now);
         }
     }
 
