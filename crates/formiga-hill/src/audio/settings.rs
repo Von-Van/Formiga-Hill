@@ -82,8 +82,8 @@ impl Levels {
 pub struct Play {
     /// More time to catch things in the Woods.
     pub gentle: bool,
-    /// Text this much larger than usual, in percent, whatever Desktop's text size; none to follow
-    /// Desktop's.
+    /// Text at least this large, in percent, or Desktop's text size if that is larger already;
+    /// none to follow Desktop's.
     pub text_scale: Option<u16>,
 }
 
@@ -91,11 +91,13 @@ impl Play {
     /// The text sizes the Hill offers, beside following Desktop's.
     pub const TEXT_SCALES: [u16; 2] = [125, 150];
 
-    /// How large the text is, in percent: the person's own choice if they made one, otherwise
-    /// Desktop's, kept to what the Hill's cards can hold.
+    /// How large the text is, in percent: Desktop's, or the person's own choice if they made one
+    /// and it is larger, kept to what the Hill's cards can hold. Choosing larger text never makes
+    /// it smaller than Desktop's.
     pub fn text_scale(self, desktop: u8) -> u16 {
+        let desktop = u16::from(desktop);
         self.text_scale
-            .unwrap_or(u16::from(desktop))
+            .map_or(desktop, |chosen| chosen.max(desktop))
             .clamp(100, 150)
     }
 }
@@ -410,6 +412,13 @@ mod tests {
         assert!(again.play().gentle);
         assert_eq!(again.play().text_scale(100), 150);
         assert_eq!(again.levels(), Levels::default(), "the sound is as it was");
+        // Larger is never smaller than Desktop's own.
+        let larger = Play {
+            text_scale: Some(Play::TEXT_SCALES[0]),
+            ..Play::default()
+        };
+        assert_eq!(larger.text_scale(100), 125);
+        assert_eq!(larger.text_scale(150), 150);
         // A file from before there was anything but sound reads as playing as usual.
         fs::write(dir.join(FILE), br#"{"sound": {"master": 0.5}}"#).unwrap();
         assert_eq!(Settings::open(Some(&dir)).play(), Play::default());
