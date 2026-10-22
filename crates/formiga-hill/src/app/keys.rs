@@ -129,10 +129,14 @@ impl HillApp {
         })
     }
 
-    /// Left and Right step through what can be chosen in the Woods, and Enter chooses it.
+    /// Left and Right step through what can be chosen in the Woods, and Enter chooses it. Not
+    /// while the camera is out or a card is open: nothing is chosen behind them, unseen.
     pub(super) fn woods_keys(&mut self, input: &egui::InputState, now: f32) {
         if self.area != Area::Woods {
             self.aim = None;
+            return;
+        }
+        if self.camera.out || self.card.is_some() {
             return;
         }
         let along = if input.key_pressed(egui::Key::ArrowRight) {
