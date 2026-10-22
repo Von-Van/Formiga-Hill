@@ -9,6 +9,7 @@ use super::{Area, Card, HillApp, Visit, clock, listed, ordinal, paper};
 use crate::cast::Id;
 use crate::character::Character;
 use crate::hilltop::Standing;
+use crate::memories::Trouble;
 use crate::station::Fixture;
 use crate::story::souvenirs;
 use eframe::egui;
@@ -200,6 +201,8 @@ pub(super) struct Board {
     pub going_home: usize,
     /// Community packages that could not be read.
     pub problems: usize,
+    /// Anything that went wrong with Hill's memories on opening them.
+    pub trouble: Option<Trouble>,
 }
 
 /// A note on the notice board.
@@ -262,12 +265,35 @@ pub(super) fn notices(board: &Board) -> Vec<Notice> {
     } else {
         notice(
             "Welcome back",
-            format!(
-                "The colony's {} visit. Everything is where it was left.",
-                ordinal(board.visits as usize)
-            ),
+            if board.trouble.is_none() {
+                format!(
+                    "The colony's {} visit. Everything is where it was left.",
+                    ordinal(board.visits as usize)
+                )
+            } else {
+                format!("The colony's {} visit.", ordinal(board.visits as usize))
+            },
         )
     }];
+    let trouble = match board.trouble {
+        None => None,
+        Some(Trouble::WentBack) => Some(
+            "They couldn't be read this time, so the Hill went back to the copy kept as the last \
+             visit began. The unreadable book is set aside beside it, untouched.",
+        ),
+        Some(Trouble::StartedAfresh) => Some(
+            "They couldn't be read, so a fresh book is begun. The old one is set aside beside \
+             it, untouched, and nothing is written over it.",
+        ),
+        Some(Trouble::Newer) => Some(
+            "They were kept by a newer Formiga Hill, so they are left just as they are and \
+             nothing from this visit is written to them. Open the newer Hill to find everything \
+             where it was.",
+        ),
+    };
+    if let Some(text) = trouble {
+        notes.push(notice("The Hill's memories", text.to_owned()));
+    }
 
     let mut wishes = Vec::new();
     for outing in Outing::ALL {
@@ -584,6 +610,7 @@ impl HillApp {
             tug_record: self.tug_record(),
             going_home,
             problems: self.library.problems.len(),
+            trouble: self.memories.trouble(),
         }
     }
 
@@ -886,6 +913,27 @@ mod tests {
             ..Board::default()
         });
         assert!(later[0].text.contains("22nd"));
+    }
+
+    #[test]
+    fn trouble_with_the_memories_is_told_and_never_called_everything_where_it_was() {
+        for trouble in [Trouble::WentBack, Trouble::StartedAfresh, Trouble::Newer] {
+            let notes = notices(&Board {
+                visits: 5,
+                trouble: Some(trouble),
+                ..Board::default()
+            });
+            assert!(!notes[0].text.contains("where it was left"), "{trouble:?}");
+            assert_eq!(notes[1].heading, "The Hill's memories", "{trouble:?}");
+        }
+        let calm = notices(&Board {
+            visits: 5,
+            ..Board::default()
+        });
+        assert!(
+            calm.iter()
+                .all(|note| note.heading != "The Hill's memories")
+        );
     }
 
     #[test]

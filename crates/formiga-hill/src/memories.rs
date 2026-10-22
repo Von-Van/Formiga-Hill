@@ -13,10 +13,14 @@ use std::path::{Path, PathBuf};
 
 /// The book's format. Version 2 can keep something planted or built on the Hilltop, and growing
 /// things lifted into the satchel; a version 1 book reads as it was, everything on its Hilltop
-/// fully grown. A Hill older than the book sets it aside rather than losing what it cannot read.
+/// fully grown. A Hill older than the book leaves it just as it is and writes nothing, so going
+/// back to the newer Hill finds everything there.
 const VERSION: u32 = 2;
 const MAX_BYTES: u64 = 1024 * 1024;
 const FILE: &str = "memories.json";
+/// The book as it was at the start of the last visit, to go back to if the book itself is ever
+/// unreadable.
+const LAST_GOOD: &str = "memories.json.last-good";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct ColonyMemories {
@@ -275,6 +279,29 @@ pub struct Memories {
     path: Option<PathBuf>,
     colony: String,
     book: Book,
+    trouble: Option<Trouble>,
+}
+
+/// Something that went wrong with the book when it was opened, for the notice board to tell.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Trouble {
+    /// The book couldn't be read: it is set aside, and the copy from the start of the last visit
+    /// taken up in its place.
+    WentBack,
+    /// The book couldn't be read and there was no good copy to go back to: it is set aside, and a
+    /// fresh one begun.
+    StartedAfresh,
+    /// The book, or the only copy to go back to, was kept by a newer Hill: both are left just as
+    /// they are, and nothing is written this visit.
+    Newer,
+}
+
+/// What was found where the book is kept.
+enum Found {
+    Missing,
+    Good(Book),
+    Newer,
+    Unreadable,
 }
 
 impl Memories {
@@ -288,16 +315,75 @@ impl Memories {
             .map(|dirs| dirs.data_dir().to_owned())
     }
 
-    /// Opens the memories kept in `folder` for `colony`. A missing or unreadable file starts a
-    /// fresh book; an unreadable one is set aside first, never overwritten.
+    /// Opens the memories kept in `folder` for `colony`. A missing file starts a fresh book. An
+    /// unreadable one is set aside, never overwritten, and the copy kept at the start of the last
+    /// visit taken up instead, if there is one. A book from a newer Hill is left alone, and
+    /// nothing is written to it. Either way the notice board says so: nothing is lost in silence.
     pub fn open(folder: Option<&Path>, colony: &str) -> Self {
-        let path = folder.map(|folder| folder.join(FILE));
-        let book = path.as_deref().map(read).unwrap_or_default();
+        let mut memories = Self {
+            path: folder.map(|folder| folder.join(FILE)),
+            colony: colony.to_owned(),
+            book: Book::default(),
+            trouble: None,
+        };
+        let (Some(folder), Some(path)) = (folder, memories.path.clone()) else {
+            return memories;
+        };
+        let last_good = folder.join(LAST_GOOD);
+        match find(&path) {
+            Found::Missing => {}
+            Found::Good(book) => {
+                if let Err(error) = write(&last_good, &book) {
+                    eprintln!("formiga-hill: could not keep a copy of the memories: {error}");
+                }
+                memories.book = book;
+            }
+            Found::Newer => {
+                memories.path = None;
+                memories.trouble = Some(Trouble::Newer);
+            }
+            Found::Unreadable => match find(&last_good) {
+                // The only copy to go back to is a newer Hill's, which this one cannot read:
+                // leave the book and the copy just as they are, for the newer Hill to go back to.
+                Found::Newer => {
+                    memories.path = None;
+                    memories.trouble = Some(Trouble::Newer);
+                }
+                found => {
+                    // Keep what was there for whoever wants to look at it.
+                    let _ = fs::rename(&path, set_aside(&path));
+                    if let Found::Good(book) = found {
+                        memories.book = book;
+                        memories.trouble = Some(Trouble::WentBack);
+                        memories.keep();
+                    } else {
+                        memories.trouble = Some(Trouble::StartedAfresh);
+                    }
+                }
+            },
+        }
+        memories
+    }
+
+    /// Reads the memories kept in `folder` for `colony` only to look at them, as a picture drawn
+    /// without a window does. Nothing is written, set aside or copied, so a visit going on in a
+    /// window keeps its copy from the start of that visit. A book that can't be read looks empty.
+    pub fn look(folder: Option<&Path>, colony: &str) -> Self {
+        let book = match folder.map(|folder| find(&folder.join(FILE))) {
+            Some(Found::Good(book)) => book,
+            _ => Book::default(),
+        };
         Self {
-            path,
+            path: None,
             colony: colony.to_owned(),
             book,
+            trouble: None,
         }
+    }
+
+    /// What went wrong with the book on opening it, if anything.
+    pub fn trouble(&self) -> Option<Trouble> {
+        self.trouble
     }
 
     pub fn colony(&self) -> &ColonyMemories {
@@ -914,20 +1000,26 @@ fn keep_found(colony: &mut ColonyMemories, found: &[(&str, u64)]) -> Vec<&'stati
     new
 }
 
-fn read(path: &Path) -> Book {
+/// Reads the book at `path`. A newer Hill's book is told by its version alone, whatever else is
+/// in it, so it is never mistaken for an unreadable one and set aside.
+fn find(path: &Path) -> Found {
+    #[derive(Deserialize)]
+    struct Versioned {
+        version: u32,
+    }
     let Ok(metadata) = fs::metadata(path) else {
-        return Book::default();
+        return Found::Missing;
     };
-    let parsed = (metadata.len() <= MAX_BYTES)
+    let Some(bytes) = (metadata.len() <= MAX_BYTES)
         .then(|| fs::read(path).ok())
         .flatten()
-        .and_then(|bytes| serde_json::from_slice::<Book>(&bytes).ok())
-        .filter(|book| book.version <= VERSION);
-    parsed.unwrap_or_else(|| {
-        // Keep what was there for whoever wants to look at it, and start again.
-        let _ = fs::rename(path, set_aside(path));
-        Book::default()
-    })
+    else {
+        return Found::Unreadable;
+    };
+    if serde_json::from_slice::<Versioned>(&bytes).is_ok_and(|book| book.version > VERSION) {
+        return Found::Newer;
+    }
+    serde_json::from_slice::<Book>(&bytes).map_or(Found::Unreadable, Found::Good)
 }
 
 /// Where to set an unreadable book aside: beside it, under a name nothing has yet. A book set
@@ -1613,7 +1705,94 @@ mod tests {
         fs::write(dir.join(FILE), b"not json at all").unwrap();
         let memories = Memories::open(Some(&dir), "c");
         assert_eq!(memories.colony().visits, 0);
+        assert_eq!(memories.trouble(), Some(Trouble::StartedAfresh));
         assert!(dir.join("memories.json.unreadable").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_book_goes_back_to_the_copy_from_the_start_of_the_last_visit() {
+        let dir = scratch("last-good");
+        Memories::open(Some(&dir), "c").arrived();
+        let mut second = Memories::open(Some(&dir), "c");
+        assert_eq!(second.trouble(), None);
+        second.arrived();
+        second.back_from_the_woods(&[7], &["acorn_stash"]);
+        fs::write(dir.join(FILE), b"not json at all").unwrap();
+
+        let memories = Memories::open(Some(&dir), "c");
+        assert_eq!(memories.trouble(), Some(Trouble::WentBack));
+        assert_eq!(memories.colony().visits, 1, "as the last visit began");
+        assert!(memories.colony().satchel.is_empty());
+        assert_eq!(
+            fs::read(dir.join("memories.json.unreadable")).unwrap(),
+            b"not json at all"
+        );
+        // And the copy gone back to is the book again, readable next time.
+        let again = Memories::open(Some(&dir), "c");
+        assert_eq!(again.trouble(), None);
+        assert_eq!(again.colony().visits, 1);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_book_from_a_newer_hill_is_left_just_as_it_is() {
+        let dir = scratch("newer");
+        fs::create_dir_all(&dir).unwrap();
+        let newer = br#"{"version": 99, "colonies": {"c": {"visits": "forty"}}}"#;
+        fs::write(dir.join(FILE), newer).unwrap();
+        let mut memories = Memories::open(Some(&dir), "c");
+        assert_eq!(memories.trouble(), Some(Trouble::Newer));
+        memories.arrived();
+        memories.back_from_the_woods(&[7], &["acorn_stash"]);
+        assert_eq!(fs::read(dir.join(FILE)).unwrap(), newer, "nothing written");
+        assert!(!dir.join("memories.json.unreadable").exists());
+        assert!(!dir.join(LAST_GOOD).exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_book_whose_only_copy_is_a_newer_hills_leaves_both_alone() {
+        let dir = scratch("newer-last-good");
+        fs::create_dir_all(&dir).unwrap();
+        let newer = br#"{"version": 99, "colonies": {"c": {"visits": "forty"}}}"#;
+        fs::write(dir.join(LAST_GOOD), newer).unwrap();
+        fs::write(dir.join(FILE), b"not json at all").unwrap();
+        let mut memories = Memories::open(Some(&dir), "c");
+        assert_eq!(memories.trouble(), Some(Trouble::Newer));
+        memories.arrived();
+        memories.back_from_the_woods(&[7], &["acorn_stash"]);
+        assert_eq!(
+            fs::read(dir.join(LAST_GOOD)).unwrap(),
+            newer,
+            "the copy kept"
+        );
+        assert_eq!(fs::read(dir.join(FILE)).unwrap(), b"not json at all");
+        assert!(!dir.join("memories.json.unreadable").exists());
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn looking_at_the_memories_writes_nothing() {
+        let dir = scratch("look");
+        Memories::open(Some(&dir), "c").arrived();
+        Memories::open(Some(&dir), "c").arrived();
+        let kept = fs::read(dir.join(LAST_GOOD)).unwrap();
+        let book = fs::read(dir.join(FILE)).unwrap();
+        let looked = Memories::look(Some(&dir), "c");
+        assert_eq!(looked.colony().visits, 2);
+        assert_eq!(looked.trouble(), None);
+        assert_eq!(
+            fs::read(dir.join(LAST_GOOD)).unwrap(),
+            kept,
+            "the copy left as it was"
+        );
+        assert_eq!(fs::read(dir.join(FILE)).unwrap(), book);
+
+        fs::write(dir.join(FILE), b"not json at all").unwrap();
+        assert_eq!(Memories::look(Some(&dir), "c").colony().visits, 0);
+        assert_eq!(fs::read(dir.join(FILE)).unwrap(), b"not json at all");
+        assert!(!dir.join("memories.json.unreadable").exists());
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1621,17 +1800,16 @@ mod tests {
     fn a_book_set_aside_is_never_overwritten_by_the_next() {
         let dir = scratch("aside-twice");
         fs::create_dir_all(&dir).unwrap();
-        // A newer Hill's book, which this one cannot read: set aside, and a fresh one begun.
-        let newer = br#"{"version": 99, "colonies": {"c": {"visits": 40}}}"#;
-        fs::write(dir.join(FILE), newer).unwrap();
+        // A book the disk let down: set aside, and a fresh one begun.
+        let first = b"{\"version\": 2, \"colo";
+        fs::write(dir.join(FILE), first).unwrap();
         Memories::open(Some(&dir), "c").arrived();
-        // The fresh book is unreadable in its turn: the newer Hill wrote over it, say, or the
-        // disk let it down.
+        // The fresh book is unreadable in its turn, with no good copy kept yet to go back to.
         fs::write(dir.join(FILE), b"not json at all").unwrap();
         assert_eq!(Memories::open(Some(&dir), "c").colony().visits, 0);
         assert_eq!(
             fs::read(dir.join("memories.json.unreadable")).unwrap(),
-            newer,
+            first,
             "the first book set aside is still there"
         );
         assert_eq!(
