@@ -226,11 +226,16 @@ impl HillApp {
             return;
         };
         let name = draft.package_id.clone();
+        // Not over its version, which counts what has been shared or put on the board: it stays
+        // as it is, so no version is ever given out twice.
+        let version = std::mem::take(&mut draft.version);
         writing.history.feed(ui.ctx(), &name, draft);
         let history = &mut writing.history;
         let back = ui.horizontal(|ui| history.buttons(ui, draft)).inner;
+        draft.version = version;
         if let Some(back) = back {
             *draft = back;
+            draft.version = version;
             writing.changed = true;
             writing.naming = None;
             writing.throwing_away = false;

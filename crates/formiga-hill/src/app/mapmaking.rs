@@ -456,11 +456,16 @@ impl HillApp {
         {
             making.tool = Tool::Pick;
         }
-        // Undo and Redo, over the map and every word on it.
+        // Undo and Redo, over the map and every word on it. Not over its version, which counts
+        // what has been kept or shared: it stays as it is, so no version is ever given out twice.
         let history = &mut self.woods.making_history;
+        let version = std::mem::take(&mut making.draft.version);
         history.feed(ui.ctx(), &making.name, &making.draft);
-        let undone = history.buttons(ui, &making.draft).is_some_and(|back| {
+        let back = history.buttons(ui, &making.draft);
+        making.draft.version = version;
+        let undone = back.is_some_and(|back| {
             making.draft = back;
+            making.draft.version = version;
             // Whatever was picked out, joined from or dragged may not be on the map now.
             making.selected = Selected::Nothing;
             making.dragging = None;
