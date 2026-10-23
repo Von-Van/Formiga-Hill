@@ -31,6 +31,7 @@ use crate::cast::{Cast, Id};
 use crate::character::Offer;
 use crate::clubhouse::{self, Clubhouse};
 use crate::daylight::{Clock, Daylight};
+use crate::fairground::competition::ordinal;
 use crate::fairground::{self, Game, Games, Picks};
 use crate::memories::Memories;
 use crate::playground::{Playground, Trust};
@@ -1597,18 +1598,6 @@ fn capital(text: &str) -> String {
         first.make_ascii_uppercase();
     }
     text
-}
-
-/// "1st", "2nd", "11th", "23rd".
-fn ordinal(n: usize) -> String {
-    let suffix = match (n % 10, n % 100) {
-        (_, 11..=13) => "th",
-        (1, _) => "st",
-        (2, _) => "nd",
-        (3, _) => "rd",
-        _ => "th",
-    };
-    format!("{n}{suffix}")
 }
 
 /// The "s" a count of more or less than one needs.

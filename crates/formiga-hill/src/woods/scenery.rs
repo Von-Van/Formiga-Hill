@@ -1850,7 +1850,7 @@ fn ferns(scene: &mut Canvas) {
 
 /// One fern frond from the crown at `from`, arching out at `angle` degrees and drooping at its
 /// tip, with leaflets either side that shorten towards the tip.
-fn frond(scene: &mut Canvas, from: (i32, i32), (angle, length): (f32, f32), level: i32) {
+pub(crate) fn frond(scene: &mut Canvas, from: (i32, i32), (angle, length): (f32, f32), level: i32) {
     let radians = f32::to_radians(angle);
     let (dx, dy) = (radians.cos(), radians.sin());
     // The further a frond leans out, the more its tip droops.
@@ -2748,7 +2748,7 @@ fn near_trunk(scene: &mut Canvas) {
 /// A spray of the nearest leaves of all, reaching into the picture from a corner: twigs fanning
 /// out from `root` off the edge, each ending in a few pointed leaves hanging from it, the sun
 /// glowing through them against the shade of the canopy.
-fn leaf_spray(scene: &mut Canvas, root: (i32, i32), tips: &[(i32, i32)], salt: u32) {
+pub(crate) fn leaf_spray(scene: &mut Canvas, root: (i32, i32), tips: &[(i32, i32)], salt: u32) {
     let near = Ramp::new(0x22401e, 0x36602a, 0x4c7c36, 0x689846, 0x8cb45c);
     for &tip in tips {
         line(scene, root, tip, BARK.edge);
@@ -2777,7 +2777,7 @@ fn leaf_spray(scene: &mut Canvas, root: (i32, i32), tips: &[(i32, i32)], salt: u
 }
 
 /// One pointed leaf from its stalk to its tip, lit on the side towards the upper left.
-fn hanging_leaf(scene: &mut Canvas, from: (i32, i32), to: (i32, i32), ramp: Ramp) {
+pub(crate) fn hanging_leaf(scene: &mut Canvas, from: (i32, i32), to: (i32, i32), ramp: Ramp) {
     let (dx, dy) = ((to.0 - from.0) as f32, (to.1 - from.1) as f32);
     let length = (dx * dx + dy * dy).sqrt().max(1.0);
     let (nx, ny) = (-dy / length * 2.4, dx / length * 2.4);

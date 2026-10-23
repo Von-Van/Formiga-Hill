@@ -389,7 +389,7 @@ fn places_said(points: &[u32]) -> String {
         .join(", ")
 }
 
-fn ordinal(n: usize) -> String {
+pub(crate) fn ordinal(n: usize) -> String {
     let suffix = match (n % 10, n % 100) {
         (_, 11..=13) => "th",
         (1, _) => "st",

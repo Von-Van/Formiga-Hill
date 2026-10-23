@@ -147,13 +147,8 @@ pub fn png(picture: &Canvas, scale: u32) -> Vec<u8> {
         }
     }
     let mut bytes = Vec::new();
-    let mut encoder = png::Encoder::new(&mut bytes, width, height);
-    encoder.set_color(png::ColorType::Rgba);
-    encoder.set_depth(png::BitDepth::Eight);
     // Writing into memory cannot fail but for a mismatch in size, which this never makes.
-    if let Ok(mut writer) = encoder.write_header() {
-        let _ = writer.write_image_data(&data);
-    }
+    let _ = formiga_art::write_png(&mut bytes, width, height, &data);
     bytes
 }
 
