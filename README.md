@@ -185,6 +185,8 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 | File | What it holds |
 | --- | --- |
 | `memories.json` | Each colony's finished stories, kept souvenirs, finds, journal, Hilltop and records |
+| `memories.json.last-good` | The memories as the last visit began, gone back to if `memories.json` is ever unreadable |
+| `memories.json.unreadable`, `-2`, … | Memories that couldn't be read, set aside and never written over; the station's notice board says when this happens |
 | `photos/` | Each colony's album |
 | `packages/` | Community packages, including any added from a shared file, put on the board from the story builder, kept from the map editor or saved from the Competitions card |
 | `drafts/stories/`, `drafts/adventures/` | Stories being written in the story builder, and adventures being made in the map editor |

@@ -121,6 +121,7 @@ impl HillApp {
             line.push_str(" A snag is in the satchel, for the Hilltop.");
         }
         self.notice = Some((line, now));
+        self.grant(super::departures::Outing::Fishing, angling.party(), now);
     }
 
     pub(super) fn compose_pool(&mut self, now: f32) -> Option<Canvas> {
