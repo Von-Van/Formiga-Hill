@@ -70,9 +70,14 @@ pub fn crop(scene: &Canvas, (left, top, width, height): (i32, i32, i32, i32)) ->
 impl HillApp {
     fn album(&mut self) -> &mut Album {
         let colony = self.arrival.cast.snapshot.colony_id.clone();
-        self.camera.album.get_or_insert_with(|| {
-            Album::open(crate::memories::Memories::folder().as_deref(), &colony)
-        })
+        let open = if self.keeps {
+            Album::open
+        } else {
+            Album::look_at
+        };
+        self.camera
+            .album
+            .get_or_insert_with(|| open(crate::memories::Memories::folder().as_deref(), &colony))
     }
 
     /// The album and camera buttons, beside the sound wherever the camera can go.

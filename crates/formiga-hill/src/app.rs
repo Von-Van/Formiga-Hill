@@ -53,7 +53,8 @@ pub enum Visit {
     /// A real trip: Desktop is waiting for the colony to come home.
     Trip(Trip),
     /// A development visit, from the sample colony or a colony file read for testing. Nobody is
-    /// waiting for it, so it writes nothing.
+    /// waiting for it, so nothing is kept for the colony: its memories and album show as they
+    /// are, and whatever happens lasts the visit.
     Rehearsal(String),
 }
 
@@ -272,6 +273,9 @@ pub struct HillApp {
     last_hour_check: Option<f32>,
     /// The story being played in the Clubhouse, if any, and the package it came from.
     story: Option<(String, Director)>,
+    /// Whether what happens is kept for the colony, in its memories and its album: only on a real
+    /// trip, and never for a review picture.
+    keeps: bool,
     memories: Memories,
     /// What has grown on the Hilltop since the last visit, as it is now, spot by spot.
     grown: Vec<(u8, crate::hilltop::Standing)>,
@@ -296,6 +300,7 @@ impl HillApp {
         arrival: Arrival,
         library: Library,
         clock: Clock,
+        snap: Option<Snap>,
     ) -> Self {
         let presentation = arrival.cast.snapshot.presentation;
         // Paper over the scene looks the same in light and dark, as Desktop's bubbles do.
@@ -305,7 +310,13 @@ impl HillApp {
         cc.egui_ctx
             .set_zoom_factor(f32::from(play.text_scale(presentation.text_scale_percent)) / 100.0);
         // Every visit begins with the train pulling in.
-        let mut memories = Memories::open(
+        let keeps = matches!(arrival.visit, Visit::Trip(_)) && snap.is_none();
+        let open = if keeps {
+            Memories::open
+        } else {
+            Memories::look
+        };
+        let mut memories = open(
             Memories::folder().as_deref(),
             &arrival.cast.snapshot.colony_id,
         );
@@ -327,7 +338,7 @@ impl HillApp {
             card: None,
             chapter: None,
             last_chapter: None,
-            snap: None,
+            snap: snap.map(|snap| (snap, false, false)),
             scene: egui::Rect::NOTHING,
             set_aside: SetAside::open(Memories::folder().as_deref()),
             packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
@@ -374,6 +385,7 @@ impl HillApp {
             daylight: clock.daylight(),
             last_hour_check: None,
             story: None,
+            keeps,
             memories,
             grown,
             notice: None,
@@ -412,14 +424,6 @@ impl HillApp {
         }
         self.last_recall_check = now;
         trip.recalled()
-    }
-
-    /// Looks at the clock now and then, and lights everywhere for the hour it is: everywhere
-    /// the colony has been, so a place gone back to is already in the right light.
-    /// For review only: take the picture `snap` describes, then close.
-    pub fn snap(mut self, snap: Snap) -> Self {
-        self.snap = Some((snap, false, false));
-        self
     }
 
     /// Goes where the review picture is to be taken, opens its card, and begins its story,
@@ -539,6 +543,8 @@ impl HillApp {
         }
     }
 
+    /// Looks at the clock now and then, and lights everywhere for the hour it is: everywhere
+    /// the colony has been, so a place gone back to is already in the right light.
     fn keep_hours(&mut self, now: f32) {
         if self
             .last_hour_check
