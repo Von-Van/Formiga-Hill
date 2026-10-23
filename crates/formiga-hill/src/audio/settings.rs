@@ -5,7 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const FILE: &str = "settings.json";
@@ -208,17 +207,7 @@ fn read(path: &Path) -> Contents {
 }
 
 fn write(path: &Path, contents: &Contents) -> std::io::Result<()> {
-    if let Some(folder) = path.parent() {
-        fs::create_dir_all(folder)?;
-    }
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
-    let temporary = PathBuf::from(temporary);
-    let mut file = fs::File::create(&temporary)?;
-    file.write_all(&serde_json::to_vec_pretty(contents)?)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&temporary, path)
+    crate::sharing::write_atomically(path, &serde_json::to_vec_pretty(contents)?)
 }
 
 #[cfg(test)]

@@ -18,6 +18,7 @@ use crate::paint::{
     tone, vline,
 };
 use crate::station::{SCENE_HEIGHT, SCENE_WIDTH};
+use crate::woods::scenery::{frond, leaf_spray};
 use formiga_art::{Canvas, Rgba};
 use std::f32::consts::TAU;
 
@@ -119,8 +120,8 @@ pub fn foreground() -> Canvas {
 // Tools
 // ---------------------------------------------------------------------------------------------
 
-// The air, fronds and leaves are drawn as the glade draws them, so the pool matches the woods
-// round it; they are the glade's own, kept private there.
+// The air is drawn as the glade draws it, so the pool matches the woods round it; the fronds
+// and leaves are the glade's own, used from there.
 
 /// The air between the trees at height `y`: shade under the canopy, brightening to a haze just
 /// above the far bank, where the woods go out of sight.
@@ -2428,62 +2429,6 @@ fn sunbeams(scene: &mut Canvas) {
 // In front of everyone
 // ---------------------------------------------------------------------------------------------
 
-/// A spray of the nearest leaves of all, reaching into the picture from a corner: twigs fanning
-/// out from `root` off the edge, each ending in a few pointed leaves hanging from it.
-fn leaf_spray(scene: &mut Canvas, root: (i32, i32), tips: &[(i32, i32)], salt: u32) {
-    let near = Ramp::new(0x22401e, 0x36602a, 0x4c7c36, 0x689846, 0x8cb45c);
-    for &tip in tips {
-        line(scene, root, tip, BARK.edge);
-        line(scene, (root.0, root.1 + 1), (tip.0, tip.1 + 1), BARK.shadow);
-    }
-    for (index, &tip) in tips.iter().enumerate() {
-        let i = index as i32;
-        let (dx, dy) = (tip.0 - root.0, tip.1 - root.1);
-        for leaf in 0..3 {
-            let t = 0.55 + leaf as f32 * 0.2;
-            let stalk = (
-                root.0 + (dx as f32 * t) as i32,
-                root.1 + (dy as f32 * t) as i32 + 1,
-            );
-            let side = if (leaf + i) % 2 == 0 { -1 } else { 1 };
-            let reach = 10 + pick(i * 3 + leaf, 0, salt, 5);
-            let end = if leaf == 2 {
-                (stalk.0 + dx.signum() * reach / 2, stalk.1 + reach - 2)
-            } else {
-                (stalk.0 + side * (2 + reach / 3), stalk.1 + reach)
-            };
-            hanging_leaf(scene, stalk, end, near);
-        }
-    }
-}
-
-/// One pointed leaf from its stalk to its tip, lit on the side towards the upper left.
-fn hanging_leaf(scene: &mut Canvas, from: (i32, i32), to: (i32, i32), ramp: Ramp) {
-    let (dx, dy) = ((to.0 - from.0) as f32, (to.1 - from.1) as f32);
-    let length = (dx * dx + dy * dy).sqrt().max(1.0);
-    let (nx, ny) = (-dy / length * 2.4, dx / length * 2.4);
-    let at = |t: f32, n: f32| {
-        (
-            (from.0 as f32 + dx * t + nx * n).round() as i32,
-            (from.1 as f32 + dy * t + ny * n).round() as i32,
-        )
-    };
-    let outline = [from, at(0.45, 1.0), to, at(0.45, -1.0)];
-    let normal_lit = dy - dx > 0.0;
-    polygon(scene, &outline, |x, y| {
-        let on_normal_side = (y - from.1) as f32 * dx - (x - from.0) as f32 * dy > 0.0;
-        Some(if on_normal_side == normal_lit {
-            ramp.light
-        } else {
-            ramp.shadow
-        })
-    });
-    for index in 0..4 {
-        line(scene, outline[index], outline[(index + 1) % 4], ramp.edge);
-    }
-    line(scene, from, at(0.75, 0.0), ramp.base);
-}
-
 /// Grass standing up along the bottom corners, tallest right in them, and a reed or two at the
 /// right; nothing in the middle, where the seat and the net are.
 fn front_grass(scene: &mut Canvas) {
@@ -2523,52 +2468,6 @@ fn front_grass(scene: &mut Canvas) {
                 put(scene, px + 1, HEIGHT - 1 - k, REED.edge);
             }
         }
-    }
-}
-
-/// One fern frond from the crown at `from`, arching out at `angle` degrees and drooping at its
-/// tip, with leaflets either side that shorten towards the tip.
-fn frond(scene: &mut Canvas, from: (i32, i32), (angle, length): (f32, f32), level: i32) {
-    let radians = f32::to_radians(angle);
-    let (dx, dy) = (radians.cos(), radians.sin());
-    let droop = length * (0.25 + 0.4 * dx.abs());
-    let spine = |t: f32| {
-        (
-            from.0 as f32 + dx * length * t,
-            from.1 as f32 + dy * length * t + droop * t * t,
-        )
-    };
-    let steps = length as i32;
-    let mut previous = spine(0.0);
-    let round = |p: (f32, f32)| (p.0.round() as i32, p.1.round() as i32);
-    for step in 1..=steps {
-        let t = step as f32 / steps as f32;
-        let point = spine(t);
-        if t > 0.18 && step % 2 == 0 {
-            let (ax, ay) = (point.0 - previous.0, point.1 - previous.1);
-            let norm = (ax * ax + ay * ay).sqrt().max(0.01);
-            let (ax, ay) = (ax / norm, ay / norm);
-            let reach = (1.0 - t) * 3.0 + 1.0;
-            for side in [-1.0f32, 1.0] {
-                let (nx, ny) = (-ay * side, ax * side);
-                let tip = (
-                    point.0 + nx * reach + ax * reach * 0.5,
-                    point.1 + ny * reach + ay * reach * 0.5 + 0.6,
-                );
-                let upper = ny < 0.0;
-                line(
-                    scene,
-                    round(point),
-                    round(tip),
-                    tone(FERN, level + i32::from(upper)),
-                );
-                if upper && reach > 3.0 {
-                    put(scene, round(tip).0, round(tip).1, tone(FERN, level + 2));
-                }
-            }
-        }
-        line(scene, round(previous), round(point), tone(FERN, level - 1));
-        previous = point;
     }
 }
 

@@ -3,7 +3,7 @@
 //! signs, and catches the moment. Who came along changes how it goes and what turns up.
 
 pub mod rummage;
-mod scenery;
+pub(crate) mod scenery;
 
 use crate::cast::{Cast, Id};
 use crate::daylight::Nightlights;

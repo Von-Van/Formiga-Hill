@@ -8,7 +8,6 @@ use crate::hilltop::{Arrangement, Standing};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// The book's format. Version 2 can keep something planted or built on the Hilltop, and growing
@@ -1043,17 +1042,7 @@ fn set_aside(path: &Path) -> PathBuf {
 }
 
 fn write(path: &Path, book: &Book) -> std::io::Result<()> {
-    if let Some(folder) = path.parent() {
-        fs::create_dir_all(folder)?;
-    }
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
-    let temporary = PathBuf::from(temporary);
-    let mut file = fs::File::create(&temporary)?;
-    file.write_all(&serde_json::to_vec_pretty(book)?)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&temporary, path)
+    crate::sharing::write_atomically(path, &serde_json::to_vec_pretty(book)?)
 }
 
 /// Fish and bugs caught on the way, into the journal as they were let go; says which kinds.
