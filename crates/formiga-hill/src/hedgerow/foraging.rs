@@ -1309,11 +1309,11 @@ fn stock(
         let weights: Vec<f32> = candidates.iter().map(|find| weight(find)).collect();
         if let Some(new) = dice.weighted(&weights).map(|index| candidates[index])
             && let Some(plant) = Plant::of(new.id)
-        {
-            let places: Vec<(usize, &'static Slot)> = super::slots()
+            && let places = super::slots()
                 .filter(|(_, slot)| slot.plant == plant && slot.reach == Reach::Within)
-                .collect();
-            let (patch, slot) = places[(dice.unit() * places.len() as f32) as usize % places.len()];
+                .collect::<Vec<(usize, &'static Slot)>>()
+            && let Some(&(patch, slot)) = dice.choose(&places)
+        {
             items.retain(|item| !(item.slot.at == slot.at && item.patch == patch));
             items.push(Item {
                 slot: *slot,

@@ -829,9 +829,11 @@ impl Playground {
         let mut idea = self.actors[index].character.idea(company, &mut self.dice);
         // Sometimes a wander ends at something worth a look. With motion reduced the way there is
         // a cut, so nobody is kept from what stands on the Hilltop.
-        if idea == Idea::Wander && !self.attractions.is_empty() && self.dice.chance(ATTRACTED) {
-            let pick = (self.dice.unit() * self.attractions.len() as f32) as usize;
-            let attraction = self.attractions[pick % self.attractions.len()];
+        if idea == Idea::Wander
+            && !self.attractions.is_empty()
+            && self.dice.chance(ATTRACTED)
+            && let Some(&attraction) = self.dice.choose(&self.attractions)
+        {
             let beats = self.actors[index]
                 .character
                 .enjoy(attraction.use_, &mut self.dice);

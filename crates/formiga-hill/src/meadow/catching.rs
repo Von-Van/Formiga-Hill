@@ -319,7 +319,7 @@ impl Hunt {
             .into_iter()
             .map(|bug| {
                 let perches = bug.haunt.perches();
-                let perch = (dice.unit() * perches.len() as f32) as usize % perches.len();
+                let perch = dice.index(perches.len()).unwrap_or(0);
                 Flier {
                     bug,
                     size: dice.range(bug.size.0, bug.size.1),
@@ -975,7 +975,7 @@ impl Hunt {
                     {
                         nearest(perches, at)
                     } else {
-                        (self.dice.unit() * perches.len() as f32) as usize % perches.len()
+                        self.dice.index(perches.len()).unwrap_or(0)
                     };
                     let flier = &mut self.fliers[index];
                     let to = perches[next];
@@ -1025,7 +1025,7 @@ impl Hunt {
                 }
                 Flight::Away { until } if now >= until => {
                     let perches = flier.bug.haunt.perches();
-                    let back = (self.dice.unit() * perches.len() as f32) as usize % perches.len();
+                    let back = self.dice.index(perches.len()).unwrap_or(0);
                     let flier = &mut self.fliers[index];
                     let from = (perches[back].0, GROUND.1 - 40.0);
                     flier.nerve = 0.0;

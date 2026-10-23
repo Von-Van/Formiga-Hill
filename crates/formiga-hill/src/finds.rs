@@ -839,8 +839,9 @@ pub fn stock(
             .collect();
         if let Some(new) = pick(&candidates, |find| affinity(find, party), dice) {
             let places: Vec<usize> = (0..spots.len()).filter(|i| spots[*i] == new.kind).collect();
-            let place = places[(dice.unit() * places.len() as f32) as usize % places.len()];
-            stocked[place] = Some(new);
+            if let Some(&place) = dice.choose(&places) {
+                stocked[place] = Some(new);
+            }
         }
     }
     stocked

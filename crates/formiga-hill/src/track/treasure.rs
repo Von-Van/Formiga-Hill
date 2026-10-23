@@ -746,7 +746,7 @@ impl Hunt {
                 right
             } else {
                 let wrong: Vec<usize> = (0..count).filter(|way| *way != right).collect();
-                wrong[(self.dice.unit() * wrong.len() as f32) as usize % wrong.len()]
+                self.dice.choose(&wrong).copied().unwrap_or(right)
             }
         });
         if fork.is_some() {
@@ -1089,7 +1089,7 @@ mod tests {
             let (hunt, _) = play(&cast, &["Fig"], map, map, &mut |hunt| match hunt.phase() {
                 Phase::Reading { fork } => {
                     let count = hunt.route().forks[fork].ways.len();
-                    Move::Way((dice.unit() * count as f32) as usize % count)
+                    Move::Way(dice.index(count).unwrap_or(0))
                 }
                 Phase::AtDig => Move::Dig((dice.unit() * 4.0) as usize % 4),
                 Phase::Nook { .. } => Move::Back,
