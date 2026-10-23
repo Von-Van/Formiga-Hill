@@ -33,6 +33,26 @@ pub fn ellipse(canvas: &mut Canvas, cx: i32, cy: i32, rx: i32, ry: i32, color: R
     }
 }
 
+/// Just the part of a picture with anything drawn in it, and where its top-left corner was: a
+/// layer the size of the scene with a little painted on it, cut down so laying it over a scene
+/// looks only at what was painted. A layer with nothing on it comes back as one clear pixel.
+pub fn trimmed(layer: &Canvas) -> (Canvas, (i32, i32)) {
+    let Some((left, top, right, bottom)) = layer.alpha_bounds() else {
+        return (Canvas::new(1, 1), (0, 0));
+    };
+    let (left, top) = (left as i32, top as i32);
+    let mut sprite = Canvas::new(
+        (right as i32 - left + 1) as u32,
+        (bottom as i32 - top + 1) as u32,
+    );
+    for y in 0..sprite.height() as i32 {
+        for x in 0..sprite.width() as i32 {
+            sprite.set(x, y, layer.get(left + x, top + y));
+        }
+    }
+    (sprite, (left, top))
+}
+
 /// Fills a polygon, asking `paint` for each pixel's colour. Pixel centres decide what is inside,
 /// so two shapes sharing an edge neither overlap nor leave a seam.
 pub fn polygon(

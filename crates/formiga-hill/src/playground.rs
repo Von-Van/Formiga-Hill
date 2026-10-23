@@ -138,7 +138,8 @@ const ATTRACTED: f32 = 0.45;
 pub struct Playground {
     layout: Layout,
     backdrop: Canvas,
-    foreground: Canvas,
+    /// What stands in front of everyone, cut down to what is painted, and where it goes.
+    foreground: (Canvas, (i32, i32)),
     props: Vec<Prop>,
     /// Small things that move about on their own, drawn in depth order with everyone but never
     /// part of the place with nobody in it: bugs in the meadow.
@@ -163,6 +164,9 @@ pub struct Playground {
     /// The backdrop with the props standing on it: the place with nobody in it, which is where a
     /// lamp may shine.
     still: Canvas,
+    /// The same with what is set out standing in it, which is where a lamp may shine when
+    /// anything is: painted when first wanted after either changes.
+    still_set_out: Option<Canvas>,
     /// Who has been brushed, and how far the grooming has got.
     brushing: HashMap<Id, Grooming>,
 }
@@ -239,7 +243,7 @@ impl Playground {
         Self {
             layout,
             backdrop,
-            foreground,
+            foreground: crate::paint::trimmed(&foreground),
             props,
             fliers: Vec::new(),
             fixtures: Vec::new(),
@@ -255,6 +259,7 @@ impl Playground {
             nightlights: None,
             daylight: Daylight::default(),
             still: Canvas::new(1, 1),
+            still_set_out: None,
             brushing: HashMap::new(),
         }
         .stilled()
@@ -274,6 +279,7 @@ impl Playground {
             blit(&mut still, &prop.sprite, prop.at.0, prop.at.1);
         }
         self.still = still;
+        self.still_set_out = None;
     }
 
     pub fn reduce_motion(&self) -> bool {
@@ -320,6 +326,12 @@ impl Playground {
 
     /// Sets out what stands in the place this moment, lit as the place is after dark.
     pub fn set_fixtures(&mut self, fixtures: Vec<Prop>) {
+        let same = |a: &Prop, b: &Prop| a.at == b.at && a.base == b.base && a.sprite == b.sprite;
+        let unchanged = fixtures.len() == self.fixtures.len()
+            && fixtures.iter().zip(&self.fixtures).all(|(a, b)| same(a, b));
+        if !unchanged {
+            self.still_set_out = None;
+        }
         self.fixtures = fixtures;
     }
 
@@ -646,9 +658,12 @@ impl Playground {
         for fixture in &self.fixtures {
             blit(&mut fixtures, &fixture.sprite, fixture.at.0, fixture.at.1);
         }
+        let mut foreground = Canvas::new(self.backdrop.width(), self.backdrop.height());
+        let (front, at) = &self.foreground;
+        blit(&mut foreground, front, at.0, at.1);
         let mut layers = vec![
             ("backdrop", self.backdrop.clone()),
-            ("foreground", self.foreground.clone()),
+            ("foreground", foreground),
             ("still", self.still.clone()),
             ("fixtures", fixtures),
         ];
@@ -761,17 +776,21 @@ impl Playground {
                 self.reduce_motion,
             );
         }
-        blit(&mut scene, &self.foreground, 0, 0);
+        let (front, at) = &self.foreground;
+        blit(&mut scene, front, at.0, at.1);
         if let Some(nightlights) = &self.nightlights {
             if self.fixtures.is_empty() {
                 nightlights.light(&mut scene, &self.still, self.daylight);
             } else {
                 // What is set out is lit where it stands, as the place is.
-                let mut still = self.still.clone();
-                for fixture in &self.fixtures {
-                    blit(&mut still, &fixture.sprite, fixture.at.0, fixture.at.1);
-                }
-                nightlights.light(&mut scene, &still, self.daylight);
+                let still = self.still_set_out.get_or_insert_with(|| {
+                    let mut still = self.still.clone();
+                    for fixture in &self.fixtures {
+                        blit(&mut still, &fixture.sprite, fixture.at.0, fixture.at.1);
+                    }
+                    still
+                });
+                nightlights.light(&mut scene, still, self.daylight);
             }
         }
         scene

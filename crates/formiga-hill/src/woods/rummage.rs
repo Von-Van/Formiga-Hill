@@ -930,20 +930,8 @@ fn extra_base(opener: Opener, searched: bool) -> f32 {
 fn standing(base: f32, paint: impl FnOnce(&mut Canvas)) -> Prop {
     let mut layer = Canvas::new(crate::station::SCENE_WIDTH, crate::station::SCENE_HEIGHT);
     paint(&mut layer);
-    let Some((left, top, right, bottom)) = layer.alpha_bounds() else {
-        return Prop::new(Canvas::new(1, 1), (0, 0), base);
-    };
-    let (left, top) = (left as i32, top as i32);
-    let mut sprite = Canvas::new(
-        (right as i32 - left + 1) as u32,
-        (bottom as i32 - top + 1) as u32,
-    );
-    for y in 0..sprite.height() as i32 {
-        for x in 0..sprite.width() as i32 {
-            sprite.set(x, y, layer.get(left + x, top + y));
-        }
-    }
-    Prop::new(sprite, (left, top), base)
+    let (sprite, at) = crate::paint::trimmed(&layer);
+    Prop::new(sprite, at, base)
 }
 
 /// The glint: a small white pointer, outlined in black, where nothing like it should be, pulsing.
