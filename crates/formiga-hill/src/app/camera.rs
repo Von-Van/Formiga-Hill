@@ -217,13 +217,7 @@ impl HillApp {
                 {
                     let texture = ctx.load_texture(
                         format!("photo-{}", photo.name),
-                        egui::ColorImage::from_rgba_unmultiplied(
-                            [
-                                photo.picture.width() as usize,
-                                photo.picture.height() as usize,
-                            ],
-                            &photo.picture.rgba_bytes(),
-                        ),
+                        super::color_image(&photo.picture),
                         egui::TextureOptions::NEAREST,
                     );
                     self.camera.thumbnails.push((photo.name.clone(), texture));
