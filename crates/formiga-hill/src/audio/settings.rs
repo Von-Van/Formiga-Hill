@@ -1,5 +1,5 @@
-//! How loud the Hill is, as the person has set it, kept in `settings.json` in Hill's own data
-//! folder: one setting for everyone who visits, not one per colony. Read as `memories.rs` reads
+//! How loud the Hill is, and how it plays, as the person has set it, kept in `settings.json` in
+//! Hill's own data folder: one setting for everyone who visits, not one per colony. Read as `memories.rs` reads
 //! its book: anything missing takes its default, anything too big is not Hill's, and a file that
 //! cannot be read is set aside rather than lost.
 
@@ -75,12 +75,41 @@ impl Levels {
     }
 }
 
-/// What the file holds: the sound's levels, and anything a later Hill keeps beside them, which is
-/// written back as it was found.
+/// How the Hill plays for the person: Hill's own choices, beside what Desktop's reduced motion and
+/// text size already carry over.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Play {
+    /// More time to catch things in the Woods.
+    pub gentle: bool,
+    /// Text at least this large, in percent, or Desktop's text size if that is larger already;
+    /// none to follow Desktop's.
+    pub text_scale: Option<u16>,
+}
+
+impl Play {
+    /// The text sizes the Hill offers, beside following Desktop's.
+    pub const TEXT_SCALES: [u16; 2] = [125, 150];
+
+    /// How large the text is, in percent: Desktop's, or the person's own choice if they made one
+    /// and it is larger, kept to what the Hill's cards can hold. Choosing larger text never makes
+    /// it smaller than Desktop's.
+    pub fn text_scale(self, desktop: u8) -> u16 {
+        let desktop = u16::from(desktop);
+        self.text_scale
+            .map_or(desktop, |chosen| chosen.max(desktop))
+            .clamp(100, 150)
+    }
+}
+
+/// What the file holds: the sound's levels, how the Hill plays, and anything a later Hill keeps
+/// beside them, which is written back as it was found.
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Contents {
     #[serde(default)]
     sound: Levels,
+    #[serde(default)]
+    play: Play,
     #[serde(flatten)]
     others: serde_json::Map<String, serde_json::Value>,
 }
@@ -90,11 +119,11 @@ struct Contents {
 pub struct Settings {
     path: Option<PathBuf>,
     contents: Contents,
-    /// The levels as last written, so they are only written again once they change.
-    kept: Levels,
-    /// Levels that could not be written, so they are not tried again every frame: only once they
-    /// change, or as the Hill closes.
-    failed: Option<Levels>,
+    /// The settings as last written, so they are only written again once they change.
+    kept: (Levels, Play),
+    /// Settings that could not be written, so they are not tried again every frame: only once
+    /// they change, or as the Hill closes.
+    failed: Option<(Levels, Play)>,
 }
 
 impl Settings {
@@ -104,7 +133,7 @@ impl Settings {
         let mut contents = path.as_deref().map(read).unwrap_or_default();
         contents.sound = contents.sound.clamped();
         Self {
-            kept: contents.sound,
+            kept: (contents.sound, contents.play),
             failed: None,
             path,
             contents,
@@ -120,26 +149,35 @@ impl Settings {
         self.contents.sound = levels.clamped();
     }
 
+    pub fn play(&self) -> Play {
+        self.contents.play
+    }
+
+    /// Takes how the Hill plays at once; `keep` writes it down.
+    pub fn set_play(&mut self, play: Play) {
+        self.contents.play = play;
+    }
+
     /// Writes the levels down, if they have changed since they last were. A failure is reported
     /// once and the levels are left unwritten: the Hill sounds as set, and tries again with the
     /// next change, or as it closes (`keep_at_last`).
     pub fn keep(&mut self) {
-        let levels = self.contents.sound;
-        if levels == self.kept || self.failed == Some(levels) {
+        let now = (self.contents.sound, self.contents.play);
+        if now == self.kept || self.failed == Some(now) {
             return;
         }
         let Some(path) = &self.path else {
-            self.kept = levels;
+            self.kept = now;
             return;
         };
         match write(path, &self.contents) {
             Ok(()) => {
-                self.kept = levels;
+                self.kept = now;
                 self.failed = None;
             }
             Err(error) => {
-                eprintln!("formiga-hill: could not keep the sound settings: {error}");
-                self.failed = Some(levels);
+                eprintln!("formiga-hill: could not keep the settings: {error}");
+                self.failed = Some(now);
             }
         }
     }
@@ -353,5 +391,37 @@ mod tests {
         // Too big to be Hill's is the same.
         fs::write(dir.join(FILE), vec![b' '; MAX_BYTES as usize + 1]).unwrap();
         assert_eq!(Settings::open(Some(&dir)).levels(), Levels::default());
+    }
+
+    #[test]
+    fn how_the_hill_plays_is_kept_beside_the_sound_and_follows_desktop_until_chosen() {
+        let dir = scratch("play");
+        let mut settings = Settings::open(Some(&dir));
+        assert_eq!(settings.play(), Play::default());
+        assert_eq!(
+            settings.play().text_scale(120),
+            120,
+            "Desktop's, until chosen"
+        );
+        settings.set_play(Play {
+            gentle: true,
+            text_scale: Some(150),
+        });
+        settings.keep();
+        let again = Settings::open(Some(&dir));
+        assert!(again.play().gentle);
+        assert_eq!(again.play().text_scale(100), 150);
+        assert_eq!(again.levels(), Levels::default(), "the sound is as it was");
+        // Larger is never smaller than Desktop's own.
+        let larger = Play {
+            text_scale: Some(Play::TEXT_SCALES[0]),
+            ..Play::default()
+        };
+        assert_eq!(larger.text_scale(100), 125);
+        assert_eq!(larger.text_scale(150), 150);
+        // A file from before there was anything but sound reads as playing as usual.
+        fs::write(dir.join(FILE), br#"{"sound": {"master": 0.5}}"#).unwrap();
+        assert_eq!(Settings::open(Some(&dir)).play(), Play::default());
+        fs::remove_dir_all(dir).unwrap();
     }
 }

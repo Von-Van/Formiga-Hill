@@ -113,6 +113,10 @@ impl Catch {
     }
 }
 
+/// With more time to catch: the marker goes round this much slower, over an arc this much wider.
+const GENTLE_PACE: f32 = 1.6;
+const GENTLE_ARC: f32 = 1.4;
+
 /// Why an outing ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ending {
@@ -212,6 +216,8 @@ pub struct Rummage {
     events: Vec<Event>,
     dice: Dice,
     reduce_motion: bool,
+    /// More time to catch, as the person asked.
+    gentle: bool,
     /// Where the walk to the next spot starts from: the last spot searched, or the way in.
     from: (f32, f32),
     /// For each kind of spot, how much the party widens the arc.
@@ -339,6 +345,7 @@ impl Rummage {
             events,
             dice,
             reduce_motion: ground.reduce_motion(),
+            gentle: ground.gentle(),
             hour_dark: 0.0,
             from: (-24.0, 192.0),
             knack: knack_by_kind,
@@ -640,6 +647,11 @@ impl Rummage {
                 match self.caches[spot] {
                     Some(find) => {
                         let centre = self.dice.range(PI * 0.6, PI * 1.8);
+                        let (pace, arc) = if self.gentle {
+                            (GENTLE_PACE, GENTLE_ARC)
+                        } else {
+                            (1.0, 1.0)
+                        };
                         self.phase = Phase::Catching(Catch {
                             spot,
                             since: now,
@@ -647,8 +659,9 @@ impl Rummage {
                             width: ARC
                                 * rarity_arc(find.tier)
                                 * self.knack[kind.index()]
-                                * self.help,
-                            period: 1.5 * rarity_pace(find.tier),
+                                * self.help
+                                * arc,
+                            period: 1.5 * rarity_pace(find.tier) * pace,
                             misses: 0,
                             held_angle: 0.0,
                             holding: false,
@@ -1240,6 +1253,27 @@ mod tests {
         assert!(rummage.searched(spot));
         let events = run(&mut ground, &mut rummage, &cast, 16.0, 20.0);
         assert_eq!(rummage.phase, Phase::Exploring, "{events:?}");
+    }
+
+    #[test]
+    fn more_time_to_catch_slows_the_marker_and_widens_the_arc() {
+        let catch_with = |gentle: bool| {
+            let mut cast = sample();
+            cast.gentle = gentle;
+            let party = vec![cast.members[0].id];
+            let (mut ground, mut rummage) = outing(&cast, party);
+            run(&mut ground, &mut rummage, &cast, 0.0, 6.0);
+            let spot = rummage.caches.iter().position(Option::is_some).unwrap();
+            rummage.choose(&mut ground, spot, 6.0);
+            run(&mut ground, &mut rummage, &cast, 6.0, 16.0);
+            let Phase::Catching(catch) = rummage.phase else {
+                panic!("not catching: {:?}", rummage.phase);
+            };
+            catch
+        };
+        let (usual, gentle) = (catch_with(false), catch_with(true));
+        assert!((gentle.period / usual.period - GENTLE_PACE).abs() < 1e-4);
+        assert!((gentle.width / usual.width - GENTLE_ARC).abs() < 1e-4);
     }
 
     #[test]

@@ -152,6 +152,7 @@ pub struct Playground {
     clock: f32,
     pointer: Option<(f32, f32)>,
     reduce_motion: bool,
+    gentle: bool,
     /// Those taken out of free play by a story or a game.
     reserved: Vec<Id>,
     /// Whoever's line is on show, with a speech bubble over their head.
@@ -201,6 +202,7 @@ impl Playground {
         props: Vec<Prop>,
     ) -> Self {
         let reduce_motion = cast.reduce_motion();
+        let gentle = cast.gentle;
         let members: Vec<_> = cast
             .members
             .iter()
@@ -247,6 +249,7 @@ impl Playground {
             clock: now,
             pointer: None,
             reduce_motion,
+            gentle,
             reserved: Vec::new(),
             speaker: None,
             nightlights: None,
@@ -275,6 +278,12 @@ impl Playground {
 
     pub fn reduce_motion(&self) -> bool {
         self.reduce_motion
+    }
+
+    /// Whether the person has asked for more time to catch things: the Woods' timing is gentler,
+    /// and nothing else changes.
+    pub fn gentle(&self) -> bool {
+        self.gentle
     }
 
     /// What shines here after dark: without it, the place is always as painted.

@@ -300,8 +300,10 @@ impl HillApp {
         let presentation = arrival.cast.snapshot.presentation;
         // Paper over the scene looks the same in light and dark, as Desktop's bubbles do.
         paper::dress(&cc.egui_ctx);
+        let sound = Sound::open(Memories::folder().as_deref());
+        let play = sound.playing();
         cc.egui_ctx
-            .set_zoom_factor(f32::from(presentation.text_scale_percent.clamp(100, 150)) / 100.0);
+            .set_zoom_factor(f32::from(play.text_scale(presentation.text_scale_percent)) / 100.0);
         // Every visit begins with the train pulling in.
         let mut memories = Memories::open(
             Memories::folder().as_deref(),
@@ -375,9 +377,10 @@ impl HillApp {
             memories,
             grown,
             notice: None,
-            sound: Sound::open(Memories::folder().as_deref()),
+            sound,
             listening: sound::Listening::default(),
         };
+        app.arrival.cast.gentle = play.gentle;
         app.make_wishes();
         app.pin_notices();
         app
