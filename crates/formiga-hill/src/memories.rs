@@ -1688,6 +1688,32 @@ mod tests {
     }
 
     #[test]
+    fn memories_only_looked_at_are_never_written() {
+        let dir = scratch("looked-at");
+        Memories::open(Some(&dir), "c").arrived();
+        Memories::open(Some(&dir), "c").arrived();
+        let before = fs::read(dir.join(FILE)).unwrap();
+        let copy = fs::read(dir.join(LAST_GOOD)).unwrap();
+        let mut looked = Memories::look(Some(&dir), "c");
+        assert_eq!(looked.colony().visits, 2, "what is remembered shows");
+        looked.arrived();
+        looked.finished("p/s".into(), &["oak_acorn".into()]);
+        looked.back_from_the_woods(&[7], &["acorn_stash"]);
+        assert_eq!(looked.colony().visits, 3, "and lasts the visit");
+        assert_eq!(
+            fs::read(dir.join(FILE)).unwrap(),
+            before,
+            "but is never written"
+        );
+        assert_eq!(
+            fs::read(dir.join(LAST_GOOD)).unwrap(),
+            copy,
+            "nor is the copy from the start of the last visit"
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
     fn an_unreadable_book_is_set_aside_not_lost() {
         let dir = scratch("unreadable");
         fs::create_dir_all(&dir).unwrap();

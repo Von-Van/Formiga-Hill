@@ -315,12 +315,8 @@ fn main() -> Result<()> {
                 Some(hour) => daylight::Clock::Held(hour),
                 None => daylight::Clock::Local(offset),
             };
-            let app = HillApp::new(cc, arrival, library, clock);
-            Ok(Box::new(match args.snap {
-                Some(snap) => app.snap(snap),
-                None if args.welcome => app.welcome(),
-                None => app,
-            }))
+            let app = HillApp::new(cc, arrival, library, clock, args.snap);
+            Ok(Box::new(if args.welcome { app.welcome() } else { app }))
         }),
     )
     .map_err(|error| anyhow::anyhow!("the Hill window could not open: {error}"))?;
