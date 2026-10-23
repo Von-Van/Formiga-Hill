@@ -739,13 +739,24 @@ pub const SCAVENGED: [Find; 12] = [
 ];
 
 pub fn find(id: &str) -> Option<&'static Find> {
-    CATALOGUE
-        .iter()
-        .chain(FORAGED.iter())
-        .chain(SCAVENGED.iter())
-        .chain(RELICS.iter())
-        .chain(AFAR.iter())
-        .find(|find| find.id == id)
+    // Looked up by name, as a basket's finds are each frame, rather than read down every list.
+    static BY_ID: std::sync::OnceLock<std::collections::HashMap<&'static str, &'static Find>> =
+        std::sync::OnceLock::new();
+    let by_id = BY_ID.get_or_init(|| {
+        let mut by_id = std::collections::HashMap::new();
+        let every = CATALOGUE
+            .iter()
+            .chain(FORAGED.iter())
+            .chain(SCAVENGED.iter())
+            .chain(RELICS.iter())
+            .chain(AFAR.iter());
+        for find in every {
+            // The first of any two with one name, as reading down the lists would find.
+            by_id.entry(find.id).or_insert(find);
+        }
+        by_id
+    });
+    by_id.get(id).copied()
 }
 
 /// Whether a find comes from the old track, scavenged or dug up, rather than anywhere else.
