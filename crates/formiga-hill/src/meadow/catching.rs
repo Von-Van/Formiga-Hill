@@ -30,6 +30,9 @@ use crate::track::crew;
 use crate::woods::rummage::{delighted, dim};
 use formiga_art::{Canvas, ExpressionKind};
 use formiga_core::{Gesture, TemperamentKind};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 /// With more time to catch, how much of their usual nerve bugs keep as the net creeps up.
 const GENTLE_NERVE: f32 = 0.6;
@@ -1093,12 +1096,7 @@ impl Hunt {
             .filter(|flier| flier.here())
             .map(|flier| {
                 let (pose, frame) = flier.pose(now, self.reduce_motion);
-                let mut sprite = art::sprite(flier.bug.id, pose, frame);
-                let (mut ax, ay) = art::anchor(flier.bug.id, pose);
-                if !flier.facing_right {
-                    sprite = mirrored(&sprite);
-                    ax = sprite.width() as i32 - 1 - ax;
-                }
+                let (sprite, (ax, ay)) = bug_sprite(flier.bug.id, pose, frame, flier.facing_right);
                 // A bug on a companion's head stands where that companion does.
                 let base = match flier.riding {
                     Some(_) => flier.pos.1 + 40.0,
@@ -1145,7 +1143,7 @@ impl Hunt {
         self.draw_net(scene, ground, now);
         match self.phase {
             Phase::Caught { bug, since, .. } => {
-                self.hold_up(scene, ground, &art::close_up(bug), since, now)
+                self.hold_up(scene, ground, &close_up(bug), since, now)
             }
             Phase::Netted { find, since } => {
                 self.hold_up(
@@ -1339,6 +1337,51 @@ fn jitters(scene: &mut Canvas, (x, y): (f32, f32), nerve: f32) {
         put(scene, mx, my, color);
         put(scene, mx, my + 1, color);
     }
+}
+
+/// A bug as it is seen in the meadow at `frame` of its pose, facing the way it faces, and where
+/// the bug itself is in it: painted, and mirrored for facing left, the first time it is seen so
+/// and kept, as every bug about is drawn every frame.
+fn bug_sprite(
+    id: &'static str,
+    pose: Pose,
+    frame: usize,
+    facing_right: bool,
+) -> (Canvas, (i32, i32)) {
+    /// Each sprite and where the bug is in it, by the bug, its pose and frame, and its facing.
+    type Kept = HashMap<(&'static str, Pose, usize, bool), (Canvas, (i32, i32))>;
+    thread_local! {
+        static SPRITES: RefCell<Kept> = RefCell::new(HashMap::new());
+    }
+    SPRITES.with_borrow_mut(|sprites| {
+        sprites
+            .entry((id, pose, frame, facing_right))
+            .or_insert_with(|| {
+                let mut sprite = art::sprite(id, pose, frame);
+                let (mut ax, ay) = art::anchor(id, pose);
+                if !facing_right {
+                    sprite = mirrored(&sprite);
+                    ax = sprite.width() as i32 - 1 - ax;
+                }
+                (sprite, (ax, ay))
+            })
+            .clone()
+    })
+}
+
+/// A bug close up, as it is held up in the net: painted the first time and kept, as it is held
+/// up for a while.
+fn close_up(id: &'static str) -> Rc<Canvas> {
+    thread_local! {
+        static CLOSE_UPS: RefCell<HashMap<&'static str, Rc<Canvas>>> =
+            RefCell::new(HashMap::new());
+    }
+    CLOSE_UPS.with_borrow_mut(|close_ups| {
+        close_ups
+            .entry(id)
+            .or_insert_with(|| Rc::new(art::close_up(id)))
+            .clone()
+    })
 }
 
 fn mirrored(sprite: &Canvas) -> Canvas {

@@ -75,6 +75,7 @@ impl Layout {
 }
 
 /// Something standing on the ground that anyone further back is hidden behind.
+#[derive(Clone)]
 pub struct Prop {
     pub sprite: Canvas,
     /// The top-left corner of the sprite in the scene.
