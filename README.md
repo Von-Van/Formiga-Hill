@@ -70,8 +70,10 @@ touched.
 ![The sample colony at play on the Village Green, by the oak, the well and the picnic blanket](docs/assets/green.png)
 
 **The Clubhouse.** Stories are played out by the fire, each chosen from the Clubhouse's notice
-board. Hill comes with three: *The First Picnic*, *The Book with No Ending*, and *The Last Bun*, a
-small mystery in which whoever likes a mystery takes the case. Casting is the interesting part. A
+board. Hill comes with seven: *The First Picnic*, *The Book with No Ending*, *The Last Bun*, a
+small mystery in which whoever likes a mystery takes the case, and four about the green outside,
+*The Penny in the Well*, *The Acorn in the Storm*, *The Feather from the Swing* and *The Bottom of
+the Toy Box*, each of which leaves a souvenir for the display case. Casting is the interesting part. A
 story describes the kind of companion each role needs (the most curious, a close friend of the
 lead, a little one if there is one), and Hill fills the roles from whoever happens to be visiting.
 

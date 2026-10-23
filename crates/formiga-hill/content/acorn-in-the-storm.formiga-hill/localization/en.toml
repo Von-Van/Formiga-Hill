@@ -1,0 +1,56 @@
+# The Acorn in the Storm, in English. A line is plain text, or a table with `text` and a version
+# for any temperament that would say it differently. {role} becomes the name of whoever plays that
+# role.
+
+title = "The Acorn in the Storm"
+
+[storm]
+intro = "Wind howls round the Clubhouse, and out on the green the old oak creaks and groans."
+tap = "Something taps at the window. Tap. Tap-tap."
+choose_fetch = "Open the window and fetch it"
+choose_wait = "Wait for the wind to drop"
+
+[storm.look]
+text = "It's only the oak dropping acorns. One's caught on the sill!"
+explorer = "Acorns! The oak's throwing them about. One's stuck on the sill, look!"
+guardian = "Nothing to fear. It's an acorn from the oak, caught on the sill."
+showoff = "Stand back, everyone. It's an acorn. I'll deal with it."
+grump = "It's an acorn. All that fuss over an acorn."
+troublemaker = "It's an acorn! The oak's having a tantrum."
+
+[storm.reply]
+text = "Don't open the window. Please don't open the window."
+lazybones = "Leave it. It's warm in here, and it's cold out there."
+scholar = "Strictly speaking, an acorn can't hurt anyone. I'd still rather the window stayed shut."
+sweetheart = "Poor little acorn, out in all that. But please be careful."
+oddball = "Maybe it wants to come in. I would."
+
+[fetch]
+reach = "{brave} opens the window a crack, reaches out into the wind, and snatches the acorn off the sill."
+warm = "The acorn goes by the fire to dry. Its little cap is still on."
+
+[wait]
+calm = "Bit by bit the wind drops. When it is quiet, the acorn is still there on the sill, waiting."
+
+[wait.nerve]
+text = "I'll get it. It's not so scary now."
+wallflower = "I... I think I can get it now."
+lazybones = "Fine. I'll get it. Since it's so close."
+grump = "Oh, I'll get it. Somebody has to."
+
+[calm]
+kept = "The acorn from the old oak goes in the display case, safe and dry, for luck."
+
+[calm.book]
+text = "It says here an acorn from an old oak brings luck to whoever keeps it dry."
+scholar = "Here we are: an acorn from an old oak brings luck to whoever keeps it dry. Page forty-one."
+
+[calm.thanks]
+text = "Thank you for fetching it, {brave}."
+grump = "That was very brave, {brave}. Don't let it go to your head."
+sweetheart = "You were so brave, {brave}. I was so worried."
+
+[calm.well_done]
+text = "You got it, {worrier}! All by yourself."
+grump = "Not bad, {worrier}. Not bad at all."
+showoff = "Nearly as good as I'd have done it, {worrier}."
