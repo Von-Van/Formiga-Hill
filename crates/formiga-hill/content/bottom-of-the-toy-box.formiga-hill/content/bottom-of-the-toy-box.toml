@@ -1,0 +1,227 @@
+# The toy box won't shut. Everything comes out, a bag of marbles splits, and one rolls under the
+# armchair. A choice: gather them up, or make a game of it; then whoever is smallest, if anyone,
+# wriggles under for the last one.
+
+[story]
+id = "bottom-of-the-toy-box"
+title = "title"
+area = "clubhouse"
+start = "tidy"
+
+# The tidy one is whoever is least likely to rush.
+[roles.tidier]
+order = 1
+select = ["least:impulsiveness", "any"]
+
+[roles.helper]
+order = 2
+select = ["most:impulsiveness", "any"]
+
+# Someone small enough to get under the armchair, if one came.
+[roles.small]
+order = 3
+select = ["mini"]
+optional = true
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "tidy"
+
+[[scenes.beats]]
+narrate = "tidy.intro"
+
+[[scenes.beats]]
+walk = "tidier"
+to = "chest"
+
+[[scenes.beats]]
+walk = "small"
+to = "rug"
+meanwhile = true
+
+[[scenes.beats]]
+pose = "tidier"
+as = "inspect"
+
+[[scenes.beats]]
+say = "tidier"
+line = "tidy.sigh"
+
+[[scenes.beats]]
+walk = "helper"
+to = "beside:tidier"
+
+[[scenes.beats]]
+say = "helper"
+line = "tidy.help"
+
+[[scenes.beats]]
+pose = "helper"
+as = "dance"
+
+[[scenes.beats]]
+narrate = "tidy.out"
+
+[[scenes.beats]]
+react = "tidier"
+feeling = "surprise"
+
+[[scenes.beats]]
+narrate = "tidy.roll"
+
+[[scenes.beats]]
+choose = [
+  { line = "tidy.choose_gather", goto = "gather" },
+  { line = "tidy.choose_game", goto = "game" },
+]
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "gather"
+
+[[scenes.beats]]
+walk = "tidier"
+to = "left"
+
+[[scenes.beats]]
+walk = "helper"
+to = "right"
+meanwhile = true
+
+[[scenes.beats]]
+pose = "tidier"
+as = "crouch"
+
+[[scenes.beats]]
+pose = "helper"
+as = "crouch"
+meanwhile = true
+
+[[scenes.beats]]
+say = "tidier"
+line = "gather.count"
+
+[[scenes.beats]]
+goto = "under"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "game"
+
+[[scenes.beats]]
+play = "helper"
+with = "tidier"
+
+[[scenes.beats]]
+say = "helper"
+line = "game.score"
+
+[[scenes.beats]]
+react = "tidier"
+feeling = "joy"
+when = "high:tidier.playfulness"
+
+[[scenes.beats]]
+react = "tidier"
+feeling = "grumpy"
+when = "!high:tidier.playfulness"
+
+[[scenes.beats]]
+say = "tidier"
+line = "game.count"
+
+[[scenes.beats]]
+goto = "under"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "under"
+
+[[scenes.beats]]
+narrate = "under.where"
+
+[[scenes.beats]]
+if = "present:small"
+goto = "small"
+
+[[scenes.beats]]
+walk = "helper"
+to = "armchair"
+
+[[scenes.beats]]
+pose = "helper"
+as = "crouch"
+
+[[scenes.beats]]
+say = "helper"
+line = "under.stuck"
+
+[[scenes.beats]]
+pose = "helper"
+as = "stretch"
+
+[[scenes.beats]]
+narrate = "under.got"
+
+[[scenes.beats]]
+celebrate = "helper"
+
+[[scenes.beats]]
+goto = "shut"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "small"
+
+[[scenes.beats]]
+say = "small"
+line = "small.offer"
+
+[[scenes.beats]]
+walk = "small"
+to = "armchair"
+
+[[scenes.beats]]
+pose = "small"
+as = "crouch"
+
+[[scenes.beats]]
+narrate = "small.under"
+
+[[scenes.beats]]
+react = "small"
+feeling = "proud"
+
+[[scenes.beats]]
+celebrate = "small"
+
+[[scenes.beats]]
+goto = "shut"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "shut"
+
+[[scenes.beats]]
+walk = "tidier"
+to = "chest"
+
+[[scenes.beats]]
+narrate = "shut.lid"
+
+[[scenes.beats]]
+react = "tidier"
+feeling = "fond"
+
+[[scenes.beats]]
+say = "tidier"
+line = "shut.marble"
+
+[[scenes.beats]]
+souvenir = "chest_marble"
+
+[[scenes.beats]]
+narrate = "shut.kept"
+
+[[scenes.beats]]
+end = true

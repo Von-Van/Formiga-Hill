@@ -1,0 +1,180 @@
+# A feather blows in off the swing on the green. A choice: chase it about the room, or stand
+# still and let it come down; it lands on whoever waited.
+
+[story]
+id = "feather-on-the-swing"
+title = "title"
+area = "clubhouse"
+start = "breeze"
+
+[roles.chaser]
+order = 1
+select = ["most:playfulness", "any"]
+
+[roles.watcher]
+order = 2
+select = ["least:energy", "any"]
+
+[roles.little]
+order = 3
+select = ["mini"]
+optional = true
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "breeze"
+
+[[scenes.beats]]
+narrate = "breeze.intro"
+
+[[scenes.beats]]
+walk = "watcher"
+to = "armchair"
+
+[[scenes.beats]]
+walk = "chaser"
+to = "centre"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "little"
+to = "rug"
+meanwhile = true
+
+[[scenes.beats]]
+pose = "watcher"
+as = "sit"
+
+[[scenes.beats]]
+narrate = "breeze.feather"
+
+[[scenes.beats]]
+react = "chaser"
+feeling = "surprise"
+
+[[scenes.beats]]
+say = "chaser"
+line = "breeze.mine"
+
+[[scenes.beats]]
+walk = "chaser"
+to = "window"
+
+[[scenes.beats]]
+walk = "chaser"
+to = "bookshelf"
+
+[[scenes.beats]]
+narrate = "breeze.dodge"
+about = "chaser"
+
+[[scenes.beats]]
+say = "watcher"
+line = "breeze.tip"
+
+[[scenes.beats]]
+choose = [
+  { line = "breeze.choose_chase", goto = "chase" },
+  { line = "breeze.choose_still", goto = "still" },
+]
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "chase"
+
+[[scenes.beats]]
+walk = "little"
+to = "beside:chaser"
+
+[[scenes.beats]]
+play = "chaser"
+with = "little"
+
+[[scenes.beats]]
+walk = "chaser"
+to = "rug"
+when = "!present:little"
+
+[[scenes.beats]]
+narrate = "chase.tumble"
+
+[[scenes.beats]]
+react = "chaser"
+feeling = "joy"
+
+[[scenes.beats]]
+narrate = "chase.landed"
+
+[[scenes.beats]]
+react = "watcher"
+feeling = "surprise"
+
+[[scenes.beats]]
+say = "watcher"
+line = "chase.told_you"
+
+[[scenes.beats]]
+set = "watcher_has_it"
+
+[[scenes.beats]]
+goto = "kept"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "still"
+
+[[scenes.beats]]
+pose = "chaser"
+as = "balance"
+
+[[scenes.beats]]
+wait = 2
+
+[[scenes.beats]]
+narrate = "still.landed"
+
+[[scenes.beats]]
+react = "chaser"
+feeling = "proud"
+
+[[scenes.beats]]
+react = "watcher"
+feeling = "fond"
+meanwhile = true
+
+[[scenes.beats]]
+goto = "kept"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "kept"
+
+[[scenes.beats]]
+narrate = "kept.what"
+
+[[scenes.beats]]
+walk = "all"
+to = "rug"
+
+[[scenes.beats]]
+pose = "all"
+as = "sit"
+
+[[scenes.beats]]
+say = "chaser"
+line = "kept.end"
+when = "flag:watcher_has_it"
+
+[[scenes.beats]]
+say = "watcher"
+line = "kept.end_still"
+when = "!flag:watcher_has_it"
+
+[[scenes.beats]]
+souvenir = "swing_feather"
+
+[[scenes.beats]]
+narrate = "kept.case"
+
+[[scenes.beats]]
+end = true

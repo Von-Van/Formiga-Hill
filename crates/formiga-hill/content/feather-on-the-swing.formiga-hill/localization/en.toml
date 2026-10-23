@@ -1,0 +1,54 @@
+# The Feather from the Swing, in English. A line is plain text, or a table with `text` and a
+# version for any temperament that would say it differently. {role} becomes the name of whoever
+# plays that role.
+
+title = "The Feather from the Swing"
+
+[breeze]
+intro = "Someone has left the Clubhouse window open, and a breeze comes in off the green, where the swing is still swaying."
+feather = "A little grey feather drifts in through the window, turning slowly in the air."
+dodge = "The feather dodges this way and that. {chaser} is always just too late."
+choose_chase = "Keep chasing it"
+choose_still = "Stand still and wait"
+
+[breeze.mine]
+text = "Mine! I'll catch it!"
+showoff = "Watch this, everyone. One leap, and it's mine."
+troublemaker = "Bet I can catch it before it lands!"
+explorer = "Where did that come from? Never mind. Catch it!"
+oddball = "A feather! Hello, feather! Come here, feather!"
+wallflower = "Oh! Can I... I'll try to catch it."
+
+[breeze.tip]
+text = "Stand still. Feathers come to the ones who wait."
+lazybones = "Stop running about. It'll come down on its own. Everything does."
+scholar = "It's riding the draught from the fire. Stand still and it will come down to you."
+grump = "Will you stand still? You're making a wind of your own."
+sweetheart = "Stand very still, and maybe it'll come to you."
+
+[chase]
+tumble = "{chaser} leaps, misses, and lands in a heap on the rug."
+landed = "The feather floats down, all on its own, and settles on {watcher}'s nose."
+
+[chase.told_you]
+text = "Told you."
+lazybones = "Told you. Didn't even have to get up."
+sweetheart = "Oh! It came to me. Here, {chaser}, you have it."
+grump = "Hmph. Told you so."
+
+[still]
+landed = "{chaser} holds very still. The feather drifts down, round and round, and settles on {chaser}'s head."
+
+[kept]
+what = "It's a little grey feather, the kind that catches in the ropes of the swing on the green."
+case = "The feather goes in the display case, where no breeze can get at it."
+
+[kept.end]
+text = "Next time, {watcher}, I'll wait too. Maybe."
+troublemaker = "Next time, {watcher}, I'm sitting in your chair."
+showoff = "I let you have that one, {watcher}."
+
+[kept.end_still]
+text = "See? It came to you, {chaser}."
+lazybones = "See, {chaser}? Waiting is the best thing there is."
+scholar = "Exactly as I said, {chaser}. The draught brought it down."

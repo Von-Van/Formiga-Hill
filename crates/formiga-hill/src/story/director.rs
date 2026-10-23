@@ -391,7 +391,7 @@ impl Director {
 }
 
 /// A feeling, as this particular creature shows it.
-fn feel(character: &crate::character::Character, feeling: Feeling) -> Vec<ActorBeat> {
+pub fn feel(character: &crate::character::Character, feeling: Feeling) -> Vec<ActorBeat> {
     let a = character.axes;
     let slow = if a.energy < 0.35 { 0.4 } else { 0.0 };
     let beat = |clip: Gesture, face, seconds: f32| ActorBeat::new(clip, face, seconds + slow);
