@@ -1,0 +1,183 @@
+# Rain on the roof, and a penny the well's bucket brought up. A choice: wish on it, or wonder
+# whose it was; either way it is kept safe, by the fire.
+
+[story]
+id = "penny-in-the-well"
+title = "title"
+area = "clubhouse"
+start = "drip"
+
+# Whoever went to look down the well in the rain is the most curious.
+[roles.finder]
+order = 1
+select = ["most:curiosity", "any"]
+
+[roles.friend]
+order = 2
+select = ["friend_of:finder", "playmate_of:finder", "any"]
+
+# Someone who thinks before they leap, if anyone is left to.
+[roles.wise]
+order = 3
+select = ["least:impulsiveness"]
+optional = true
+
+[roles.little]
+order = 4
+select = ["mini"]
+optional = true
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "drip"
+
+[[scenes.beats]]
+narrate = "drip.intro"
+
+[[scenes.beats]]
+walk = "finder"
+to = "hearth"
+
+[[scenes.beats]]
+walk = "friend"
+to = "beside:finder"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "wise"
+to = "armchair"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "little"
+to = "window"
+meanwhile = true
+
+[[scenes.beats]]
+react = "finder"
+feeling = "joy"
+
+[[scenes.beats]]
+say = "finder"
+line = "drip.show"
+
+[[scenes.beats]]
+react = "friend"
+feeling = "surprise"
+
+[[scenes.beats]]
+say = "friend"
+line = "drip.ask"
+
+[[scenes.beats]]
+choose = [
+  { line = "drip.choose_wish", goto = "wish" },
+  { line = "drip.choose_whose", goto = "whose" },
+]
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "wish"
+
+[[scenes.beats]]
+narrate = "wish.intro"
+
+[[scenes.beats]]
+pose = "finder"
+as = "inspect"
+
+[[scenes.beats]]
+say = "finder"
+line = "wish.make"
+
+[[scenes.beats]]
+react = "friend"
+feeling = "fond"
+
+[[scenes.beats]]
+walk = "little"
+to = "beside:finder"
+
+[[scenes.beats]]
+say = "little"
+line = "wish.little"
+
+[[scenes.beats]]
+react = "finder"
+feeling = "fond"
+when = "present:little"
+
+[[scenes.beats]]
+set = "wished"
+
+[[scenes.beats]]
+goto = "evening"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "whose"
+
+[[scenes.beats]]
+narrate = "whose.intro"
+about = "finder"
+
+[[scenes.beats]]
+walk = "wise"
+to = "beside:finder"
+
+[[scenes.beats]]
+say = "wise"
+line = "whose.think"
+
+[[scenes.beats]]
+narrate = "whose.alone"
+when = "!present:wise"
+
+[[scenes.beats]]
+react = "finder"
+feeling = "curious"
+
+[[scenes.beats]]
+goto = "evening"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "evening"
+
+[[scenes.beats]]
+narrate = "evening.intro"
+
+[[scenes.beats]]
+walk = "all"
+to = "rug"
+
+[[scenes.beats]]
+pose = "all"
+as = "sit"
+
+[[scenes.beats]]
+narrate = "evening.wished"
+when = "flag:wished"
+meanwhile = true
+
+[[scenes.beats]]
+narrate = "evening.kept"
+when = "!flag:wished"
+meanwhile = true
+
+[[scenes.beats]]
+say = "finder"
+line = "evening.end"
+
+[[scenes.beats]]
+react = "friend"
+feeling = "fond"
+
+[[scenes.beats]]
+souvenir = "well_penny"
+
+[[scenes.beats]]
+narrate = "evening.penny"
+
+[[scenes.beats]]
+end = true

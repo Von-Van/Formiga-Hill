@@ -1,0 +1,185 @@
+# Wind round the Clubhouse, the old oak creaking on the green, and a tapping at the window. A
+# choice: the bold one fetches what is tapping, or everyone waits for the wind to drop and the
+# timid one finds its nerve.
+
+[story]
+id = "acorn-in-the-storm"
+title = "title"
+area = "clubhouse"
+start = "storm"
+
+[roles.brave]
+order = 1
+select = ["most:boldness", "any"]
+
+[roles.worrier]
+order = 2
+select = ["least:boldness", "any"]
+
+# Someone who would look it up, if anyone is left to.
+[roles.reader]
+order = 3
+select = ["kind:scholar", "most:curiosity"]
+optional = true
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "storm"
+
+[[scenes.beats]]
+narrate = "storm.intro"
+
+[[scenes.beats]]
+walk = "worrier"
+to = "armchair"
+
+[[scenes.beats]]
+walk = "brave"
+to = "rug"
+meanwhile = true
+
+[[scenes.beats]]
+walk = "reader"
+to = "bookshelf"
+meanwhile = true
+
+[[scenes.beats]]
+pose = "worrier"
+as = "cover"
+
+[[scenes.beats]]
+narrate = "storm.tap"
+
+[[scenes.beats]]
+react = "worrier"
+feeling = "worry"
+
+[[scenes.beats]]
+walk = "brave"
+to = "window"
+
+[[scenes.beats]]
+pose = "brave"
+as = "peek"
+
+[[scenes.beats]]
+say = "brave"
+line = "storm.look"
+
+[[scenes.beats]]
+say = "worrier"
+line = "storm.reply"
+
+[[scenes.beats]]
+choose = [
+  { line = "storm.choose_fetch", goto = "fetch" },
+  { line = "storm.choose_wait", goto = "wait" },
+]
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "fetch"
+
+[[scenes.beats]]
+pose = "brave"
+as = "balance"
+
+[[scenes.beats]]
+narrate = "fetch.reach"
+about = "brave"
+
+[[scenes.beats]]
+walk = "brave"
+to = "hearth"
+
+[[scenes.beats]]
+pose = "brave"
+as = "crouch"
+
+[[scenes.beats]]
+narrate = "fetch.warm"
+
+[[scenes.beats]]
+walk = "worrier"
+to = "beside:brave"
+
+[[scenes.beats]]
+react = "worrier"
+feeling = "curious"
+
+[[scenes.beats]]
+set = "fetched"
+
+[[scenes.beats]]
+goto = "calm"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "wait"
+
+[[scenes.beats]]
+wait = 3
+
+[[scenes.beats]]
+narrate = "wait.calm"
+
+[[scenes.beats]]
+walk = "worrier"
+to = "window"
+
+[[scenes.beats]]
+pose = "worrier"
+as = "inspect"
+
+[[scenes.beats]]
+say = "worrier"
+line = "wait.nerve"
+
+[[scenes.beats]]
+celebrate = "worrier"
+
+[[scenes.beats]]
+react = "brave"
+feeling = "proud"
+
+[[scenes.beats]]
+goto = "calm"
+
+# ---------------------------------------------------------------------------------------------
+[[scenes]]
+id = "calm"
+
+[[scenes.beats]]
+pose = "reader"
+as = "inspect"
+
+[[scenes.beats]]
+say = "reader"
+line = "calm.book"
+
+[[scenes.beats]]
+walk = "all"
+to = "rug"
+
+[[scenes.beats]]
+pose = "all"
+as = "sit"
+
+[[scenes.beats]]
+say = "worrier"
+line = "calm.thanks"
+when = "flag:fetched"
+
+[[scenes.beats]]
+say = "brave"
+line = "calm.well_done"
+when = "!flag:fetched"
+
+[[scenes.beats]]
+souvenir = "oak_acorn"
+
+[[scenes.beats]]
+narrate = "calm.kept"
+
+[[scenes.beats]]
+end = true

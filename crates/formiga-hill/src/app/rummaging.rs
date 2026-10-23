@@ -73,8 +73,9 @@ pub struct Woods {
     /// expedition is one.
     pub adventure: Option<(String, String)>,
     pub playing: Option<super::adventures::Playing>,
-    /// An adventure being made on the map editor.
+    /// An adventure being made on the map editor, and what has been done to it, to undo.
     pub making: Option<super::mapmaking::Making>,
+    pub making_history: super::undo::History<crate::adventure::draft::Draft>,
     /// The old track with nobody there, a scavenge under way, and a map being followed, and
     /// which of the colony's maps is chosen to follow.
     pub track: Option<Playground>,
@@ -277,6 +278,7 @@ impl HillApp {
             line.push_str(" And rolled up in a hollow with them: a torn map!");
         }
         self.notice = Some((line, now));
+        self.grant(super::departures::Outing::Rummaging, rummage.party(), now);
     }
 
     pub(super) fn compose_woods(&mut self, now: f32) -> Canvas {

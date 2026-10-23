@@ -1,0 +1,13 @@
+# A breezy afternoon in the Clubhouse, written exactly as any package author would write one.
+package_id = "com.formiga.hill.feather-on-the-swing"
+title = "The Feather from the Swing"
+author = "Formiga"
+version = "1.0.0"
+hill_api = 2
+content_types = ["story"]
+entry_points = ["content/feather-on-the-swing.toml"]
+default_locale = "en"
+
+[requirements]
+min_cast = 2
+areas = ["clubhouse"]

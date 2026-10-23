@@ -22,6 +22,8 @@ mod scavenging;
 mod shared;
 mod sound;
 mod storytelling;
+mod undo;
+mod welcome;
 mod writing;
 
 use crate::audio::Sound;
@@ -88,9 +90,13 @@ const AREAS: [(Area, &str); 6] = [
 /// A card laid over the scene in place of a window. One at a time, so none hides another.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Card {
-    /// The station's notice board, and its departures board.
+    /// Where a colony of the person's own comes from, over the sample colony's arrival, when
+    /// Hill was opened on its own rather than by Desktop.
+    Welcome,
+    /// The station's notice board, its departures board, and its display case.
     Notices,
     Departures,
+    Case,
     /// The Clubhouse's notice board of stories, and the shelf of story packages.
     Board,
     Shelf,
@@ -133,9 +139,11 @@ pub const SNAP_PLACES: [&str; 6] = [
 ];
 
 /// What `--card` can name, in `Snap`.
-pub const SNAP_CARDS: [&str; 14] = [
+pub const SNAP_CARDS: [&str; 16] = [
+    "welcome",
     "notices",
     "departures",
+    "case",
     "board",
     "shelf",
     "writing",
@@ -154,7 +162,7 @@ pub const SNAP_CARDS: [&str; 14] = [
 /// picture of it opens when no place is named. Empty for a card that is open anywhere.
 pub fn snap_card_places(card: &str) -> &'static [&'static str] {
     match card {
-        "notices" | "departures" => &["station"],
+        "welcome" | "notices" | "departures" | "case" => &["station"],
         "board" | "shelf" | "writing" => &["clubhouse"],
         "dress-up" => &["green"],
         "plans" => &["hilltop"],
@@ -244,6 +252,11 @@ pub struct HillApp {
     last_scene: Option<Canvas>,
     /// How each traveller has warmed to the person, wherever they have met this visit.
     trust: Trust,
+    /// What each traveller wishes for this visit, whose wishes have come true, and who has yet to
+    /// show how pleased it is.
+    wishes: std::collections::HashMap<Id, departures::Outing>,
+    granted: std::collections::HashSet<Id>,
+    hearts: Vec<Id>,
     /// The last picture of the area just left, dissolving into the new one.
     leaving: Option<(Canvas, f32)>,
     texture: Option<egui::TextureHandle>,
@@ -345,6 +358,9 @@ impl HillApp {
             camera: camera::Camera::default(),
             last_scene: None,
             trust: Trust::default(),
+            wishes: std::collections::HashMap::new(),
+            granted: std::collections::HashSet::new(),
+            hearts: Vec::new(),
             leaving: None,
             texture: None,
             shown_frames: Vec::new(),
@@ -362,15 +378,19 @@ impl HillApp {
             sound: Sound::open(Memories::folder().as_deref()),
             listening: sound::Listening::default(),
         };
+        app.make_wishes();
         app.pin_notices();
         app
     }
 
-    /// The way home. Writes the receipt once, however the visit ends.
+    /// The way home. Keeps anything still in a basket in the Woods, then writes the receipt
+    /// once, however the visit ends.
     fn depart(&mut self) {
         if std::mem::replace(&mut self.departed, true) {
             return;
         }
+        let now = self.now();
+        self.bring_the_basket_home(now);
         if let Visit::Trip(trip) = &self.arrival.visit
             && let Err(error) = trip.come_home(&self.memories.colony().souvenirs)
         {
@@ -417,8 +437,10 @@ impl HillApp {
             _ => None,
         };
         let card = match snap.card.as_deref() {
+            Some("welcome") => Some(Card::Welcome),
             Some("notices") => Some(Card::Notices),
             Some("departures") => Some(Card::Departures),
+            Some("case") => Some(Card::Case),
             Some("board") => Some(Card::Board),
             Some("shelf") => Some(Card::Shelf),
             Some("writing") => Some(Card::Writing),
@@ -464,6 +486,13 @@ impl HillApp {
         if card == Some(Card::Making) {
             self.open_sample_making(chapter);
         }
+    }
+
+    /// Opens on the welcome card: Hill was opened on its own, so the sample colony is arriving
+    /// in place of the person's own, and the card says how theirs comes.
+    pub fn welcome(mut self) -> Self {
+        self.card = Some(Card::Welcome);
+        self
     }
 
     /// Asks for the review picture once it is time, and saves it and closes when it comes.
@@ -594,27 +623,7 @@ impl HillApp {
             self.open_hilltop(now);
         }
         // Leaving the Woods brings the basket home; leaving the Hilltop puts down what was held.
-        if self.woods.outing.is_some() {
-            self.finish_outing(now);
-        }
-        if self.woods.fishing.is_some() {
-            self.finish_fishing(now);
-        }
-        if self.woods.hunt.is_some() {
-            self.finish_bug_hunt(now);
-        }
-        if self.woods.foray.is_some() {
-            self.finish_foraging(now);
-        }
-        if self.woods.expedition.is_some() {
-            self.finish_expedition(now);
-        }
-        if self.woods.scavenge.is_some() {
-            self.finish_scavenging(now);
-        }
-        if self.woods.treasure.is_some() {
-            self.finish_treasure(now);
-        }
+        self.bring_the_basket_home(now);
         self.placing = None;
         self.card = None;
         if area == Area::Station {
@@ -628,6 +637,25 @@ impl HillApp {
         }
         self.area = area;
         self.shown_frames.clear();
+        let everyone: Vec<Id> = self.arrival.cast.members.iter().map(|m| m.id).collect();
+        match area {
+            Area::Green => self.grant(departures::Outing::Picnic, &everyone, now),
+            Area::Hilltop => self.grant(departures::Outing::Hilltop, &everyone, now),
+            _ => {}
+        }
+    }
+
+    /// Ends whatever is under way in the Woods and keeps what it found: into the journal and the
+    /// satchel, written to the memories at once. However the colony leaves the Woods, by walking
+    /// away, by the window closing or by Desktop calling everyone home, nothing found is lost.
+    fn bring_the_basket_home(&mut self, now: f32) {
+        self.finish_outing(now);
+        self.finish_fishing(now);
+        self.finish_bug_hunt(now);
+        self.finish_foraging(now);
+        self.finish_expedition(now);
+        self.finish_scavenging(now);
+        self.finish_treasure(now);
     }
 
     fn compose(&mut self, now: f32) -> Canvas {
@@ -913,9 +941,12 @@ impl eframe::App for HillApp {
         let now = self.now();
         self.set_up_snap(now);
         self.keep_hours(now);
+        self.show_hearts(now);
         self.station.update(now);
         if !self.departed && self.recalled(now) {
-            // Desktop has the colony already: close, and write nothing.
+            // Desktop has the colony already: close, and write nothing to the trip. Whatever the
+            // Woods turned up is still Hill's to keep.
+            self.bring_the_basket_home(now);
             self.departed = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -1361,20 +1392,24 @@ impl eframe::App for HillApp {
                         "Where to go, and who would like to. Click to look closer.".to_owned(),
                     ))
                 } else if fixture == Some(Fixture::Case) && hovered.is_none() {
-                    let kept: Vec<&str> = self
+                    let kept = self
                         .memories
                         .colony()
                         .souvenirs
                         .iter()
-                        .filter_map(|id| souvenirs::name(id))
-                        .collect();
+                        .filter(|id| souvenirs::name(id).is_some())
+                        .count();
                     Some((
                         "The display case".to_owned(),
-                        if kept.is_empty() {
-                            "Empty for now. Souvenirs from stories and games are kept here."
+                        if kept == 0 {
+                            "Empty for now. Souvenirs from stories and games are kept here. \
+                             Click to look closer."
                                 .to_owned()
                         } else {
-                            kept.join("\n")
+                            format!(
+                                "{kept} of {} kept. Click to look closer.",
+                                souvenirs::ids().len()
+                            )
                         },
                     ))
                 } else if let Some(id) = hovered {
@@ -1416,9 +1451,11 @@ impl eframe::App for HillApp {
         self.notices_window(&ctx);
         self.departures_window(&ctx, now);
         self.keys_window(&ctx);
+        self.case_window(&ctx);
         self.sound_window(&ctx);
         self.making_window(&ctx, now);
         self.competitions_window(&ctx, now);
+        self.welcome_window(&ctx);
         self.take_snap(&ctx, now);
 
         if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {

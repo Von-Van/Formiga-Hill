@@ -1,0 +1,64 @@
+# The Penny in the Well, in English. A line is plain text, or a table with `text` and a version
+# for any temperament that would say it differently. {role} becomes the name of whoever plays that
+# role.
+
+title = "The Penny in the Well"
+
+[drip]
+intro = "Rain drums on the Clubhouse roof. {finder} comes in from the green, dripping, with one paw held tight shut."
+choose_wish = "Make a wish on it"
+choose_whose = "Wonder whose it was"
+
+[drip.show]
+text = "Look! A penny, from the very bottom of the old well. The bucket brought it up."
+explorer = "I went right down to the bottom of the well! Well, the bucket did. And look what it found."
+scholar = "A penny from the bottom of the well. Quite old, by the colour of it. The bucket brought it up."
+showoff = "Nobody else thought to look in the well. Only me. And now I have a penny."
+grump = "I got soaked to the skin for this. It had better be a lucky penny."
+oddball = "The well gave me a penny. I think it likes me. I'm going to visit it more."
+wallflower = "Um... look. The well's bucket had a penny in it."
+
+[drip.ask]
+text = "What will you do with it?"
+troublemaker = "Ooh. What are you going to spend it on?"
+sweetheart = "It's lovely. What will you do with it?"
+lazybones = "You went out in the rain? For a penny? What will you do with it, then?"
+
+[wish]
+intro = "{finder} holds the penny up to the firelight, closes both eyes, and thinks very hard."
+
+[wish.make]
+text = "There. Wished. And I'm not telling."
+sweetheart = "I wished for something for all of us. That's all I'll say."
+troublemaker = "I wished for something. Something good. Something sneaky. You'll see."
+grump = "Done. Don't ask what it was."
+showoff = "I made the best wish anyone has ever made. Probably."
+scholar = "Wished. The rules are quite clear that I mustn't say what."
+
+[wish.little]
+text = "Can I hold it after? Just for one wish?"
+
+[whose]
+intro = "{finder} turns the penny over. Somebody must have dropped it in, a long time ago."
+
+[whose.think]
+text = "A penny in a well is a wish somebody already made. Best keep it safe, so theirs still counts."
+guardian = "Then it's somebody's wish. We'll keep it safe for them, and it'll still count."
+scholar = "Every penny in a well was a wish once. Keep it dry and it keeps counting. Everyone knows that."
+grump = "It's someone's wish. Don't go spending it."
+
+[whose.alone]
+text = "Nobody knows whose it was. {finder} decides it should be kept somewhere safe, so the wish still counts."
+
+[evening]
+intro = "The rain eases off. Everyone gathers on the rug to dry out by the fire."
+wished = "Nobody asks what {finder} wished for. That's how wishes work."
+kept = "Somebody's old wish is safe and dry at last."
+penny = "{finder} polishes the penny on the rug until it shines, and keeps it for the display case."
+
+[evening.end]
+text = "Same time next rainy day, {friend}?"
+sweetheart = "I'm glad you were here, {friend}. Rainy days are better with you."
+lazybones = "Next time it rains, {friend}, you can go down the well."
+explorer = "Tomorrow, {friend}, we try the pond."
+grump = "Don't tell anyone I enjoyed that, {friend}."
