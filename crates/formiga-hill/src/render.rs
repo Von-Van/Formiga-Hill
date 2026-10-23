@@ -89,8 +89,9 @@ pub fn draw(
                 Some(seconds) => (station::Journey::Arriving { since: 0.0 }, seconds),
                 None => (station::Journey::Here, 0.0),
             };
-            // The display case shows what this colony has kept, as Hill remembers it.
-            let memories = memories::Memories::open(
+            // The display case shows what this colony has kept, as Hill remembers it, only looked
+            // at: a picture writes nothing to the memories.
+            let memories = memories::Memories::look(
                 memories::Memories::folder().as_deref(),
                 &cast.snapshot.colony_id,
             );

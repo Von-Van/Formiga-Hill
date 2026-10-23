@@ -1,0 +1,13 @@
+# A rainy day in the Clubhouse, written exactly as any package author would write one.
+package_id = "com.formiga.hill.penny-in-the-well"
+title = "The Penny in the Well"
+author = "Formiga"
+version = "1.0.0"
+hill_api = 2
+content_types = ["story"]
+entry_points = ["content/penny-in-the-well.toml"]
+default_locale = "en"
+
+[requirements]
+min_cast = 2
+areas = ["clubhouse"]

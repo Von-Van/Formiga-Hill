@@ -70,8 +70,10 @@ touched.
 ![The sample colony at play on the Village Green, by the oak, the well and the picnic blanket](docs/assets/green.png)
 
 **The Clubhouse.** Stories are played out by the fire, each chosen from the Clubhouse's notice
-board. Hill comes with three: *The First Picnic*, *The Book with No Ending*, and *The Last Bun*, a
-small mystery in which whoever likes a mystery takes the case. Casting is the interesting part. A
+board. Hill comes with seven: *The First Picnic*, *The Book with No Ending*, *The Last Bun*, a
+small mystery in which whoever likes a mystery takes the case, and four about the green outside,
+*The Penny in the Well*, *The Acorn in the Storm*, *The Feather from the Swing* and *The Bottom of
+the Toy Box*, each of which leaves a souvenir for the display case. Casting is the interesting part. A
 story describes the kind of companion each role needs (the most curious, a close friend of the
 lead, a little one if there is one), and Hill fills the roles from whoever happens to be visiting.
 
@@ -136,7 +138,9 @@ and a telescope brings rare signs out sooner.
   story in a box over whoever says it. Like Desktop's speech bubbles, the paper is the same in
   light and dark.
 - Desktop's reduced motion and text size carry over. With reduced motion, Hill uses held poses
-  and cuts rather than simply slowing the animation down.
+  and cuts rather than simply slowing the animation down. The Sound and play card adds Hill's
+  own: **More time to catch**, which gives longer for every find, fish and bug in the Woods, and
+  larger text than Desktop's.
 
 ### Controls
 
@@ -146,9 +150,9 @@ and a telescope brings rare signs out sooner.
 | Free play (the green, the Clubhouse, the Fairground) | 1 to 4: pat, snack, toy, brush |
 | A story | Space or Enter to go on; 1 to 4 to choose |
 | The Fairground | Esc calls a game off |
-| The Woods | Space to try, to strike, or to swing; hold the pointer, ↑ or W to creep up on a bug |
+| The Woods | Left and Right step through whatever a click would choose (a spot to search, where to cast, a bug, something ripe, a heap, a way at a fork), and Enter chooses it; Space to try, to strike, or to swing; hold the pointer, ↑ or W to creep up on a bug |
 | The Hilltop | Esc puts down whatever you are holding |
-| Anywhere | C for the camera, and Esc to put it away; M mutes the sound, or brings it back |
+| Anywhere | C for the camera, and Esc to put it away; M mutes the sound, or brings it back; K, or the ? button, opens a card of every key |
 
 ## Getting there
 
@@ -163,6 +167,10 @@ and a telescope brings rare signs out sooner.
 
 The downloads are not signed yet. On macOS, open the app the first time with Control-click → Open;
 on Windows, SmartScreen may ask before it runs.
+
+Opened on its own, from Applications or the Start menu, Hill says that your colony comes from
+Formiga Desktop and how to send it, and offers a look around with Desktop's sample colony in the
+meantime.
 
 Hill hosts one colony at a time. A trip that arrives while a Hill window is already open is
 politely refused, so Desktop can try again later. If Hill closes unexpectedly, or is force-quit,
@@ -181,11 +189,13 @@ more about a colony than the trip itself told it. The records live in Hill's dat
 | File | What it holds |
 | --- | --- |
 | `memories.json` | Each colony's finished stories, kept souvenirs, finds, journal, Hilltop and records |
+| `memories.json.last-good` | The memories as the last visit began, gone back to if `memories.json` is ever unreadable |
+| `memories.json.unreadable`, `-2`, … | Memories that couldn't be read, set aside and never written over; the station's notice board says when this happens |
 | `photos/` | Each colony's album |
 | `packages/` | Community packages, including any added from a shared file, put on the board from the story builder, kept from the map editor or saved from the Competitions card |
 | `drafts/stories/`, `drafts/adventures/` | Stories being written in the story builder, and adventures being made in the map editor |
 | `packages.json` | Which of them are set aside |
-| `settings.json` | Music and sound levels, and whether they are muted, for the Hill as a whole |
+| `settings.json` | Music and sound levels, whether they are muted, more time to catch and the text size, for the Hill as a whole |
 | `hosting.lock` | Held while a window is open |
 
 ## Where things stand

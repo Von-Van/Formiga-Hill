@@ -8,7 +8,7 @@ use crate::expedition::legs::{Input, LegEvent, Play};
 use crate::expedition::map::{self, Map, Opener, PLACES, Stop};
 use crate::expedition::{self, BASKET, Droughts, Ending, Event, Expedition, Known, Outset, Phase};
 use crate::finds::{self, AFAR, Tier};
-use crate::memories::{ColonyMemories, Homecoming};
+use crate::memories::{ColonyMemories, Homecoming, PAGES_KEPT};
 use crate::playground::distance;
 use crate::track::crew;
 use crate::{falls, fishing, hedgerow, meadow, track, woods};
@@ -1017,8 +1017,12 @@ pub(super) fn journal(
             }
         }
     }
-    for page in colony.expedition_pages.iter().rev() {
+    let pages = colony.expedition_pages.len();
+    // The pages kept are the latest, so the newest is the colony's latest expedition.
+    let first_kept = (colony.expeditions as usize).saturating_sub(pages) + 1;
+    for (index, page) in colony.expedition_pages.iter().enumerate().rev() {
         ui.add_space(4.0);
+        paper::aside(ui, format!("Expedition {}", first_kept + index));
         let route: Vec<&str> = page
             .route
             .iter()
@@ -1051,6 +1055,21 @@ pub(super) fn journal(
                 .collect();
             paper::aside(ui, format!("Caught and let go: {}", listed(&caught)));
         }
+    }
+    if first_kept > 1 && pages > 0 {
+        ui.add_space(4.0);
+        let gone = if first_kept == 2 {
+            "The first expedition's page has".to_owned()
+        } else {
+            format!("The first {} expeditions' pages have", first_kept - 1)
+        };
+        paper::aside(
+            ui,
+            format!(
+                "The journal keeps the latest {PAGES_KEPT} expeditions' pages. {gone} given way \
+                 to newer ones; everything they found is still in the journal above."
+            ),
+        );
     }
     hints
 }

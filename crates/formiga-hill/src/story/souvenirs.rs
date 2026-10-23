@@ -77,6 +77,19 @@ pub fn for_stories() -> Vec<&'static str> {
         .collect()
 }
 
+/// The Fairground game a souvenir is won at, for a blank in the display case: none for one a
+/// story gives.
+pub fn won_at(id: &str) -> Option<&'static str> {
+    match id {
+        FAIR_TICKET => Some("hide-and-seek"),
+        RACE_ROSETTE => Some("the sack race"),
+        STRIKER_BELL => Some("the high striker"),
+        HOOPLA_TEDDY => Some("hoopla"),
+        TUG_ROPE => Some("the tug-of-war"),
+        _ => None,
+    }
+}
+
 /// What a souvenir is called, for showing.
 pub fn name(id: &str) -> Option<&'static str> {
     CATALOGUE

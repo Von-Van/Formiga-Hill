@@ -13,8 +13,9 @@ companion each role needs, such as the most curious one or a close friend of the
 casts the roles from whoever happens to be visiting. The same story can therefore play out quite
 differently from one colony to the next, and part of the fun is writing with that in mind.
 
-Hill's own stories, *The First Picnic*, *The Last Bun* and *The Book with No Ending*, are written
-exactly this way, and each is a complete working example in
+Hill's own stories, *The First Picnic*, *The Last Bun*, *The Book with No Ending*, *The Penny in
+the Well*, *The Acorn in the Storm*, *The Feather from the Swing* and *The Bottom of the Toy Box*,
+are written exactly this way, and each is a complete working example in
 [`crates/formiga-hill/content`](../crates/formiga-hill/content). *The Last Bun* is probably the
 best place to start, since it shows a mystery whose suspects are cast from the colony's own
 habits, temperaments and friendships.
