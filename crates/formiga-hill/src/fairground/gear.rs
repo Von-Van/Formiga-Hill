@@ -10,6 +10,8 @@ use super::scenery::{BELL, PAD, PUCK_RAIL, STRIKER};
 use crate::paint::{Ramp, chance, ellipse, line, mix, noise, put, rgb, rgba};
 use crate::playground::Prop;
 use formiga_art::{Canvas, Rgba};
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 /// Brass for the bell, iron for the puck and the mallet's bands, hickory for its handle and oak
 /// for its head, red satin for the ribbon and cream paint for the bands on its posts.
@@ -207,10 +209,44 @@ fn piece(
     Prop::new(canvas, (left, top), base)
 }
 
+/// Gear that looks the same every frame it stands where it is, by what it is and where.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Still {
+    ChalkLine((i32, i32), (i32, i32)),
+    Post(i32, i32),
+    /// The bell, while it is not ringing.
+    Bell,
+    /// The puck, at this row.
+    Puck(i32),
+    /// The mallet, leaning against the plinth.
+    Mallet,
+}
+
+/// Gear that is set out every frame but looks the same while it stands still: painted the
+/// first time and kept.
+fn kept(still: Still, paint: impl FnOnce() -> Prop) -> Prop {
+    thread_local! {
+        static KEPT: RefCell<HashMap<Still, Prop>> = RefCell::new(HashMap::new());
+    }
+    if let Some(prop) = KEPT.with_borrow(|kept| kept.get(&still).cloned()) {
+        return prop;
+    }
+    let prop = paint();
+    KEPT.with_borrow_mut(|kept| kept.insert(still, prop.clone()));
+    prop
+}
+
 /// The striker's brass bell, sitting on its cap. `rung` is how long ago it rang, if it did: for
 /// a moment it shakes on its seat and shines, its rays flickering. With motion reduced it holds
 /// still and shines steadily.
 pub fn bell(rung: Option<f32>, reduce_motion: bool) -> Prop {
+    if !rung.is_some_and(|since| (0.0..RING_SECS).contains(&since)) {
+        return kept(Still::Bell, || paint_bell(None, reduce_motion));
+    }
+    paint_bell(rung, reduce_motion)
+}
+
+fn paint_bell(rung: Option<f32>, reduce_motion: bool) -> Prop {
     let (cx, rim) = BELL;
     piece(
         STRIKER.1 as f32,
@@ -297,6 +333,10 @@ pub fn bell(rung: Option<f32>, reduce_motion: bool) -> Prop {
 pub fn puck(height: f32) -> Prop {
     let (rest, top) = PUCK_RAIL;
     let y = rest - ((rest - top) as f32 * height.clamp(0.0, 1.0)).round() as i32;
+    kept(Still::Puck(y), || paint_puck(y))
+}
+
+fn paint_puck(y: i32) -> Prop {
     piece(
         STRIKER.1 as f32 + 0.1,
         (STRIKER.0 - 2, y, 5, 4),
@@ -368,6 +408,13 @@ fn paws(crown: i32, feet: f32) -> i32 {
 /// The mallet: a hickory handle and a round oak head with iron bands at its ends, lit from the
 /// upper left.
 pub fn mallet(at: Mallet) -> Prop {
+    match at {
+        Mallet::Leaning => kept(Still::Mallet, || paint_mallet(at)),
+        Mallet::Held { .. } => paint_mallet(at),
+    }
+}
+
+fn paint_mallet(at: Mallet) -> Prop {
     let (grip, head, base) = match at {
         Mallet::Leaning => {
             let (cx, foot) = STRIKER;
@@ -442,6 +489,10 @@ pub fn mallet(at: Mallet) -> Prop {
 /// way: drawn under everyone, a little uneven, with chalk dust either side. The line the racers
 /// start from, and the one across the middle of the tug-of-war.
 pub fn chalk_line(from: (i32, i32), to: (i32, i32)) -> Prop {
+    kept(Still::ChalkLine(from, to), || paint_chalk_line(from, to))
+}
+
+fn paint_chalk_line(from: (i32, i32), to: (i32, i32)) -> Prop {
     let left = from.0.min(to.0) - 3;
     let area = (left, from.1, (from.0 - to.0).abs() + 7, to.1 - from.1 + 1);
     piece(f32::MIN, area, |canvas, (left, top)| {
@@ -472,6 +523,10 @@ pub fn chalk_line(from: (i32, i32), to: (i32, i32)) -> Prop {
 /// A post for the ribbon with its foot at `(x, foot)`: banded in red and cream paint, a brass
 /// knob on top, its shadow on the ground. Its top is `POST_TALL` above its foot.
 pub fn post(x: i32, foot: i32) -> Prop {
+    kept(Still::Post(x, foot), || paint_post(x, foot))
+}
+
+fn paint_post(x: i32, foot: i32) -> Prop {
     let area = (x - 2, foot - POST_TALL - 2, 8, POST_TALL + 4);
     piece(foot as f32, area, |canvas, (left, top)| {
         let (x, foot) = (x - left, foot - top);

@@ -10,6 +10,9 @@ use anyhow::{Context, Result, bail};
 use formiga_art::Canvas;
 use std::path::PathBuf;
 
+#[cfg(test)]
+mod golden;
+
 /// What a `--render-*` command draws.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Area {

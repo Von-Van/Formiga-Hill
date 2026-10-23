@@ -651,7 +651,8 @@ impl Sovereign {
 
     /// The Sovereign's answer, after its current form.
     fn answer(&mut self) -> Vec<Act> {
-        let pick = (self.dice.unit() * self.party.len() as f32) as usize % self.party.len().max(1);
+        // A roll is taken even with nobody left, as it always was.
+        let pick = self.dice.index(self.party.len().max(1)).unwrap_or(0);
         let Some((target, _, name)) = self.party.get(pick).cloned() else {
             return Vec::new();
         };

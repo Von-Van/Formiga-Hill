@@ -288,42 +288,101 @@ pub fn glow(canvas: &mut Canvas, (cx, cy): (i32, i32), radius: i32, color: Rgba)
 /// `painted` (that is, wherever nobody stands in front of it).
 pub fn light(frame: &mut Canvas, light: [f32; 3], painted: &Canvas, glows: &[(&Canvas, f32)]) {
     let unchanged = light.iter().all(|channel| *channel >= 0.999);
-    let glows: Vec<(&Canvas, f32)> = glows
+    // Every channel value and every glow's alpha is worked out once for the frame, rather than
+    // once a pixel: there are only 256 of each.
+    let glows: Vec<(&Canvas, [u8; 256])> = glows
         .iter()
         .filter(|(_, strength)| *strength > 0.0)
-        .map(|(canvas, strength)| (*canvas, strength.min(1.0)))
+        .map(|(canvas, strength)| {
+            let strength = strength.min(1.0);
+            (
+                *canvas,
+                table(|alpha| (f32::from(alpha) * strength).round() as u8),
+            )
+        })
         .collect();
     if unchanged && glows.is_empty() {
         return;
     }
+    let scale = |by: f32| table(|value| (f32::from(value) * by).round().clamp(0.0, 255.0) as u8);
+    let channels = [scale(light[0]), scale(light[1]), scale(light[2])];
     let (width, height) = (frame.width() as i32, frame.height() as i32);
-    let scale = |value: u8, by: f32| (f32::from(value) * by).round().clamp(0.0, 255.0) as u8;
+    let fits =
+        |canvas: &Canvas| canvas.width() == frame.width() && canvas.height() == frame.height();
+    if fits(painted) && glows.iter().all(|(layer, _)| fits(layer)) {
+        // Everything the same size, as a scene and its layers are: a row at a time, straight
+        // from the pixels.
+        let mut row = Vec::with_capacity(width as usize);
+        for y in 0..height {
+            let start = (y * width) as usize;
+            let span = start..start + width as usize;
+            let under = &painted.pixels()[span.clone()];
+            row.clear();
+            row.extend(frame.pixels()[span].iter().zip(under).enumerate().map(
+                |(x, (&pixel, &under))| {
+                    lit(&channels, &glows, pixel, under, |layer| {
+                        layer.pixels()[start + x]
+                    })
+                },
+            ));
+            for (x, &pixel) in row.iter().enumerate() {
+                frame.set(x as i32, y, pixel);
+            }
+        }
+        return;
+    }
     for y in 0..height {
         for x in 0..width {
-            let pixel = frame.get(x, y);
-            let mut lit = Rgba::new(
-                scale(pixel.r, light[0]),
-                scale(pixel.g, light[1]),
-                scale(pixel.b, light[2]),
-                pixel.a,
+            let pixel = lit(
+                &channels,
+                &glows,
+                frame.get(x, y),
+                painted.get(x, y),
+                |layer| layer.get(x, y),
             );
-            if !glows.is_empty() && pixel == painted.get(x, y) {
-                for (layer, strength) in &glows {
-                    let shine = layer.get(x, y);
-                    if shine.a > 0 {
-                        let alpha = (f32::from(shine.a) * strength).round() as u8;
-                        lit = over(Rgba::new(shine.r, shine.g, shine.b, alpha), lit);
-                    }
-                }
-            }
-            frame.set(x, y, lit);
+            frame.set(x, y, pixel);
         }
     }
+}
+
+/// One pixel in the hour's light, `channels` giving each colour's new value by its old one;
+/// then, where it still shows `under`, each glow laid on it, `shine_of` finding the glow's own
+/// pixel there and its table how strongly it shows.
+#[inline(always)]
+fn lit(
+    channels: &[[u8; 256]; 3],
+    glows: &[(&Canvas, [u8; 256])],
+    pixel: Rgba,
+    under: Rgba,
+    shine_of: impl Fn(&Canvas) -> Rgba,
+) -> Rgba {
+    let mut lit = Rgba::new(
+        channels[0][usize::from(pixel.r)],
+        channels[1][usize::from(pixel.g)],
+        channels[2][usize::from(pixel.b)],
+        pixel.a,
+    );
+    if !glows.is_empty() && pixel == under {
+        for (layer, strength) in glows {
+            let shine = shine_of(layer);
+            if shine.a > 0 {
+                let alpha = strength[usize::from(shine.a)];
+                lit = over(Rgba::new(shine.r, shine.g, shine.b, alpha), lit);
+            }
+        }
+    }
+    lit
+}
+
+/// What `f` makes of every byte, looked up by the byte.
+fn table(f: impl Fn(u8) -> u8) -> [u8; 256] {
+    std::array::from_fn(|index| f(index as u8))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::paint::blit;
 
     #[test]
     fn midday_leaves_a_picture_as_it_was_painted() {
@@ -405,6 +464,58 @@ mod tests {
             let inside = Daylight::at_hour(hour as f32).indoors();
             for channel in 0..3 {
                 assert!(inside[channel] >= LAMPLIGHT[channel]);
+            }
+        }
+    }
+
+    #[test]
+    fn every_colour_is_lit_as_by_working_out_each_pixel() {
+        // Every value of every channel, and of a glow's alpha, once each.
+        let mut painted = Canvas::new(256, 2);
+        let mut glow = Canvas::new(256, 2);
+        for value in 0..=255u8 {
+            let x = i32::from(value);
+            painted.set(x, 0, Rgba::new(value, 255 - value, value / 2, 255));
+            painted.set(x, 1, Rgba::new(value / 3, value, 255 - value, value));
+            glow.set(x, 0, Rgba::new(0xff, 0xd7, 0x7a, value));
+            glow.set(x, 1, Rgba::new(0xf4, 0xf0, 0xdc, 255 - value));
+        }
+        // A glow a row taller than the picture, as well, which is lit a pixel at a time.
+        let mut taller = Canvas::new(256, 3);
+        blit(&mut taller, &glow, 0, 0);
+        let scale = |value: u8, by: f32| (f32::from(value) * by).round().clamp(0.0, 255.0) as u8;
+        for quarter in 0..96 {
+            let day = Daylight::at_hour(quarter as f32 / 4.0);
+            for (ambient, glow) in [
+                (day.ambient(), &glow),
+                (day.indoors(), &glow),
+                (day.ambient(), &taller),
+            ] {
+                let mut frame = painted.clone();
+                // Someone stands in front of the last few.
+                frame.fill_rect(250, 0, 6, 2, rgb(0x202020));
+                let mut expected = frame.clone();
+                for y in 0..2 {
+                    for x in 0..256 {
+                        let pixel = expected.get(x, y);
+                        let mut lit = Rgba::new(
+                            scale(pixel.r, ambient[0]),
+                            scale(pixel.g, ambient[1]),
+                            scale(pixel.b, ambient[2]),
+                            pixel.a,
+                        );
+                        if pixel == painted.get(x, y) && day.lamps() > 0.0 {
+                            let shine = glow.get(x, y);
+                            if shine.a > 0 {
+                                let alpha = (f32::from(shine.a) * day.lamps()).round() as u8;
+                                lit = over(Rgba::new(shine.r, shine.g, shine.b, alpha), lit);
+                            }
+                        }
+                        expected.set(x, y, lit);
+                    }
+                }
+                light(&mut frame, ambient, &painted, &[(glow, day.lamps())]);
+                assert_eq!(frame, expected, "lit otherwise at {}", day.hour());
             }
         }
     }

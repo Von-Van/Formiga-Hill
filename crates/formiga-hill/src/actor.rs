@@ -13,7 +13,9 @@ use formiga_art::{
     FRAME_SIZE, FaceRenderState, GazeDirection, PlaybackMode,
 };
 use formiga_core::{ActionKind, AppearanceGenome};
+use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 
 /// One thing an actor does, in order.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -439,8 +441,8 @@ impl Actor {
         let crown = (x + frame.crown.0, y + frame.crown.1);
         let body = (x + left, y + top, x + right, y + bottom);
         let worn = self.costume.and_then(|id| {
-            let (sprite, at) = placed_costume(id, crown, self.face_below_crown, key.facing_right)?;
-            let (l, t, r, b) = sprite.alpha_bounds()?;
+            let (worn, at) = placed_costume(id, crown, self.face_below_crown, key.facing_right)?;
+            let (l, t, r, b) = worn.bounds?;
             Some((
                 at.0 + l as i32,
                 at.1 + t as i32,
@@ -487,19 +489,19 @@ impl Actor {
         let key = self.pose(now);
         if self.tipped {
             let (turned, (x, y)) = self.turned_over(key);
-            blit(scene, &turned, x, y);
+            blit(scene, turned, x, y);
             return;
         }
         let (x, y) = self.origin();
+        let (shining, reduce_motion, id) = (self.shining, self.reduce_motion, self.id);
         let frame = self.frame(key);
-        // `blit` takes the frame by reference while `self` is borrowed for the cache.
-        let (canvas, crown) = (frame.canvas.clone(), frame.crown);
-        blit(scene, &canvas, x, y);
-        if self.shining {
-            draw_shine(scene, &canvas, (x, y), now, self.reduce_motion, self.id);
+        blit(scene, &frame.canvas, x, y);
+        if shining {
+            draw_shine(scene, &frame.canvas, (x, y), now, reduce_motion, id);
         }
+        let crown = frame.crown;
         if let Some(sack) = self.sack_for(key) {
-            blit(scene, &sack, x, y);
+            blit(scene, sack, x, y);
         }
         if let Some(id) = self.costume {
             draw_costume(
@@ -552,7 +554,7 @@ impl Actor {
     }
 
     /// The sack drawn over this frame, if it is in one.
-    fn sack_for(&mut self, key: FrameKey) -> Option<Canvas> {
+    fn sack_for(&mut self, key: FrameKey) -> Option<&Canvas> {
         let band = self.sack?;
         if self.sacks.len() >= FRAME_CACHE_LIMIT {
             self.sacks.clear();
@@ -569,18 +571,18 @@ impl Actor {
             let sack = crate::fairground::gear::sack(&frame, band, girth);
             self.sacks.insert((key, band), sack);
         }
-        self.sacks.get(&(key, band)).cloned()
+        self.sacks.get(&(key, band))
     }
 
     /// The frame with whatever it has on, turned on its side with its head the way it was
     /// facing, as if it had fallen forward, and where its top-left goes in the scene: lying on
     /// the ground where it stood.
-    fn turned_over(&mut self, key: FrameKey) -> (Canvas, (i32, i32)) {
+    fn turned_over(&mut self, key: FrameKey) -> (&Canvas, (i32, i32)) {
         if !matches!(&self.turned, Some((turned_key, _)) if *turned_key == key) {
             let frame = self.frame(key);
             let (mut whole, crown) = (frame.canvas.clone(), frame.crown);
             if let Some(sack) = self.sack_for(key) {
-                blit(&mut whole, &sack, 0, 0);
+                blit(&mut whole, sack, 0, 0);
             }
             if let Some(id) = self.costume {
                 draw_costume(
@@ -600,15 +602,18 @@ impl Actor {
             };
             self.turned = Some((key, fallen));
         }
-        let turned = self.turned.as_ref().map(|(_, canvas)| canvas.clone());
-        let turned = turned.unwrap_or_else(|| Canvas::new(1, 1));
+        let (pos, lift) = (self.pos, self.lift);
+        let turned = match &self.turned {
+            Some((_, canvas)) => canvas,
+            None => unreachable!("turned over just now"),
+        };
         let (left, _, right, bottom) =
             turned.alpha_bounds().map_or((0, 0, 0, 0), |(a, b, c, d)| {
                 (a as i32, b as i32, c as i32, d as i32)
             });
         let at = (
-            self.pos.0.round() as i32 - (left + right) / 2,
-            (self.pos.1 - self.lift).round() as i32 - bottom,
+            pos.0.round() as i32 - (left + right) / 2,
+            (pos.1 - lift).round() as i32 - bottom,
         );
         (turned, at)
     }
@@ -734,43 +739,78 @@ const HEAD_WIDE: i32 = 8;
 /// `face_below_crown` and a little further down, facing the way it faces.
 fn draw_costume(
     scene: &mut Canvas,
-    id: &str,
+    id: &'static str,
     crown: (i32, i32),
     face_below_crown: i32,
     facing_right: bool,
 ) {
-    if let Some((sprite, at)) = placed_costume(id, crown, face_below_crown, facing_right) {
-        blit(scene, &sprite, at.0, at.1);
+    if let Some((worn, at)) = placed_costume(id, crown, face_below_crown, facing_right) {
+        blit(scene, &worn.sprite, at.0, at.1);
     }
+}
+
+/// A costume piece as it is drawn on whoever wears it, facing one way.
+struct Worn {
+    sprite: Canvas,
+    /// The point on it that sits on the crown or at the throat.
+    anchor: (i32, i32),
+    slot: crate::costume::Slot,
+    /// The opaque part of it, inclusive.
+    bounds: Option<(u32, u32, u32, u32)>,
+}
+
+/// A costume piece as it is drawn facing one way: painted, and mirrored for facing left, the
+/// first time it is worn that way, and kept for everyone who wears it after.
+fn worn(id: &'static str, facing_right: bool) -> Option<Rc<Worn>> {
+    /// Each piece by its name and which way it faces; nothing for a name Hill doesn't know.
+    type Kept = HashMap<(&'static str, bool), Option<Rc<Worn>>>;
+    thread_local! {
+        static WORN: RefCell<Kept> = RefCell::new(HashMap::new());
+    }
+    WORN.with_borrow_mut(|worn| {
+        worn.entry((id, facing_right))
+            .or_insert_with(|| {
+                let piece = crate::costume::piece(id)?;
+                let mut sprite = crate::costume::art::sprite(id);
+                let (mut ax, ay) = crate::costume::art::anchor(id);
+                if !facing_right {
+                    let (width, height) = (sprite.width() as i32, sprite.height() as i32);
+                    let mut mirrored = Canvas::new(sprite.width(), sprite.height());
+                    for py in 0..height {
+                        for px in 0..width {
+                            mirrored.set(width - 1 - px, py, sprite.get(px, py));
+                        }
+                    }
+                    sprite = mirrored;
+                    ax = width - 1 - ax;
+                }
+                let bounds = sprite.alpha_bounds();
+                Some(Rc::new(Worn {
+                    sprite,
+                    anchor: (ax, ay),
+                    slot: piece.slot,
+                    bounds,
+                }))
+            })
+            .clone()
+    })
 }
 
 /// A costume piece as it is drawn on its wearer, and where its top-left corner goes in the scene.
 fn placed_costume(
-    id: &str,
+    id: &'static str,
     crown: (i32, i32),
     face_below_crown: i32,
     facing_right: bool,
-) -> Option<(Canvas, (i32, i32))> {
-    let piece = crate::costume::piece(id)?;
-    let mut sprite = crate::costume::art::sprite(id);
-    let (mut ax, ay) = crate::costume::art::anchor(id);
-    if !facing_right {
-        let (width, height) = (sprite.width() as i32, sprite.height() as i32);
-        let mut mirrored = Canvas::new(sprite.width(), sprite.height());
-        for py in 0..height {
-            for px in 0..width {
-                mirrored.set(width - 1 - px, py, sprite.get(px, py));
-            }
-        }
-        sprite = mirrored;
-        ax = width - 1 - ax;
-    }
-    let point = match piece.slot {
+) -> Option<(Rc<Worn>, (i32, i32))> {
+    let worn = worn(id, facing_right)?;
+    let (ax, ay) = worn.anchor;
+    let point = match worn.slot {
         crate::costume::Slot::Crown => crown,
         // The throat: just under the face, however tall the head above it.
         crate::costume::Slot::Neck => (crown.0, crown.1 + face_below_crown + THROAT_BELOW_FACE),
     };
-    Some((sprite, (point.0 - ax, point.1 - ay)))
+    Some((worn, (point.0 - ax, point.1 - ay)))
 }
 
 fn frame_of(clip: BodyClip, elapsed: f32, still: bool) -> u8 {

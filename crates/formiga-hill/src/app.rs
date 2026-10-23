@@ -793,9 +793,16 @@ impl HillApp {
             }
             _ => Vec::new(),
         };
-        if self.texture.is_none() || frames.is_empty() || frames != self.shown_frames {
+        // The scene is kept for photos only while the camera is out to take them.
+        if !self.camera.out {
+            self.last_scene = None;
+        }
+        let unframed = self.camera.out && self.last_scene.is_none();
+        if self.texture.is_none() || frames.is_empty() || frames != self.shown_frames || unframed {
             let mut canvas = self.compose(now);
-            self.last_scene = Some(canvas.clone());
+            if self.camera.out {
+                self.last_scene = Some(canvas.clone());
+            }
             if let Some((before, since)) = &self.leaving {
                 let progress = (now - since) / DISSOLVE_SECS;
                 if progress >= 1.0 {
@@ -804,10 +811,7 @@ impl HillApp {
                     dissolve(&mut canvas, before, progress);
                 }
             }
-            let image = egui::ColorImage::from_rgba_unmultiplied(
-                [SCENE_WIDTH as usize, SCENE_HEIGHT as usize],
-                &canvas.rgba_bytes(),
-            );
+            let image = color_image(&canvas);
             match &mut self.texture {
                 Some(texture) => texture.set(image, egui::TextureOptions::NEAREST),
                 None => {
@@ -1491,6 +1495,18 @@ impl eframe::App for HillApp {
     }
 }
 
+/// A picture as egui takes it for a texture, made in one go.
+pub fn color_image(canvas: &Canvas) -> egui::ColorImage {
+    egui::ColorImage::new(
+        [canvas.width() as usize, canvas.height() as usize],
+        canvas
+            .pixels()
+            .iter()
+            .map(|pixel| egui::Color32::from_rgba_unmultiplied(pixel.r, pixel.g, pixel.b, pixel.a))
+            .collect(),
+    )
+}
+
 /// Mixes `before` into `scene` in an ordered dither, `progress` of the way to `scene`: a pixel
 /// art dissolve, with no colour in it that neither picture has.
 fn dissolve(scene: &mut Canvas, before: &Canvas, progress: f32) {
@@ -1620,6 +1636,27 @@ fn plural(count: usize) -> &'static str {
 mod tests {
     use super::*;
     use crate::cast::sample;
+
+    #[test]
+    fn a_scene_reaches_the_screen_as_egui_would_read_its_bytes() {
+        let mut canvas = Canvas::new(256, 3);
+        for value in 0..=255u8 {
+            let x = i32::from(value);
+            canvas.set(
+                x,
+                0,
+                formiga_art::Rgba::new(value, 255 - value, value / 2, 255),
+            );
+            canvas.set(x, 1, formiga_art::Rgba::new(200, value / 3, 90, value));
+            canvas.set(
+                x,
+                2,
+                formiga_art::Rgba::new(value, value, value, 255 - value),
+            );
+        }
+        let expected = egui::ColorImage::from_rgba_unmultiplied([256, 3], &canvas.rgba_bytes());
+        assert_eq!(color_image(&canvas), expected);
+    }
 
     #[test]
     fn words_read_as_they_would_in_a_sentence() {

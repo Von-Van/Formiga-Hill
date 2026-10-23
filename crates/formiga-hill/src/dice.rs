@@ -31,6 +31,22 @@ impl Dice {
         self.unit() < probability
     }
 
+    /// An index below `len`, each as likely as the others, from one roll; `None`, with nothing
+    /// rolled, when there is nothing to choose from.
+    pub fn index(&mut self, len: usize) -> Option<usize> {
+        if len == 0 {
+            return None;
+        }
+        // A roll a hair under 1 can still come to `len` once multiplied, so it wraps round.
+        Some((self.unit() * len as f32) as usize % len)
+    }
+
+    /// One of `items`, each as likely as the others, from one roll; `None`, with nothing rolled,
+    /// when there are none.
+    pub fn choose<'a, T>(&mut self, items: &'a [T]) -> Option<&'a T> {
+        self.index(items.len()).map(|index| &items[index])
+    }
+
     /// An index chosen in proportion to `weights`; `None` if none of them is above zero.
     pub fn weighted(&mut self, weights: &[f32]) -> Option<usize> {
         let total: f32 = weights.iter().map(|weight| weight.max(0.0)).sum();
@@ -69,6 +85,30 @@ mod tests {
         assert!(rolls.iter().all(|roll| (0.0..1.0).contains(roll)));
         let low = rolls.iter().filter(|roll| **roll < 0.5).count();
         assert!((900..1100).contains(&low));
+    }
+
+    #[test]
+    fn an_index_rolls_as_the_sum_written_out_did() {
+        let (mut dice, mut by_hand) = (Dice::new(11), Dice::new(11));
+        for len in (1..200).chain([1000, 4096, 1 << 20, 16_777_217]) {
+            for _ in 0..20 {
+                let expected = (by_hand.unit() * len as f32) as usize % len;
+                assert_eq!(dice.index(len), Some(expected));
+            }
+        }
+        let items = ["moss", "fern", "pip"];
+        for _ in 0..50 {
+            let expected = items[(by_hand.unit() * 3.0) as usize % 3];
+            assert_eq!(dice.choose(&items), Some(&expected));
+        }
+    }
+
+    #[test]
+    fn nothing_to_choose_from_rolls_nothing() {
+        let (mut dice, mut untouched) = (Dice::new(5), Dice::new(5));
+        assert_eq!(dice.index(0), None);
+        assert_eq!(dice.choose::<u8>(&[]), None);
+        assert_eq!(dice.next_u64(), untouched.next_u64());
     }
 
     #[test]

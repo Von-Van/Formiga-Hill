@@ -5,114 +5,18 @@
 //! in a darker shade of their own colour rather than in black (so the creatures, which are outlined
 //! in near-black, always read first), and surfaces carry texture from a deterministic hash, so a
 //! scene is the same pixel for pixel every time it is drawn.
+//!
+//! Most of the tools are Desktop's own, shared by the companion apps and drawing exactly as Hill's
+//! did. Hill keeps its own `ellipse`, which draws nothing for a zero radius, and its own `polygon`,
+//! which takes whole-pixel corners and leaves out a pixel whose centre lies on a right-hand edge;
+//! its `mix` cuts each channel down to a whole number, as Desktop's `mix_truncated` does.
 
 use formiga_art::{Canvas, Rgba};
 
-pub const fn rgb(hex: u32) -> Rgba {
-    Rgba::new((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, 255)
-}
-
-pub const fn rgba(hex: u32, alpha: u8) -> Rgba {
-    Rgba::new((hex >> 16) as u8, (hex >> 8) as u8, hex as u8, alpha)
-}
-
-/// One material's tones, darkest first. `edge` outlines it; `shine` is used a pixel at a time.
-#[derive(Clone, Copy, Debug)]
-pub struct Ramp {
-    pub edge: Rgba,
-    pub shadow: Rgba,
-    pub base: Rgba,
-    pub light: Rgba,
-    pub shine: Rgba,
-}
-
-impl Ramp {
-    pub const fn new(edge: u32, shadow: u32, base: u32, light: u32, shine: u32) -> Self {
-        Self {
-            edge: rgb(edge),
-            shadow: rgb(shadow),
-            base: rgb(base),
-            light: rgb(light),
-            shine: rgb(shine),
-        }
-    }
-}
-
-/// A well-mixed hash of a pixel and a salt: texture that never changes between runs.
-pub fn noise(x: i32, y: i32, salt: u32) -> u32 {
-    let mut hash = (x as u32).wrapping_mul(0x27d4_eb2d)
-        ^ (y as u32).wrapping_mul(0x1656_67b1)
-        ^ salt.wrapping_mul(0x9e37_79b9);
-    hash ^= hash >> 15;
-    hash = hash.wrapping_mul(0x2c1b_3c6d);
-    hash ^= hash >> 12;
-    hash = hash.wrapping_mul(0x297a_2d39);
-    hash ^ (hash >> 15)
-}
-
-/// True for about `per_256` pixels in every 256.
-pub fn chance(x: i32, y: i32, salt: u32, per_256: u32) -> bool {
-    noise(x, y, salt) & 0xff < per_256
-}
-
-/// Source-over: `top` drawn on `bottom` by its alpha. Onto an opaque pixel this is a plain mix;
-/// onto a clear or half-clear one the colours are weighted by how much of each is there, so a
-/// soft shadow or a glow drawn into an empty sprite keeps its own colour rather than going dark.
-pub fn over(top: Rgba, bottom: Rgba) -> Rgba {
-    match (top.a, bottom.a) {
-        (255, _) | (_, 0) => top,
-        (0, _) => bottom,
-        (top_alpha, bottom_alpha) => {
-            let top_alpha = u32::from(top_alpha);
-            // How much of the bottom shows through, out of 255 * 255.
-            let under = u32::from(bottom_alpha) * (255 - top_alpha);
-            let total = top_alpha * 255 + under;
-            let mix = |a: u8, b: u8| {
-                ((u32::from(a) * top_alpha * 255 + u32::from(b) * under) / total) as u8
-            };
-            Rgba::new(
-                mix(top.r, bottom.r),
-                mix(top.g, bottom.g),
-                mix(top.b, bottom.b),
-                (total / 255).min(255) as u8,
-            )
-        }
-    }
-}
-
-/// `a` moved `amount` of the way to `b`.
-pub fn mix(a: Rgba, b: Rgba, amount: f32) -> Rgba {
-    let channel = |x: u8, y: u8| (f32::from(x) + (f32::from(y) - f32::from(x)) * amount) as u8;
-    Rgba::new(
-        channel(a.r, b.r),
-        channel(a.g, b.g),
-        channel(a.b, b.b),
-        channel(a.a, b.a),
-    )
-}
-
-pub fn put(canvas: &mut Canvas, x: i32, y: i32, color: Rgba) {
-    let blended = over(color, canvas.get(x, y));
-    canvas.set(x, y, blended);
-}
-
-pub fn hline(canvas: &mut Canvas, x: i32, y: i32, width: i32, color: Rgba) {
-    for dx in 0..width {
-        put(canvas, x + dx, y, color);
-    }
-}
-
-pub fn vline(canvas: &mut Canvas, x: i32, y: i32, height: i32, color: Rgba) {
-    for dy in 0..height {
-        put(canvas, x, y + dy, color);
-    }
-}
-
-pub fn rect(canvas: &mut Canvas, x: i32, y: i32, width: i32, height: i32, color: Rgba) {
-    for dy in 0..height {
-        hline(canvas, x, y + dy, width, color);
-    }
-}
+pub use formiga_art::paint::{
+    Ramp, bevel, blit, chance, hline, line, mix_truncated as mix, noise, over, put, rect, rgb,
+    rgba, vline,
+};
 
 /// A filled ellipse that blends, for glows, shade and smoke.
 pub fn ellipse(canvas: &mut Canvas, cx: i32, cy: i32, rx: i32, ry: i32, color: Rgba) {
@@ -129,19 +33,24 @@ pub fn ellipse(canvas: &mut Canvas, cx: i32, cy: i32, rx: i32, ry: i32, color: R
     }
 }
 
-/// A box lit from the upper left: highlight along the top and left, shade along the bottom and
-/// right, outlined in the material's own edge tone.
-pub fn bevel(canvas: &mut Canvas, x: i32, y: i32, width: i32, height: i32, ramp: Ramp) {
-    rect(canvas, x, y, width, height, ramp.edge);
-    if width <= 2 || height <= 2 {
-        return;
+/// Just the part of a picture with anything drawn in it, and where its top-left corner was: a
+/// layer the size of the scene with a little painted on it, cut down so laying it over a scene
+/// looks only at what was painted. A layer with nothing on it comes back as one clear pixel.
+pub fn trimmed(layer: &Canvas) -> (Canvas, (i32, i32)) {
+    let Some((left, top, right, bottom)) = layer.alpha_bounds() else {
+        return (Canvas::new(1, 1), (0, 0));
+    };
+    let (left, top) = (left as i32, top as i32);
+    let mut sprite = Canvas::new(
+        (right as i32 - left + 1) as u32,
+        (bottom as i32 - top + 1) as u32,
+    );
+    for y in 0..sprite.height() as i32 {
+        for x in 0..sprite.width() as i32 {
+            sprite.set(x, y, layer.get(left + x, top + y));
+        }
     }
-    rect(canvas, x + 1, y + 1, width - 2, height - 2, ramp.base);
-    hline(canvas, x + 1, y + 1, width - 2, ramp.light);
-    vline(canvas, x + 1, y + 1, height - 2, ramp.light);
-    hline(canvas, x + 1, y + height - 2, width - 2, ramp.shadow);
-    vline(canvas, x + width - 2, y + 1, height - 2, ramp.shadow);
-    put(canvas, x + 1, y + 1, ramp.shine);
+    (sprite, (left, top))
 }
 
 /// Fills a polygon, asking `paint` for each pixel's colour. Pixel centres decide what is inside,
@@ -175,41 +84,6 @@ pub fn polygon(
                 if let Some(color) = paint(x, y) {
                     put(canvas, x, y, color);
                 }
-            }
-        }
-    }
-}
-
-/// A one-pixel line that blends.
-pub fn line(canvas: &mut Canvas, from: (i32, i32), to: (i32, i32), color: Rgba) {
-    let ((mut x0, mut y0), (x1, y1)) = (from, to);
-    let (dx, dy) = ((x1 - x0).abs(), -(y1 - y0).abs());
-    let (sx, sy) = (if x0 < x1 { 1 } else { -1 }, if y0 < y1 { 1 } else { -1 });
-    let mut error = dx + dy;
-    loop {
-        put(canvas, x0, y0, color);
-        if (x0, y0) == (x1, y1) {
-            break;
-        }
-        let twice = 2 * error;
-        if twice >= dy {
-            error += dy;
-            x0 += sx;
-        }
-        if twice <= dx {
-            error += dx;
-            y0 += sy;
-        }
-    }
-}
-
-/// Every opaque pixel of `sprite` drawn over `canvas` with its top-left corner at `(x, y)`.
-pub fn blit(canvas: &mut Canvas, sprite: &Canvas, x: i32, y: i32) {
-    for sy in 0..sprite.height() as i32 {
-        for sx in 0..sprite.width() as i32 {
-            let pixel = sprite.get(sx, sy);
-            if pixel.a > 0 {
-                put(canvas, x + sx, y + sy, pixel);
             }
         }
     }

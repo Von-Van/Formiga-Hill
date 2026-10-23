@@ -275,8 +275,9 @@ pub fn out(
             .into_iter()
             .filter(|bug| bug.tier == least)
             .collect();
-        let pick = (dice.unit() * candidates.len() as f32) as usize % candidates.len();
-        out.push(candidates[pick]);
+        if let Some(&bug) = dice.choose(&candidates) {
+            out.push(bug);
+        }
     }
     out
 }

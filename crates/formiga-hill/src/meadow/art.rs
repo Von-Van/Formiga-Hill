@@ -23,7 +23,7 @@ use formiga_art::{Canvas, Rgba};
 pub const ICON: u32 = 9;
 
 /// What a bug is doing, which decides how it is drawn.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Pose {
     /// In the air, wings beating; for the grasshopper, mid-hop with its legs out.
     Flying,
