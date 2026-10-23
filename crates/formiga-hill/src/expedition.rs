@@ -595,6 +595,11 @@ impl Expedition {
         }
     }
 
+    /// Every ground the expedition has: the map, and the stop under way, if there is one.
+    pub fn grounds_mut(&mut self) -> impl Iterator<Item = &mut Playground> {
+        std::iter::once(&mut self.paper).chain(self.leg.as_mut().map(|leg| &mut leg.ground))
+    }
+
     /// Brings any stop under way to a close at once, its basket as it is, as when the person
     /// leaves the Woods partway through it.
     pub fn close_leg(&mut self, now: f32) {

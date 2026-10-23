@@ -73,15 +73,71 @@ pub struct Woods {
     /// expedition is one.
     pub adventure: Option<(String, String)>,
     pub playing: Option<super::adventures::Playing>,
-    /// An adventure being made on the map editor, and what has been done to it, to undo.
+    /// An adventure being made on the map editor, what has been done to it, to undo, and the
+    /// ones begun, by name and title, as last read from the drafts kept: read again only once
+    /// one is kept or thrown away.
     pub making: Option<super::mapmaking::Making>,
     pub making_history: super::undo::History<crate::adventure::draft::Draft>,
+    pub begun: Option<Vec<(String, String)>>,
     /// The old track with nobody there, a scavenge under way, and a map being followed, and
     /// which of the colony's maps is chosen to follow.
     pub track: Option<Playground>,
     pub scavenge: Option<(Playground, crate::track::scavenging::Scavenge)>,
     pub treasure: Option<(Playground, crate::track::treasure::Hunt)>,
     pub map: usize,
+}
+
+impl Woods {
+    /// Every ground in the Woods that is up: the places with nobody there, whatever is under way,
+    /// and the map and the stop of an expedition. Whatever reaches everyone wherever they are,
+    /// the hour's light or what they have on, goes through here, so no ground is left out.
+    pub fn grounds_mut(&mut self) -> impl Iterator<Item = &mut Playground> {
+        // Every field named, so a new ground can't be missed here.
+        let Self {
+            party: _,
+            activity: _,
+            empty,
+            pool,
+            outing,
+            fishing,
+            meadow,
+            hunt,
+            creeping: _,
+            hedgerow,
+            foray,
+            expedition,
+            plan: _,
+            adventure: _,
+            playing: _,
+            making: _,
+            making_history: _,
+            begun: _,
+            track,
+            scavenge,
+            treasure,
+            map: _,
+        } = self;
+        [
+            empty.as_mut(),
+            pool.as_mut(),
+            meadow.as_mut(),
+            hedgerow.as_mut(),
+            track.as_mut(),
+            outing.as_mut().map(|(ground, _)| ground),
+            fishing.as_mut().map(|(ground, _)| ground),
+            hunt.as_mut().map(|(ground, _)| ground),
+            foray.as_mut().map(|(ground, _)| ground),
+            scavenge.as_mut().map(|(ground, _)| ground),
+            treasure.as_mut().map(|(ground, _)| ground),
+        ]
+        .into_iter()
+        .flatten()
+        .chain(
+            expedition
+                .iter_mut()
+                .flat_map(crate::expedition::Expedition::grounds_mut),
+        )
+    }
 }
 
 /// What the planning map was drawn for, so it is drawn again whenever any of it changes: who is
@@ -605,5 +661,56 @@ fn angler(character: &Character) -> &'static str {
         "Playful at the water's edge: fish come to its float readily."
     } else {
         "Strong on the line: hard to snap."
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cast::Cast;
+    use crate::hedgerow::foraging::{self, Foray};
+    use crate::track::scavenging::{self, Scavenge};
+    use crate::woods::Influence;
+
+    #[test]
+    fn every_ground_in_the_woods_is_reached_foraging_and_scavenging_too() {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let party: Vec<Id> = cast.members.iter().take(PARTY).map(|m| m.id).collect();
+        let hilltop = crate::hilltop::Arrangement::new();
+        let mut woods = Woods {
+            empty: Some(woods::open(&cast, &[], 0.0)),
+            hedgerow: Some(crate::hedgerow::open(&cast, &[], 0.0, &hilltop)),
+            ..Woods::default()
+        };
+        let mut lane = crate::hedgerow::open(&cast, &party, 0.0, &hilltop);
+        let outset = foraging::Outset {
+            party: party.clone(),
+            drought: 0,
+            close_pair: false,
+            influence: Influence::default(),
+            seed: 1,
+        };
+        let foray = Foray::new(&mut lane, outset, |_| false, 0.0);
+        woods.foray = Some((lane, foray));
+        let mut track = crate::track::open(&cast, &party, 0.0, &hilltop);
+        let outset = scavenging::Outset {
+            party,
+            drought: 0,
+            close_pair: false,
+            influence: Influence::default(),
+            maps_held: 0,
+            seed: 1,
+        };
+        let scavenge = Scavenge::new(&mut track, outset, |_| false, 0.0);
+        woods.scavenge = Some((track, scavenge));
+        let reached: Vec<*const Playground> = woods
+            .grounds_mut()
+            .map(|ground| ground as *const Playground)
+            .collect();
+        assert_eq!(reached.len(), 4);
+        let foraging = &woods.foray.as_ref().unwrap().0 as *const Playground;
+        let scavenging = &woods.scavenge.as_ref().unwrap().0 as *const Playground;
+        assert!(reached.contains(&foraging), "the foray is left out");
+        assert!(reached.contains(&scavenging), "the scavenge is left out");
     }
 }
