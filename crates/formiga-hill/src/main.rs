@@ -55,7 +55,9 @@ Formiga Hill
 Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save <FILE>]
                     [--render-station <PNG> | --render-green <PNG> | …] [--at <SECONDS>]
 
-  --sample                 Arrive with Desktop's made-up sample colony (the default)
+  --sample                 Arrive with Desktop's made-up sample colony, straight away. With no
+                           arguments at all it arrives too, behind a card saying that a colony
+                           of your own comes by train from Formiga Desktop
   --formiga-travel <DIR>   How Desktop starts Hill: the trip it wrote, answered on the way home
   --from-save <FILE>       Development only: board a Desktop colony file, which is only ever read
   --render-station <PNG>   Draw the station to a PNG and exit without opening a window
@@ -118,9 +120,9 @@ Usage: formiga-hill [--sample | --formiga-travel <TRIP DIRECTORY> | --from-save 
                            given) and close, with nothing the keys or pointer do let in
   --place <PLACE>          With --snap: open at the station, green, clubhouse, fairground, woods
                            or hilltop rather than the station
-  --card <CARD>            With --snap: open the notices, departures, board, shelf, writing,
-                           dress-up, journal, plans, album, sound, making, competitions or
-                           new-competition card, at its own place if none is given
+  --card <CARD>            With --snap: open the welcome, notices, departures, board, shelf,
+                           writing, dress-up, journal, plans, album, sound, making, competitions
+                           or new-competition card, at its own place if none is given
   --story                  With --snap in the Clubhouse: begin the first story on the shelves
   --chapter <N>            With --snap --card journal: open the Nth chapter of its contents;
                            with --card writing, the Nth scene of a sample story; with --card
@@ -189,6 +191,10 @@ struct Args {
     sounds: Option<PathBuf>,
     /// Picture the window for review, and close.
     snap: Option<app::Snap>,
+    /// Hill was started with no arguments at all, as a person opening it from Applications or
+    /// the Start menu starts it, rather than by Desktop or for development: the sample colony
+    /// arrives behind a card that says where the person's own colony comes from.
+    welcome: bool,
 }
 
 fn main() -> Result<()> {
@@ -311,6 +317,7 @@ fn main() -> Result<()> {
             let app = HillApp::new(cc, arrival, library, clock);
             Ok(Box::new(match args.snap {
                 Some(snap) => app.snap(snap),
+                None if args.welcome => app.welcome(),
                 None => app,
             }))
         }),
@@ -322,7 +329,11 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> {
+fn parse_args(args: impl Iterator<Item = OsString>) -> Result<Option<Args>> {
+    let mut args = args.peekable();
+    // Desktop always says how it starts Hill, and so does every development and review option,
+    // so only someone opening the app itself starts it with nothing at all.
+    let welcome = args.peek().is_none();
     let mut source = None;
     let mut render = None;
     let mut at = None;
@@ -472,6 +483,7 @@ fn parse_args(mut args: impl Iterator<Item = OsString>) -> Result<Option<Args>> 
         hour,
         sounds,
         snap,
+        welcome,
     }))
 }
 
@@ -648,6 +660,38 @@ mod tests {
         let args = parse(&[]).unwrap().unwrap();
         assert!(matches!(args.source, Source::Sample));
         assert!(args.render.is_none());
+    }
+
+    #[test]
+    fn only_hill_opened_on_its_own_says_where_a_colony_comes_from() {
+        let welcome = |args: &[&str]| parse(args).unwrap().unwrap().welcome;
+        assert!(welcome(&[]), "opened from Applications or the Start menu");
+        assert!(!welcome(&["--sample"]), "the sample asked for by name");
+        assert!(
+            !welcome(&["--formiga-travel", "/trips/ab"]),
+            "a trip from Desktop"
+        );
+        assert!(!welcome(&["--from-save", "colony.json"]));
+        assert!(!welcome(&["--render-station", "out.png"]));
+        assert!(!welcome(&["--snap", "a.png"]));
+        assert!(!welcome(&["--check-package", "story"]));
+        assert!(!welcome(&["--package", "story"]));
+        assert!(!welcome(&["--packages-folder"]));
+        assert!(!welcome(&["--render-sounds", "sounds"]));
+        let args = parse(&["--sample"]).unwrap().unwrap();
+        assert!(matches!(args.source, Source::Sample));
+    }
+
+    #[test]
+    fn the_welcome_card_can_be_pictured_at_the_station() {
+        let snap = parse(&["--snap", "a.png", "--card", "welcome"])
+            .unwrap()
+            .unwrap()
+            .snap
+            .unwrap();
+        assert_eq!(snap.card.as_deref(), Some("welcome"));
+        assert_eq!(snap.place.as_deref(), Some("station"));
+        assert!(parse(&["--snap", "a.png", "--card", "welcome", "--place", "green"]).is_err());
     }
 
     #[test]

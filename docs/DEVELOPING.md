@@ -11,7 +11,7 @@ Hill is written in Rust, and the right toolchain installs itself from `rust-tool
 10 or 11.
 
 ```sh
-cargo run -p formiga-hill                                  # Desktop's sample colony
+cargo run -p formiga-hill -- --sample                      # Desktop's sample colony
 cargo run -p formiga-hill -- --from-save ~/path/to/colony.json
 cargo run -p formiga-hill -- --formiga-travel <trip directory>
 ```
@@ -19,8 +19,10 @@ cargo run -p formiga-hill -- --formiga-travel <trip directory>
 There are a few ways to give Hill a colony while developing, depending on how close to the real
 thing a test needs to be:
 
-- **The sample colony.** With no arguments, Hill hosts Desktop's own sample colony. This is
-  usually enough for art and behaviour.
+- **The sample colony.** With `--sample`, Hill hosts Desktop's own sample colony. This is
+  usually enough for art and behaviour. With no arguments at all, as when someone opens the app
+  from Applications or the Start menu, the sample colony arrives behind a welcome card that says
+  a colony of their own comes from Formiga Desktop; `--snap <png> --card welcome` pictures it.
 - **`--from-save`.** Reads a Desktop save, never writes to it, and projects it exactly as Desktop
   does for a trip. It reads any save the pinned `formiga-core` understands, which makes it useful
   for seeing how a particular colony plays out.
