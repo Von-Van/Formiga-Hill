@@ -100,6 +100,9 @@ pub struct Bond {
 pub struct Cast {
     pub snapshot: TravelSnapshot,
     pub members: Vec<Member>,
+    /// The person's own "more time to catch": Hill's setting, not Desktop's, so it lives here
+    /// beside what the trip brought rather than in it.
+    pub gentle: bool,
 }
 
 impl Cast {
@@ -119,7 +122,11 @@ impl Cast {
                 })
             })
             .collect::<Result<_, TravelError>>()?;
-        Ok(Self { snapshot, members })
+        Ok(Self {
+            snapshot,
+            members,
+            gentle: false,
+        })
     }
 
     pub fn reduce_motion(&self) -> bool {
