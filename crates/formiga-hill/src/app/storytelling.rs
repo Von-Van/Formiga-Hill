@@ -2,10 +2,12 @@
 //! its words in a box over whoever says them.
 
 use super::writing::Trying;
-use super::{Area, Card, HillApp, paper, tools};
-use crate::clubhouse::Clubhouse;
+use super::{Area, Card, HillApp, Stage, paper, sound, tools};
+use crate::cast::Id;
+use crate::clubhouse::{self, Clubhouse};
 use crate::story::{Director, Origin, Package, Story, souvenirs};
 use eframe::egui;
+use std::ops::ControlFlow;
 
 impl HillApp {
     /// A card on the board for each story, starred where the colony has finished it.
@@ -454,5 +456,51 @@ impl HillApp {
             paper::Voice::Narrator
         };
         paper::speech(ctx, painter, scene, head, name, &shown.text, voice, true);
+    }
+
+    /// Whatever the pointer is over or does in the Clubhouse: reading a story on, the notice
+    /// board, or someone to offer what the person is holding. Breaks before the room is made.
+    pub(super) fn pointer_in_clubhouse(
+        &mut self,
+        stage: &Stage,
+        pointer: Option<(f32, f32)>,
+    ) -> ControlFlow<(), Option<Id>> {
+        let now = stage.now;
+        let Some(room) = &mut self.clubhouse else {
+            return ControlFlow::Break(());
+        };
+        let ground = room.ground();
+        ground.set_pointer(pointer);
+        let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+        let on_board = self.story.is_none()
+            && hovered.is_none()
+            && pointer.is_some_and(|(x, y)| clubhouse::on_board(x, y));
+        if let Some((_, director)) = &mut self.story {
+            // During a story, a click on the scene reads on.
+            if stage.response.clicked() && director.shown().is_some() {
+                director.read_on();
+            }
+        } else if on_board {
+            stage.ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+            let (x, y) = clubhouse::board_label();
+            stage.tag("The notice board", stage.to_screen(x, y));
+            if stage.response.clicked() {
+                // The card by its field: the room is still borrowed.
+                self.card = (self.card != Some(Card::Board)).then_some(Card::Board);
+            }
+        } else if let Some(id) = hovered {
+            stage.ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+            if stage.response.clicked() {
+                ground.offer(id, self.tool, &mut self.trust, now);
+                self.sound.play(sound::offered(self.tool));
+            }
+        }
+        if let Some(id) = hovered
+            && let (Some((x, y)), Some(member)) =
+                (ground.head(id, now), self.arrival.cast.member(id))
+        {
+            stage.tag(&member.name, stage.to_screen(x, y - 6.0));
+        }
+        ControlFlow::Continue(hovered)
     }
 }

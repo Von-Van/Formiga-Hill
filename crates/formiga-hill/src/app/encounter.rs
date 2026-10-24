@@ -1,7 +1,7 @@
 //! The clearing in the window: following the glint, playing the Sovereign through, and bringing
 //! its arrow home.
 
-use super::{Area, HillApp, paper};
+use super::{Area, HillApp, Stage, paper};
 use crate::audio::Cue;
 use crate::cast::Id;
 use crate::clearing::{
@@ -146,5 +146,14 @@ impl HillApp {
             Speaker::Narrator => (None, String::new(), paper::Voice::Narrator),
         };
         paper::speech(ctx, painter, scene, head, Some(&name), text, voice, true);
+    }
+
+    /// Nothing in the clearing is pointed at: a click on the scene reads on.
+    pub(super) fn pointer_in_clearing(&mut self, stage: &Stage) -> Option<Id> {
+        // A click on the scene reads on.
+        if stage.response.clicked() {
+            self.clearing_read_on();
+        }
+        None
     }
 }

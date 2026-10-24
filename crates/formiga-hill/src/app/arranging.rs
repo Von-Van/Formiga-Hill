@@ -3,8 +3,9 @@
 //! `plans`.
 
 use super::departures::grown_since;
-use super::{Card, HillApp, paper, plural};
+use super::{Card, HillApp, Stage, paper, plural, sound};
 use crate::audio::Cue;
+use crate::cast::Id;
 use crate::finds::{self, CATALOGUE, Kind, growing, plans};
 use crate::hilltop::{self, Arrangement, SPOTS, Standing};
 use crate::paint::{put, rgb, rgba};
@@ -654,6 +655,37 @@ impl HillApp {
             }
         }
         still_to_find(ui, &hints);
+    }
+
+    /// Whatever the pointer is over or does on the Hilltop: a piece to look at or move, or
+    /// someone to offer what the person is holding.
+    pub(super) fn pointer_on_hilltop(
+        &mut self,
+        stage: &Stage,
+        pointer: Option<(f32, f32)>,
+    ) -> Option<Id> {
+        let now = stage.now;
+        let mut hovered = None;
+        if let Some(ground) = &mut self.hilltop {
+            ground.set_pointer(pointer);
+            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+        }
+        let piece = self.hilltop_hover(pointer);
+        if let Some((label, (x, y))) = &piece {
+            stage.ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+            stage.tag(label, stage.to_screen(*x, *y));
+        } else if hovered.is_some() {
+            stage.ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if stage.response.clicked()
+            && !self.hilltop_click(pointer)
+            && self.placing.is_none()
+            && let (Some(id), Some(ground)) = (hovered, &mut self.hilltop)
+        {
+            ground.offer(id, self.tool, &mut self.trust, now);
+            self.sound.play(sound::offered(self.tool));
+        }
+        hovered.filter(|_| piece.is_none())
     }
 }
 

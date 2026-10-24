@@ -1,7 +1,7 @@
 //! The Woods in the window: choosing who comes along, the outing's controls, and keeping what
 //! came home.
 
-use super::{HillApp, paper, plural};
+use super::{HillApp, Stage, paper, plural};
 use crate::cast::Id;
 use crate::character::Character;
 use crate::finds;
@@ -589,6 +589,57 @@ impl HillApp {
         if home && let Some((ground, rummage)) = &mut self.woods.outing {
             rummage.head_home(ground, now);
         }
+    }
+
+    /// Whatever the pointer is over or does in the Woods: whoever is out there, a spot to click
+    /// on, and a place dragged about on a map being made.
+    pub(super) fn pointer_in_woods(
+        &mut self,
+        stage: &Stage,
+        pointer: Option<(f32, f32)>,
+        making: bool,
+    ) -> Option<Id> {
+        let now = stage.now;
+        let mut hovered = None;
+        if let Some((ground, _)) = &mut self.woods.outing {
+            ground.set_pointer(pointer);
+            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+        }
+        if let Some((ground, _)) = &mut self.woods.foray {
+            ground.set_pointer(pointer);
+            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+        }
+        if self.woods.expedition.is_some() {
+            hovered = self.expedition_point(pointer, now);
+        }
+        if let Some((ground, _)) = &mut self.woods.scavenge {
+            ground.set_pointer(pointer);
+            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+        }
+        if let Some((ground, _)) = &mut self.woods.treasure {
+            ground.set_pointer(pointer);
+            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+        }
+        let spot = self.woods_hover(pointer);
+        if let Some((label, (x, y))) = &spot {
+            stage.ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+            stage.tag(label, stage.to_screen(*x, *y));
+        }
+        if stage.response.clicked() {
+            self.woods_click(pointer, now);
+        }
+        if making
+            && (stage.response.drag_started()
+                || stage.response.dragged()
+                || stage.response.drag_stopped())
+        {
+            self.making_drag(
+                pointer.or(self.pointer),
+                stage.response.drag_started(),
+                stage.response.drag_stopped(),
+            );
+        }
+        hovered.filter(|_| spot.is_none())
     }
 }
 

@@ -2,7 +2,7 @@
 //! person is told as it goes; and what Hill remembers of each game once it is seen through.
 
 use super::departures::Outing;
-use super::{HillApp, clock, listed, ordinal, paper, tools};
+use super::{HillApp, Stage, clock, listed, ordinal, paper, sound, tools};
 use crate::audio::Cue;
 use crate::cast::{Cast, Id};
 use crate::fairground::tug_of_war::{self, Side};
@@ -1006,6 +1006,50 @@ impl HillApp {
                 Some((member.name.clone(), *best))
             })
             .max_by(|a, b| a.1.total_cmp(&b.1))
+    }
+
+    /// Whatever the pointer is over or does at the Fairground: someone to offer what the person
+    /// is holding between games, and the names worn during one.
+    pub(super) fn pointer_at_fairground(
+        &mut self,
+        stage: &Stage,
+        pointer: Option<(f32, f32)>,
+    ) -> Option<Id> {
+        let now = stage.now;
+        let Some((ground, games)) = &mut self.fairground else {
+            return None;
+        };
+        ground.set_pointer(pointer);
+        let hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+        let playing = games.playing().is_some();
+        // During a game the person only watches; otherwise, as on the green.
+        if let (false, Some(id)) = (playing, hovered) {
+            stage.ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+            if stage.response.clicked() {
+                ground.offer(id, self.tool, &mut self.trust, now);
+                self.sound.play(sound::offered(self.tool));
+            }
+        }
+        // "It", whoever is in front, or whoever is having a go wears its name
+        // all game, so the watcher can follow it about.
+        let tags = games.tags();
+        let tagged = hovered
+            .into_iter()
+            .filter(|id| tags.iter().all(|(tagged, _)| tagged != id))
+            .map(|id| (id, None))
+            .chain(tags.iter().map(|(id, role)| (*id, Some(*role))));
+        for (id, role) in tagged {
+            if let (Some((x, y)), Some(member)) =
+                (ground.head(id, now), self.arrival.cast.member(id))
+            {
+                let label = match role {
+                    Some(role) => format!("{} \u{b7} {role}", member.name),
+                    None => member.name.clone(),
+                };
+                stage.tag(&label, stage.to_screen(x, y - 6.0));
+            }
+        }
+        hovered
     }
 }
 

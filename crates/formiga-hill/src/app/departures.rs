@@ -5,12 +5,12 @@
 //! time away.
 
 use super::games::{reached, rings_rung};
-use super::{Area, Card, HillApp, Visit, clock, listed, ordinal, paper};
+use super::{Area, Card, HillApp, Pointed, Stage, Visit, clock, listed, ordinal, paper};
 use crate::cast::Id;
 use crate::character::Character;
 use crate::hilltop::Standing;
 use crate::memories::Trouble;
-use crate::station::Fixture;
+use crate::station::{Fixture, STAND_Y};
 use crate::story::souvenirs;
 use eframe::egui;
 use formiga_core::TemperamentKind;
@@ -778,6 +778,44 @@ impl HillApp {
         });
         if let Some(area) = target {
             self.go_to(area, now);
+        }
+    }
+
+    /// Whatever the pointer is over or does at the station: a click skips the arrival or brings
+    /// a board close, and everyone wears a name once they are standing still.
+    pub(super) fn pointer_at_station(
+        &mut self,
+        stage: &Stage,
+        pointer: Option<(f32, f32)>,
+    ) -> Pointed {
+        let settled =
+            self.area == Area::Station && self.station.is_settled() && self.leaving.is_none();
+        let fixture = pointer
+            .filter(|_| settled)
+            .and_then(|(x, y)| self.station.fixture_at(x, y));
+        let over_someone = pointer.is_some_and(|(x, y)| self.station.traveler_at(x, y).is_some());
+        if stage.response.clicked() {
+            // A click on the station skips the arrival; once everyone is
+            // down, a click on a board brings it close.
+            self.station.skip_arrival();
+            if let Some(fixture) = fixture.filter(|_| !over_someone) {
+                self.look_at(fixture);
+            }
+        }
+        // Name tags on little cream labels, so they read over boards and stone
+        // alike, once everyone is standing still to wear them.
+        if self.station.is_settled() && self.leaving.is_none() {
+            for traveler in self.station.travelers() {
+                let (left, _, right, _) = traveler.bounds;
+                let centre =
+                    stage.to_screen((left + right + 1) as f32 / 2.0, STAND_Y as f32 + 11.0);
+                stage.tag(&traveler.name, centre);
+            }
+        }
+        Pointed {
+            hovered: pointer.and_then(|(x, y)| self.station.traveler_at(x, y).map(|t| t.id)),
+            fixture,
+            ..Pointed::default()
         }
     }
 }
