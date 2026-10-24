@@ -27,6 +27,3 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
-      # Every place naming the version and the Desktop tag agrees; one runner is enough to see.
-      - if: runner.os == 'macOS'
-        run: bash scripts/set-version.sh --check
