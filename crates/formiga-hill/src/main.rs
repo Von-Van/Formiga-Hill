@@ -199,33 +199,13 @@ struct Args {
 }
 
 fn main() -> Result<()> {
-    // For the packaging scripts: the newest travel version this Hill reads, which goes in the
-    // macOS bundle and the Windows registry for Desktop to find.
-    if std::env::args_os()
-        .nth(1)
-        .is_some_and(|arg| arg == "--travel-version")
-    {
-        println!("{}", formiga_travel::TRAVEL_FORMAT_VERSION);
-        return Ok(());
-    }
-    // For the packaging scripts too: Hill's icon, for the bundle and the installer.
-    if std::env::args_os()
-        .nth(1)
-        .is_some_and(|arg| arg == "--icon")
-    {
-        let folder = std::env::args_os()
-            .nth(2)
-            .map(PathBuf::from)
-            .context("--icon needs a folder to write the icon into")?;
-        std::fs::create_dir_all(&folder)?;
-        std::fs::write(folder.join("FormigaHill.icns"), icon::icns())?;
-        std::fs::write(folder.join("FormigaHill.ico"), icon::ico())?;
-        std::fs::write(
-            folder.join("FormigaHill.png"),
-            photos::png(&icon::at(1024), 1),
-        )?;
-        println!("Wrote Hill's icon to {}", folder.display());
-        return Ok(());
+    match packaging(std::env::args_os().skip(1)) {
+        Some(Packaging::TravelVersion) => {
+            println!("{}", formiga_travel::TRAVEL_FORMAT_VERSION);
+            return Ok(());
+        }
+        Some(Packaging::Icon(folder)) => return write_icon(folder),
+        None => {}
     }
     // Before anything starts a thread: see `daylight::Clock`.
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
@@ -327,6 +307,44 @@ fn main() -> Result<()> {
     if let Some(why) = app::snap_failed() {
         bail!("{why}");
     }
+    Ok(())
+}
+
+/// What the packaging scripts ask of Hill, ahead of every other option.
+#[derive(Debug, PartialEq)]
+enum Packaging {
+    /// The newest travel version this Hill reads, which goes in the macOS bundle and the Windows
+    /// registry for Desktop to find.
+    TravelVersion,
+    /// Hill's icon, for the bundle and the installer, written into the folder given, if one is.
+    Icon(Option<PathBuf>),
+}
+
+/// What the packaging scripts ask for, if they do: only ever as the first argument, so the
+/// same words anywhere else are not taken for them.
+fn packaging(mut args: impl Iterator<Item = OsString>) -> Option<Packaging> {
+    let first = args.next()?;
+    if first == "--travel-version" {
+        Some(Packaging::TravelVersion)
+    } else if first == "--icon" {
+        Some(Packaging::Icon(args.next().map(PathBuf::from)))
+    } else {
+        None
+    }
+}
+
+/// Writes Hill's icon into `folder` for the packaging scripts, in every size and format they
+/// need.
+fn write_icon(folder: Option<PathBuf>) -> Result<()> {
+    let folder = folder.context("--icon needs a folder to write the icon into")?;
+    std::fs::create_dir_all(&folder)?;
+    std::fs::write(folder.join("FormigaHill.icns"), icon::icns())?;
+    std::fs::write(folder.join("FormigaHill.ico"), icon::ico())?;
+    std::fs::write(
+        folder.join("FormigaHill.png"),
+        photos::png(&icon::at(1024), 1),
+    )?;
+    println!("Wrote Hill's icon to {}", folder.display());
     Ok(())
 }
 
@@ -502,14 +520,10 @@ fn arrive(source: Source, busy: bool) -> Result<Arrival> {
             }
         }
         Source::Save(path) => {
-            // Read-only, and projected exactly as Desktop projects a colony for a real trip.
-            let save = formiga_core::SaveStore::read_snapshot(&path)
-                .with_context(|| format!("could not read the colony file {}", path.display()))?;
-            let snapshot = project_colony(
-                &save,
+            let snapshot = project_save(
+                &path,
                 SessionId::generate().context("no randomness for a session id")?,
                 OffsetDateTime::now_utc(),
-                "a colony file",
             )?;
             Arrival {
                 cast: Cast::new(snapshot)?,
@@ -517,6 +531,19 @@ fn arrive(source: Source, busy: bool) -> Result<Arrival> {
             }
         }
     })
+}
+
+/// The colony file at `path` as it would travel: read only, and projected exactly as Desktop
+/// projects a colony for a real trip. The session and the time are given, so a test can hold
+/// them still.
+fn project_save(
+    path: &Path,
+    session: SessionId,
+    at: OffsetDateTime,
+) -> Result<formiga_travel::TravelSnapshot> {
+    let save = formiga_core::SaveStore::read_snapshot(path)
+        .with_context(|| format!("could not read the colony file {}", path.display()))?;
+    Ok(project_colony(&save, session, at, "a colony file")?)
 }
 
 /// Where community packages go, and how each one there fares.
@@ -852,5 +879,362 @@ mod tests {
         assert!(parse(&["--formiga-travel"]).is_err());
         assert!(parse(&["--wat"]).is_err());
         assert!(parse(&["--help"]).unwrap().is_none());
+    }
+
+    /// A scratch folder of the test's own, emptied first.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("hill-main-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    /// Why `args` were refused, which they must be.
+    fn refused(args: &[&str]) -> String {
+        parse(args)
+            .err()
+            .map(|error| error.to_string())
+            .expect("refused")
+    }
+
+    #[test]
+    fn desktops_launch_argument_yields_the_trip_it_names() {
+        let args = parse(&[LAUNCH_ARGUMENT, "/trips/5eed"]).unwrap().unwrap();
+        assert!(matches!(args.source, Source::Trip(ref dir) if dir == Path::new("/trips/5eed")));
+        assert!(args.render.is_none() && args.snap.is_none() && !args.welcome);
+        assert_eq!(LAUNCH_ARGUMENT, "--formiga-travel");
+    }
+
+    #[test]
+    fn a_colony_file_and_package_checks_are_read_from_the_command_line() {
+        let args = parse(&["--from-save", "colony.json"]).unwrap().unwrap();
+        assert!(matches!(args.source, Source::Save(ref path) if path == Path::new("colony.json")));
+        assert!(parse(&["--from-save"]).is_err());
+        let args = parse(&["--check-package", "one", "--check-package", "two.share"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            args.check,
+            [PathBuf::from("one"), PathBuf::from("two.share")]
+        );
+        assert!(parse(&["--check-package"]).is_err());
+    }
+
+    #[test]
+    fn a_render_can_be_drawn_at_any_hour_of_the_day_and_no_other() {
+        let args = parse(&["--render-woods", "woods.png", "--at", "12", "--hour", "21"])
+            .unwrap()
+            .unwrap();
+        assert_eq!(args.render, Some((Area::Woods, PathBuf::from("woods.png"))));
+        assert_eq!((args.at, args.hour), (Some(12.0), Some(21.0)));
+        for hour in ["0", "24", "6.5"] {
+            assert!(parse(&["--hour", hour]).is_ok(), "{hour} is an hour");
+        }
+        for hour in ["25", "-1", "dusk", "NaN"] {
+            assert!(parse(&["--hour", hour]).is_err(), "{hour} is not an hour");
+        }
+        assert!(parse(&["--hour"]).is_err());
+        for at in ["-1", "inf", "soon"] {
+            let why = refused(&["--render-woods", "woods.png", "--at", at]);
+            assert!(why.contains("--at needs seconds"), "{why}");
+        }
+    }
+
+    #[test]
+    fn an_unknown_option_is_refused_with_the_help() {
+        let why = refused(&["--wat"]);
+        assert!(why.contains("\"--wat\""), "{why}");
+        assert!(why.ends_with(USAGE), "{why}");
+        assert!(refused(&["--sample", "stray"]).ends_with(USAGE));
+    }
+
+    #[test]
+    fn the_packaging_scripts_are_answered_only_from_the_first_argument() {
+        let ask = |args: &[&str]| packaging(args.iter().map(OsString::from));
+        assert_eq!(ask(&["--travel-version"]), Some(Packaging::TravelVersion));
+        assert_eq!(
+            ask(&["--travel-version", "--icon"]),
+            Some(Packaging::TravelVersion)
+        );
+        assert_eq!(
+            ask(&["--icon", "out"]),
+            Some(Packaging::Icon(Some(PathBuf::from("out"))))
+        );
+        assert_eq!(ask(&["--icon"]), Some(Packaging::Icon(None)));
+        assert_eq!(ask(&[]), None);
+        assert_eq!(ask(&["--sample", "--travel-version"]), None);
+        assert_eq!(ask(&["--sample", "--icon", "out"]), None);
+        // Anywhere but first they are nothing the rest of Hill knows.
+        assert!(refused(&["--sample", "--travel-version"]).ends_with(USAGE));
+        assert!(refused(&["--sample", "--icon", "out"]).ends_with(USAGE));
+        assert!(write_icon(None).is_err(), "a folder is needed");
+    }
+
+    #[test]
+    fn a_colony_file_travels_exactly_as_desktop_would_send_it() {
+        use formiga_travel::sample;
+        let dir = scratch("from-save");
+        let path = dir.join("colony.json");
+        formiga_core::SaveStore::new(&path)
+            .save(&sample::colony(3))
+            .unwrap();
+        let session = SessionId::parse(sample::SESSION).unwrap();
+        let projected = project_save(&path, session.clone(), sample::MADE).unwrap();
+        assert_eq!(
+            projected,
+            project_colony(&sample::colony(3), session, sample::MADE, "a colony file").unwrap()
+        );
+        assert_eq!(
+            projected,
+            formiga_travel::TravelSnapshot {
+                desktop_version: "a colony file".to_owned(),
+                ..sample::snapshot()
+            },
+            "the sample colony, as its own snapshot carries it"
+        );
+        assert!(Cast::new(projected).is_ok());
+        assert!(
+            project_save(
+                &dir.join("missing.json"),
+                SessionId::generate().unwrap(),
+                sample::MADE
+            )
+            .is_err()
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A trip as travel version 5 wrote it, cut down from `formiga-travel`'s own
+    /// `snapshot-v5.json` to two travellers: one with a recipe and something worn, and one from
+    /// before recipes. Frozen here, so a change to how Hill reads an older trip shows.
+    const SNAPSHOT_V5: &str = r#"{
+  "format": "formiga.travel.snapshot",
+  "version": 5,
+  "min_reader_version": 1,
+  "session_id": "5eed5eed5eed5eed5eed5eed5eed5eed",
+  "colony_id": "601f2179d0b45400",
+  "created_at_utc": "2026-10-02T09:30:00Z",
+  "desktop_version": "0.66.1",
+  "capabilities": ["visit_record", "souvenirs"],
+  "accepts_souvenirs": [
+    "picnic_ribbon", "pressed_daisy", "well_penny", "oak_acorn", "swing_feather",
+    "chest_marble", "fair_ticket", "race_rosette", "striker_bell", "hoopla_teddy", "tug_rope"
+  ],
+  "travelers": [
+    {
+      "id": "876a55d6a17221ef",
+      "name": "Mochi",
+      "role": {"kind": "adult"},
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "design": {"parts": "0300000b0a0903030000bcd18f7ad2870000007c"},
+        "family": "blob",
+        "logical_size": 37,
+        "body_width": 25,
+        "body_height": 13,
+        "head_ratio": 0.67133456,
+        "roundness": 0.78652555,
+        "leg_length": 5,
+        "foot_size": 5,
+        "head_appendages": {"style": "droop", "size": 3},
+        "tail": {"style": "none", "length": 5},
+        "face": {
+          "eye_shape": "round",
+          "eye_size": 2,
+          "eye_spacing": 5,
+          "vertical_offset": 0,
+          "pupil": "wide",
+          "highlight": "double",
+          "brow": "soft",
+          "mouth": "beak",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "soft_nub",
+          "length": 4,
+          "thickness": 1,
+          "tip": "round",
+          "rest_pose": "together"
+        },
+        "effect_motif": "leaf",
+        "palette_index": 5,
+        "pattern": "patches",
+        "pattern_density": 0.6479941,
+        "marking_seed": "465568b953d40634",
+        "gait_bob": 0.7812724,
+        "face_signature": 458422880
+      },
+      "stature_percent": 97,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "wallflower",
+        "axes": {
+          "social": 0.16553476,
+          "energy": 0.24074684,
+          "boldness": 0.21814881,
+          "playfulness": 0.5044405,
+          "curiosity": 0.3669005,
+          "feistiness": 0.15188114,
+          "impulsiveness": 0.3082601,
+          "suspicion": 0.7024214,
+          "affection": 0.5133249
+        },
+        "traits": ["Shy", "Wary", "Mellow"],
+        "trait_ids": ["shy", "wary", "mellow"],
+        "phrase": "A shy wallflower"
+      },
+      "motion": {
+        "activity": 0.38056013,
+        "playfulness": 0.5535524,
+        "boldness": 0.2854265,
+        "celebration": "hop"
+      },
+      "habits": ["waves_hello", "circles_before_naps"],
+      "accessory": {
+        "item": {"kind": "worn", "item": "flower_crown"},
+        "colors": {
+          "outline": [42, 36, 51],
+          "deep": [49, 18, 151],
+          "body": [75, 27, 228],
+          "light": [172, 156, 221],
+          "accent": [240, 60, 246]
+        }
+      }
+    },
+    {
+      "id": "66cd447617ba3991",
+      "name": "Button",
+      "role": {"kind": "adult"},
+      "born_at_utc": "2026-10-02T09:30:00Z",
+      "appearance": {
+        "family": "hopper",
+        "logical_size": 38,
+        "body_width": 22,
+        "body_height": 24,
+        "head_ratio": 0.7581961,
+        "roundness": 0.85026443,
+        "leg_length": 3,
+        "foot_size": 5,
+        "head_appendages": {"style": "leaf", "size": 5},
+        "tail": {"style": "none", "length": 8},
+        "face": {
+          "eye_shape": "soft_square",
+          "eye_size": 2,
+          "eye_spacing": 4,
+          "vertical_offset": 0,
+          "pupil": "spark",
+          "highlight": "diagonal",
+          "brow": "bold",
+          "mouth": "cat",
+          "cheek": "none"
+        },
+        "forelimbs": {
+          "style": "mitten_arm",
+          "length": 7,
+          "thickness": 1,
+          "tip": "mitten",
+          "rest_pose": "folded"
+        },
+        "effect_motif": "dot",
+        "palette_index": 11,
+        "pattern": "patches",
+        "pattern_density": 0.6628492,
+        "marking_seed": "3c4238ab9cada22a",
+        "gait_bob": 0.61300963,
+        "face_signature": 2024248359
+      },
+      "stature_percent": 101,
+      "scale_percent": 100,
+      "character": {
+        "temperament": "explorer",
+        "axes": {
+          "social": 0.63182133,
+          "energy": 0.7012922,
+          "boldness": 0.82865894,
+          "playfulness": 0.4540892,
+          "curiosity": 1.0,
+          "feistiness": 0.5,
+          "impulsiveness": 0.5,
+          "suspicion": 0.5,
+          "affection": 0.5
+        },
+        "traits": ["Curious", "Brave", "Energetic"],
+        "trait_ids": ["curious", "brave", "energetic"],
+        "phrase": "A curious explorer"
+      },
+      "motion": {
+        "activity": 0.72596914,
+        "playfulness": 0.51327133,
+        "boldness": 0.8043601,
+        "celebration": "twirl"
+      }
+    }
+  ],
+  "relationships": [
+    {
+      "a": "66cd447617ba3991",
+      "b": "876a55d6a17221ef",
+      "affinity": "high",
+      "familiarity": "high",
+      "playfulness": "low",
+      "avoidance": "low"
+    }
+  ],
+  "presentation": {"reduce_motion": false, "theme": "system", "text_scale_percent": 100}
+}"#;
+
+    /// Hill's book as version 1 kept it, for the colony in `SNAPSHOT_V5`: before anything on the
+    /// Hilltop grew.
+    const MEMORIES_V1: &str = r#"{
+  "version": 1,
+  "colonies": {
+    "601f2179d0b45400": {
+      "stories": ["hill/picnic"],
+      "souvenirs": ["picnic_ribbon"],
+      "visits": 4,
+      "satchel": {"bluebell_bulb": 2},
+      "hilltop": {"3": "bluebell_bulb", "9": "acorn_stash", "12": "geode"},
+      "finds": {"geode": {"count": 1, "first_by": "7"}}
+    }
+  }
+}"#;
+
+    #[test]
+    fn a_trip_from_an_older_desktop_finds_an_older_hills_book_as_it_was_left() {
+        let root = scratch("older-files");
+        let trip = root.join("5eed5eed5eed5eed5eed5eed5eed5eed");
+        std::fs::create_dir_all(&trip).unwrap();
+        std::fs::write(trip.join(formiga_travel::SNAPSHOT_FILE), SNAPSHOT_V5).unwrap();
+        let data = root.join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("memories.json"), MEMORIES_V1).unwrap();
+
+        let arrival = arrive(Source::Trip(trip.clone()), false).unwrap();
+        assert!(matches!(arrival.visit, Visit::Trip(_)));
+        let snapshot = &arrival.cast.snapshot;
+        assert_eq!(snapshot.version, 5);
+        let names: Vec<_> = arrival
+            .cast
+            .members
+            .iter()
+            .map(|member| member.name.as_str())
+            .collect();
+        assert_eq!(names, ["Mochi", "Button"]);
+        assert!(
+            trip.join(formiga_travel::ACK_FILE).exists(),
+            "the trip is answered"
+        );
+
+        let book = memories::Memories::open(Some(&data), &snapshot.colony_id);
+        assert_eq!(book.trouble(), None);
+        let colony = book.colony();
+        assert_eq!(colony.visits, 4);
+        assert!(colony.stories.contains("hill/picnic"));
+        assert_eq!(colony.souvenirs, ["picnic_ribbon"]);
+        assert_eq!(colony.satchel["bluebell_bulb"], 2);
+        assert_eq!(colony.hilltop.len(), 3);
+        assert_eq!(colony.hilltop[&3], hilltop::Standing::from("bluebell_bulb"));
+        assert!(colony.hilltop.values().all(|standing| !standing.growing()));
+        assert_eq!(colony.finds["geode"].count, 1);
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
