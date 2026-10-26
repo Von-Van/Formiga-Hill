@@ -12,6 +12,9 @@
 use crate::lettering::{self, ASCENT, DESCENT, LINE};
 use eframe::egui::{self, Color32, Pos2, Rect, Response, Sense, Ui, Vec2, pos2, vec2};
 use formiga_art::Canvas;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 const fn rgb(r: u8, g: u8, b: u8) -> Color32 {
     Color32::from_rgb(r, g, b)
@@ -219,7 +222,7 @@ pub struct Button {
     text: String,
     selected: bool,
     enabled: bool,
-    picture: Option<(Canvas, i32)>,
+    picture: Option<(Rc<Canvas>, i32)>,
 }
 
 impl Button {
@@ -243,8 +246,8 @@ impl Button {
     }
 
     /// A small picture before the words, each of its pixels `scale` paper pixels.
-    pub fn picture(mut self, picture: Canvas, scale: i32) -> Self {
-        self.picture = Some((picture, scale));
+    pub fn picture(mut self, picture: impl Into<Rc<Canvas>>, scale: i32) -> Self {
+        self.picture = Some((picture.into(), scale));
         self
     }
 }
@@ -1157,7 +1160,20 @@ pub fn speech(
 // ---------------------------------------------------------------------------------------------
 
 /// A small picture drawn with letters: `#` outline, `p` paper, `s` shade, and a few colours.
-pub fn picture(art: &[&str]) -> Canvas {
+/// Each is drawn the first time it is wanted and kept, as buttons are laid out every frame.
+pub fn picture(art: &'static [&'static str]) -> Rc<Canvas> {
+    thread_local! {
+        static DRAWN: RefCell<HashMap<(usize, usize), Rc<Canvas>>> = RefCell::new(HashMap::new());
+    }
+    DRAWN.with_borrow_mut(|drawn| {
+        drawn
+            .entry((art.as_ptr() as usize, art.len()))
+            .or_insert_with(|| Rc::new(draw_picture(art)))
+            .clone()
+    })
+}
+
+fn draw_picture(art: &[&str]) -> Canvas {
     let width = art.iter().map(|row| row.len()).max().unwrap_or(0) as u32;
     let mut canvas = Canvas::new(width, art.len() as u32);
     for (y, row) in art.iter().enumerate() {
@@ -1271,7 +1287,19 @@ pub mod pictures {
 
 /// Desktop's own picture for something its menu offers, cut from its UI atlas, so a snack held
 /// out at the Hill looks like a snack offered on the desktop.
-pub fn desktop_picture(icon: formiga_art::MenuIcon) -> Canvas {
+pub fn desktop_picture(icon: formiga_art::MenuIcon) -> Rc<Canvas> {
+    thread_local! {
+        static CUT: RefCell<HashMap<formiga_art::MenuIcon, Rc<Canvas>>> =
+            RefCell::new(HashMap::new());
+    }
+    CUT.with_borrow_mut(|cut| {
+        cut.entry(icon)
+            .or_insert_with(|| Rc::new(cut_desktop_picture(icon)))
+            .clone()
+    })
+}
+
+fn cut_desktop_picture(icon: formiga_art::MenuIcon) -> Canvas {
     use std::sync::OnceLock;
     static ATLAS: OnceLock<Canvas> = OnceLock::new();
     let atlas = ATLAS.get_or_init(formiga_art::UiAtlasRenderer::render);

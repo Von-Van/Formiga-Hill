@@ -246,9 +246,7 @@ impl Heap {
         let count = |dice: &mut Dice, (low, high): (u32, u32)| {
             low + (dice.unit() * (high - low + 1) as f32) as u32 % (high - low + 1)
         };
-        let choose = |dice: &mut Dice, from: &[Stuff]| {
-            from[(dice.unit() * from.len() as f32) as usize % from.len()]
-        };
+        let choose = |dice: &mut Dice, from: &[Stuff]| from[dice.index(from.len()).unwrap_or(0)];
         // On the ground, spread across the heap with room between them.
         let grounded = count(dice, recipe.ground.1).max(1) as i32;
         let slot = width / grounded;
@@ -265,9 +263,10 @@ impl Heap {
         for _ in 0..count(dice, recipe.across.1) {
             let stuff = choose(dice, recipe.across.0);
             let (w, h) = stuff.size(dice);
-            let x = if ground_things.len() >= 2 {
-                let first = (dice.unit() * (ground_things.len() - 1) as f32) as usize
-                    % (ground_things.len() - 1);
+            // Any but the last, which has nothing after it to reach.
+            let x = if ground_things.len() >= 2
+                && let Some(first) = dice.index(ground_things.len() - 1)
+            {
                 let (a, b) = (
                     &heap.items[ground_things[first]],
                     &heap.items[ground_things[first + 1]],
@@ -719,9 +718,7 @@ pub fn stock(heaps: &mut [Heap], stocking: &Stocking, dice: &mut Dice) {
                 let deepest = places.iter().map(|(_, _, depth)| *depth).max().unwrap_or(0);
                 places.retain(|(_, _, depth)| *depth == deepest);
             }
-            if !places.is_empty() {
-                let (at, place, _) =
-                    places[(dice.unit() * places.len() as f32) as usize % places.len()];
+            if let Some(&(at, place, _)) = dice.choose(&places) {
                 heaps[at].hide(Hoard::Find(new), place, dice);
             }
         }
@@ -741,8 +738,7 @@ pub fn stock(heaps: &mut [Heap], stocking: &Stocking, dice: &mut Dice) {
                 }
             }
         }
-        if !places.is_empty() {
-            let (at, place) = places[(dice.unit() * places.len() as f32) as usize % places.len()];
+        if let Some(&(at, place)) = dice.choose(&places) {
             heaps[at].hide(Hoard::Map, place, dice);
         }
     }

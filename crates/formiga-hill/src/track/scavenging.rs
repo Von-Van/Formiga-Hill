@@ -1943,8 +1943,7 @@ mod tests {
                     } else if left.is_empty() || dice.chance(0.08) {
                         let other = (heap + 1 + (dice.unit() * 2.0) as usize % 2) % 3;
                         scavenge.choose(&mut ground, other, now);
-                    } else {
-                        let item = left[(dice.unit() * left.len() as f32) as usize % left.len()];
+                    } else if let Some(&item) = dice.choose(&left) {
                         scavenge.set_hand(0);
                         scavenge.act(&mut ground, item, now);
                     }

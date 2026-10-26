@@ -16,6 +16,8 @@ mod water;
 use super::{Kind, find};
 use crate::paint::{Ramp, bevel, ellipse, rgba};
 use formiga_art::{Canvas, Rgba};
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 /// Icons are this many pixels square.
 pub const ICON: u32 = 9;
@@ -24,13 +26,46 @@ pub const PIECE_MAX: (u32, u32) = (48, 56);
 
 /// A piece as it stands on the Hilltop: its sprite, and the point in it that stands on the spot,
 /// the middle of where it meets the ground.
+#[derive(Clone)]
 pub struct Piece {
     pub sprite: Canvas,
     pub anchor: (i32, i32),
 }
 
+/// One of the pictures below, by what it is of.
+#[derive(Clone, PartialEq, Eq, Hash)]
+enum Drawing {
+    Icon(String),
+    Piece(String),
+    Stage(String, u8),
+    Built(String),
+}
+
+/// A picture of a find, painted the first time it is wanted and kept, as a basket's icons are
+/// laid down every frame and the Hilltop's pieces on every skyline that shows them.
+fn kept(drawing: Drawing, paint: impl FnOnce() -> Piece) -> Piece {
+    thread_local! {
+        static KEPT: RefCell<HashMap<Drawing, Piece>> = RefCell::new(HashMap::new());
+    }
+    if let Some(piece) = KEPT.with_borrow(|kept| kept.get(&drawing).cloned()) {
+        return piece;
+    }
+    // Painted with nothing borrowed, as one picture may be painted from another.
+    let piece = paint();
+    KEPT.with_borrow_mut(|kept| kept.insert(drawing, piece.clone()));
+    piece
+}
+
 /// The icon for a find, or an empty one for an id Hill doesn't know.
 pub fn icon(id: &str) -> Canvas {
+    let icon = kept(Drawing::Icon(id.to_owned()), || Piece {
+        sprite: paint_icon(id),
+        anchor: (0, 0),
+    });
+    icon.sprite
+}
+
+fn paint_icon(id: &str) -> Canvas {
     let Some(find) = find(id) else {
         return Canvas::new(ICON, ICON);
     };
@@ -49,6 +84,10 @@ pub fn icon(id: &str) -> Canvas {
 
 /// The piece a find becomes on the Hilltop.
 pub fn piece(id: &str) -> Piece {
+    kept(Drawing::Piece(id.to_owned()), || paint_piece(id))
+}
+
+fn paint_piece(id: &str) -> Piece {
     let Some(find) = find(id) else {
         return placeholder_piece(Kind::Dig);
     };
@@ -74,6 +113,12 @@ pub fn piece(id: &str) -> Piece {
 /// a mound of turned earth with a sprout at first, and then each time a little more like its full
 /// piece. Anything without its stages drawn stands as its full piece.
 pub fn stage(id: &str, stage: u8) -> Piece {
+    kept(Drawing::Stage(id.to_owned(), stage), || {
+        paint_stage(id, stage)
+    })
+}
+
+fn paint_stage(id: &str, stage: u8) -> Piece {
     let Some(find) = find(id) else {
         return placeholder_piece(Kind::Dig);
     };
@@ -94,6 +139,10 @@ pub fn stage(id: &str, stage: u8) -> Piece {
 
 /// What a plan builds (see `finds::plans`), standing on its one spot.
 pub fn built(plan: &str) -> Piece {
+    kept(Drawing::Built(plan.to_owned()), || paint_built(plan))
+}
+
+fn paint_built(plan: &str) -> Piece {
     let piece = built::piece(plan).unwrap_or_else(|| placeholder_piece(Kind::Reach));
     debug_assert!(
         piece.sprite.width() <= PIECE_MAX.0 && piece.sprite.height() <= PIECE_MAX.1,
