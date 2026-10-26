@@ -4,6 +4,36 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.68.0 (2026-10-26)
+
+Hill is built on Formiga Desktop 0.68.0 and speaks travel version 6, so a creature reshaped in
+Formiga Farm comes to the Hill as itself. An older Formiga still takes the colony on the same
+trips as before.
+
+- Farm creatures are drawn as themselves everywhere Hill draws the colony: a whale, a turtle or a
+  giraffe, not the nearest ordinary companion.
+- Opened on its own, from Applications or the Start menu, Hill shows a welcome card saying your
+  colony comes by train from Formiga, and offers a look around with a sample colony.
+- Each visit a companion wishes for one of the things it likes best, and the wish comes true when
+  the colony does it. The display case at the station opens a card of every souvenir kept and what
+  is still to find, and the expeditions' chapter keeps its latest 40 pages.
+- Four new Clubhouse stories give the four souvenirs no built-in story gave.
+- The story builder and the map editor have Undo and Redo, with Command-Z and Command-Shift-Z (Ctrl
+  on Windows).
+- In the Woods, Left and Right step through what a click would choose and Enter chooses it; K or
+  the new ? button opens a card of every key the Hill answers to.
+- The Sound card is now Sound and play: "More time to catch" slows the Woods' catching for anyone
+  who wants gentler timing, and text can be set larger than Desktop's.
+- A Woods basket is brought home and kept however the colony leaves the Woods, including when Hill
+  closes or Formiga calls everyone home.
+- The Hill's memories are never lost in silence: a book from a newer Hill is left untouched, an
+  unreadable one goes back to the copy kept as the visit began, and the station's notice board
+  says what happened.
+- Removing a place in the map editor can no longer crash Hill, the stars no longer show through
+  anything new on the skyline at night, and a shared package whose names differ only in capitals
+  is refused.
+- Busy places take a quarter to two thirds less work each frame, with the same pictures.
+
 ## 0.67.14 (2026-10-17)
 
 Hill is built on Formiga Desktop 0.67.14 and still speaks travel version 5, so it takes the same
