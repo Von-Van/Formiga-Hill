@@ -978,19 +978,24 @@ mod tests {
             .save(&sample::colony(3))
             .unwrap();
         let session = SessionId::parse(sample::SESSION).unwrap();
-        let projected = project_save(&path, session.clone(), sample::MADE).unwrap();
-        assert_eq!(
-            projected,
-            project_colony(&sample::colony(3), session, sample::MADE, "a colony file").unwrap()
-        );
-        assert_eq!(
-            projected,
-            formiga_travel::TravelSnapshot {
-                desktop_version: "a colony file".to_owned(),
-                ..sample::snapshot()
-            },
-            "the sample colony, as its own snapshot carries it"
-        );
+        let projected = project_save(&path, session, sample::MADE).unwrap();
+        // Desktop reads a colony file as it restores one, taking off anything worn that the
+        // colony's scrapbook hasn't unlocked; the sample colony dresses two companions without
+        // unlocking what they wear, so those come off, and nothing else changes.
+        let mut expected = formiga_travel::TravelSnapshot {
+            desktop_version: "a colony file".to_owned(),
+            ..sample::snapshot()
+        };
+        let worn = expected
+            .travelers
+            .iter()
+            .filter(|traveler| traveler.accessory.is_some())
+            .count();
+        assert_eq!(worn, 2, "the sample has someone dressed and someone pinned");
+        for traveler in &mut expected.travelers {
+            traveler.accessory = None;
+        }
+        assert_eq!(projected, expected);
         assert!(Cast::new(projected).is_ok());
         assert!(
             project_save(
