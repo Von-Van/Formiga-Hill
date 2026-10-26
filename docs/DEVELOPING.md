@@ -29,6 +29,11 @@ thing a test needs to be:
 - **A real trip.** Run Desktop with `FORMIGA_HILL_PATH` pointing at Hill's binary, and the whole
   journey runs as it would for anyone else.
 
+Only a real trip keeps anything for the colony. The sample colony and `--from-save` show the
+colony's memories and album as Hill has them, but whatever happens, from the visit itself to finds
+brought home and photos taken, lasts only until the window closes. Drafts, packages kept and the
+sound levels belong to no colony, and are kept whichever way Hill was started.
+
 Story packages have their own options: `--check-package <folder>` checks one (or a
 `.formiga-hill-share` file), `--package <folder>` loads one for this run, `--share-package <folder>
 <file>` writes one to a share file, and `--packages-folder` prints where the packages folder is.
@@ -101,8 +106,9 @@ cards (at the place it belongs to, if none is named), `--chapter <n>` opens the 
 chapter with `--card journal` (with `--card making`, the map editor's sample adventure with its
 nth place, then path, picked out), `--card new-competition` opens the Fairground's competitions
 card with a new competition in its editor, and `--story` begins the first story in the Clubhouse.
-If the picture can't be saved, it says why and fails. Give it a scratch `FORMIGA_HILL_DATA_DIR` so
-a review never touches the colony's memories.
+If the picture can't be saved, it says why and fails. A review keeps nothing for the colony, but
+it shows what Hill remembers of it, so give it a scratch `FORMIGA_HILL_DATA_DIR` for a picture that
+comes out the same on any computer.
 
 ```sh
 FORMIGA_HILL_DATA_DIR=/tmp/hill-review \

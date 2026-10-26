@@ -75,6 +75,7 @@ impl Layout {
 }
 
 /// Something standing on the ground that anyone further back is hidden behind.
+#[derive(Clone)]
 pub struct Prop {
     pub sprite: Canvas,
     /// The top-left corner of the sprite in the scene.
@@ -138,7 +139,8 @@ const ATTRACTED: f32 = 0.45;
 pub struct Playground {
     layout: Layout,
     backdrop: Canvas,
-    foreground: Canvas,
+    /// What stands in front of everyone, cut down to what is painted, and where it goes.
+    foreground: (Canvas, (i32, i32)),
     props: Vec<Prop>,
     /// Small things that move about on their own, drawn in depth order with everyone but never
     /// part of the place with nobody in it: bugs in the meadow.
@@ -163,6 +165,9 @@ pub struct Playground {
     /// The backdrop with the props standing on it: the place with nobody in it, which is where a
     /// lamp may shine.
     still: Canvas,
+    /// The same with what is set out standing in it, which is where a lamp may shine when
+    /// anything is: painted when first wanted after either changes.
+    still_set_out: Option<Canvas>,
     /// Who has been brushed, and how far the grooming has got.
     brushing: HashMap<Id, Grooming>,
 }
@@ -239,7 +244,7 @@ impl Playground {
         Self {
             layout,
             backdrop,
-            foreground,
+            foreground: crate::paint::trimmed(&foreground),
             props,
             fliers: Vec::new(),
             fixtures: Vec::new(),
@@ -255,6 +260,7 @@ impl Playground {
             nightlights: None,
             daylight: Daylight::default(),
             still: Canvas::new(1, 1),
+            still_set_out: None,
             brushing: HashMap::new(),
         }
         .stilled()
@@ -274,6 +280,7 @@ impl Playground {
             blit(&mut still, &prop.sprite, prop.at.0, prop.at.1);
         }
         self.still = still;
+        self.still_set_out = None;
     }
 
     pub fn reduce_motion(&self) -> bool {
@@ -307,6 +314,23 @@ impl Playground {
         self.still_life();
     }
 
+    /// Repaints what lies behind everyone and the night sky over it together, as when the Hilltop
+    /// seen on the skyline changes, so the stars never come out over anything new on it.
+    pub fn set_backdrop_and_sky(&mut self, backdrop: Canvas, sky: Canvas) {
+        if let Some(nightlights) = &mut self.nightlights {
+            nightlights.sky = sky;
+        }
+        self.set_backdrop(backdrop);
+    }
+
+    /// The night sky as it stands, for tests: `None` for a place that is always as painted.
+    #[cfg(test)]
+    pub fn night_sky(&self) -> Option<&Canvas> {
+        self.nightlights
+            .as_ref()
+            .map(|nightlights| &nightlights.sky)
+    }
+
     /// Changes what stands on the ground, as when something is placed on the Hilltop.
     pub fn set_props(&mut self, props: Vec<Prop>) {
         self.props = props;
@@ -320,6 +344,12 @@ impl Playground {
 
     /// Sets out what stands in the place this moment, lit as the place is after dark.
     pub fn set_fixtures(&mut self, fixtures: Vec<Prop>) {
+        let same = |a: &Prop, b: &Prop| a.at == b.at && a.base == b.base && a.sprite == b.sprite;
+        let unchanged = fixtures.len() == self.fixtures.len()
+            && fixtures.iter().zip(&self.fixtures).all(|(a, b)| same(a, b));
+        if !unchanged {
+            self.still_set_out = None;
+        }
         self.fixtures = fixtures;
     }
 
@@ -638,6 +668,30 @@ impl Playground {
         Some(self.actors[index].bounds(now))
     }
 
+    /// Every layer of the place that stays still, by name: what is painted once and then laid
+    /// down every frame, for checking that it is painted the same as before.
+    #[cfg(test)]
+    pub fn layers(&self) -> Vec<(&'static str, Canvas)> {
+        let mut fixtures = Canvas::new(self.backdrop.width(), self.backdrop.height());
+        for fixture in &self.fixtures {
+            blit(&mut fixtures, &fixture.sprite, fixture.at.0, fixture.at.1);
+        }
+        let mut foreground = Canvas::new(self.backdrop.width(), self.backdrop.height());
+        let (front, at) = &self.foreground;
+        blit(&mut foreground, front, at.0, at.1);
+        let mut layers = vec![
+            ("backdrop", self.backdrop.clone()),
+            ("foreground", foreground),
+            ("still", self.still.clone()),
+            ("fixtures", fixtures),
+        ];
+        if let Some(nightlights) = &self.nightlights {
+            layers.push(("lamps", nightlights.lamps.clone()));
+            layers.push(("sky", nightlights.sky.clone()));
+        }
+        layers
+    }
+
     /// The props standing here, for seeing who is behind what.
     #[cfg(test)]
     pub fn props(&self) -> &[Prop] {
@@ -740,17 +794,21 @@ impl Playground {
                 self.reduce_motion,
             );
         }
-        blit(&mut scene, &self.foreground, 0, 0);
+        let (front, at) = &self.foreground;
+        blit(&mut scene, front, at.0, at.1);
         if let Some(nightlights) = &self.nightlights {
             if self.fixtures.is_empty() {
                 nightlights.light(&mut scene, &self.still, self.daylight);
             } else {
                 // What is set out is lit where it stands, as the place is.
-                let mut still = self.still.clone();
-                for fixture in &self.fixtures {
-                    blit(&mut still, &fixture.sprite, fixture.at.0, fixture.at.1);
-                }
-                nightlights.light(&mut scene, &still, self.daylight);
+                let still = self.still_set_out.get_or_insert_with(|| {
+                    let mut still = self.still.clone();
+                    for fixture in &self.fixtures {
+                        blit(&mut still, &fixture.sprite, fixture.at.0, fixture.at.1);
+                    }
+                    still
+                });
+                nightlights.light(&mut scene, still, self.daylight);
             }
         }
         scene
@@ -788,9 +846,11 @@ impl Playground {
         let mut idea = self.actors[index].character.idea(company, &mut self.dice);
         // Sometimes a wander ends at something worth a look. With motion reduced the way there is
         // a cut, so nobody is kept from what stands on the Hilltop.
-        if idea == Idea::Wander && !self.attractions.is_empty() && self.dice.chance(ATTRACTED) {
-            let pick = (self.dice.unit() * self.attractions.len() as f32) as usize;
-            let attraction = self.attractions[pick % self.attractions.len()];
+        if idea == Idea::Wander
+            && !self.attractions.is_empty()
+            && self.dice.chance(ATTRACTED)
+            && let Some(&attraction) = self.dice.choose(&self.attractions)
+        {
             let beats = self.actors[index]
                 .character
                 .enjoy(attraction.use_, &mut self.dice);

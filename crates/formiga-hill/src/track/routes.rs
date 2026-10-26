@@ -402,7 +402,7 @@ fn kind(clue: Clue) -> u8 {
 }
 
 fn choose<T: Copy>(from: &[T], dice: &mut Dice) -> T {
-    from[(dice.unit() * from.len() as f32) as usize % from.len()]
+    from[dice.index(from.len()).unwrap_or(0)]
 }
 
 /// One fork: its ways, which to take, what stands where, and the line naming it. The first fork
@@ -426,14 +426,14 @@ fn fork(leg: usize, last: Option<u8>, dice: &mut Dice) -> Fork {
     let kind = choose(&kinds, dice);
     let mut unused: Vec<Landmark> = Landmark::ALL.to_vec();
     let take = |dice: &mut Dice, unused: &mut Vec<Landmark>| {
-        let index = (dice.unit() * unused.len() as f32) as usize % unused.len();
+        let index = dice.index(unused.len()).unwrap_or(0);
         unused.remove(index)
     };
     let mut landmarks: Vec<Placed> = Vec::new();
     let mut stream = None;
     let (right, clue) = match kind {
         0 => {
-            let right = (dice.unit() * count as f32) as usize % count;
+            let right = dice.index(count).unwrap_or(0);
             let landmark = take(dice, &mut unused);
             landmarks.push(Placed {
                 landmark,
@@ -475,13 +475,13 @@ fn fork(leg: usize, last: Option<u8>, dice: &mut Dice) -> Fork {
             (right, Clue::Turn(side, landmark))
         }
         2 => {
-            let right = (dice.unit() * count as f32) as usize % count;
+            let right = dice.index(count).unwrap_or(0);
             stream = Some(right);
             decorate(&mut landmarks, count, &mut unused, dice);
             (right, Clue::OverStream)
         }
         _ => {
-            let right = (dice.unit() * count as f32) as usize % count;
+            let right = dice.index(count).unwrap_or(0);
             let (left, beyond) = (take(dice, &mut unused), take(dice, &mut unused));
             landmarks.push(Placed {
                 landmark: left,
@@ -544,8 +544,9 @@ fn decorate(
     dice: &mut Dice,
 ) {
     for way in 0..count {
-        if dice.chance(0.55) && !unused.is_empty() {
-            let index = (dice.unit() * unused.len() as f32) as usize % unused.len();
+        if dice.chance(0.55)
+            && let Some(index) = dice.index(unused.len())
+        {
             landmarks.push(Placed {
                 landmark: unused.remove(index),
                 spot: Spot::Far(way),
@@ -560,13 +561,13 @@ fn dig(dice: &mut Dice) -> Dig {
     let mut paces = PACES.to_vec();
     let mut features = Feature::ALL.to_vec();
     let mut take_pace = |dice: &mut Dice| {
-        let index = (dice.unit() * paces.len() as f32) as usize % paces.len();
+        let index = dice.index(paces.len()).unwrap_or(0);
         paces.remove(index)
     };
     let (right_paces, other_paces, third_paces) =
         (take_pace(dice), take_pace(dice), take_pace(dice));
     let mut take_feature = |dice: &mut Dice| {
-        let index = (dice.unit() * features.len() as f32) as usize % features.len();
+        let index = dice.index(features.len()).unwrap_or(0);
         features.remove(index)
     };
     let (right_by, other_by, third_by) =

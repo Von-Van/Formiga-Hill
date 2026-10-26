@@ -1348,6 +1348,55 @@ mod tests {
         run(&mut ground, &mut race, cast, 6.0, 400.0, |_, _, _| {})
     }
 
+    /// A race with everyone, the fairground run at `tick` seconds a frame from opening to the
+    /// end: each racer's time.
+    fn race_at(cast: &Cast, tick: f32) -> Vec<(Id, f32)> {
+        let (mut ground, _) = fairground::open(cast, 0.0);
+        let mut race = SackRace::new();
+        let mut now = 0.0;
+        while now < 6.0 {
+            now += tick;
+            ground.tick(cast, now);
+        }
+        race.start(&mut ground, cast, &[], now);
+        let started = now;
+        while now < started + 400.0 {
+            now += tick;
+            ground.tick(cast, now);
+            race.tick(&mut ground, now);
+            if race.phase() == Phase::Ready {
+                break;
+            }
+        }
+        race.results().to_vec()
+    }
+
+    #[test]
+    fn a_race_comes_out_much_the_same_at_any_frame_rate() {
+        let cast = sample();
+        let at_30 = race_at(&cast, 1.0 / 30.0);
+        assert_eq!(at_30.len(), cast.members.len());
+        for tick in [1.0 / 60.0, 1.0 / 144.0] {
+            let results = race_at(&cast, tick);
+            assert_eq!(results.len(), at_30.len(), "not everyone finished");
+            // Each hop's length is rolled as it lands, and two landing in one frame at one rate
+            // may land in two at another, so the dice fall a little differently; and a hop
+            // begins on the frame after the last one landed, which at thirty a second costs
+            // each hop a sixtieth of a second on average.
+            for (id, took) in &at_30 {
+                let other = results
+                    .iter()
+                    .find(|(other, _)| other == id)
+                    .map(|(_, took)| *took);
+                assert!(
+                    other.is_some_and(|other| (other - took).abs() < 1.0),
+                    "{id} took {took:.2}s at 30 a second, {other:?} at {:.0}",
+                    1.0 / tick
+                );
+            }
+        }
+    }
+
     fn count(events: &[Event], wanted: impl Fn(&Event) -> bool) -> usize {
         events.iter().filter(|event| wanted(event)).count()
     }

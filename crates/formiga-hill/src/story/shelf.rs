@@ -11,7 +11,6 @@ use super::package::PackageError;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// What a package folder's name ends with.
@@ -145,17 +144,7 @@ impl SetAside {
             set_aside: self.ids.clone(),
         };
         let write = || -> std::io::Result<()> {
-            if let Some(folder) = path.parent() {
-                fs::create_dir_all(folder)?;
-            }
-            let mut temporary = path.as_os_str().to_owned();
-            temporary.push(".tmp");
-            let temporary = PathBuf::from(temporary);
-            let mut file = fs::File::create(&temporary)?;
-            file.write_all(&serde_json::to_vec_pretty(&settings)?)?;
-            file.sync_all()?;
-            drop(file);
-            fs::rename(&temporary, path)
+            crate::sharing::write_atomically(path, &serde_json::to_vec_pretty(&settings)?)
         };
         if let Err(error) = write() {
             eprintln!("formiga-hill: could not keep which packages are set aside: {error}");
