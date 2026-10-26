@@ -132,15 +132,10 @@ impl HillApp {
             self.clubhouse.as_mut().map(|room| room.ground()),
             self.fairground.as_mut().map(|(ground, _)| ground),
             self.hilltop.as_mut(),
-            self.woods.empty.as_mut(),
-            self.woods.pool.as_mut(),
-            self.woods.meadow.as_mut(),
-            self.woods.outing.as_mut().map(|(ground, _)| ground),
-            self.woods.fishing.as_mut().map(|(ground, _)| ground),
-            self.woods.hunt.as_mut().map(|(ground, _)| ground),
             self.clearing.as_mut().map(|(ground, _)| ground),
         ];
-        for ground in grounds.into_iter().flatten() {
+        let woods = self.woods.grounds_mut();
+        for ground in grounds.into_iter().flatten().chain(woods) {
             ground.dress(costumes, groomed);
             ground.carry(&carried);
         }

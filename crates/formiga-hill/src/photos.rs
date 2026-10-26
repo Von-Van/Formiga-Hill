@@ -24,6 +24,8 @@ pub struct Photo {
 
 pub struct Album {
     folder: Option<PathBuf>,
+    /// Whether photos taken or taken out are written to the folder, or last only the visit.
+    keeps: bool,
     pub photos: Vec<Photo>,
 }
 
@@ -51,7 +53,20 @@ impl Album {
             })
             .collect();
         photos.sort_by(|a, b| a.name.cmp(&b.name));
-        Self { folder, photos }
+        Self {
+            folder,
+            keeps: true,
+            photos,
+        }
+    }
+
+    /// The colony's album only to look at, for a visit nobody is waiting for: every photo kept
+    /// shows, and photos taken or taken out last only the visit.
+    pub fn look_at(data: Option<&Path>, colony: &str) -> Self {
+        Self {
+            keeps: false,
+            ..Self::open(data, colony)
+        }
     }
 
     pub fn is_full(&self) -> bool {
@@ -71,7 +86,7 @@ impl Album {
             name = format!("{}-{extra}", stamp(at));
             extra += 1;
         }
-        if let Some(folder) = &self.folder {
+        if let Some(folder) = self.folder.as_ref().filter(|_| self.keeps) {
             fs::create_dir_all(folder)?;
             write(&folder.join(format!("{name}.png")), &picture, 1)?;
         }
@@ -89,7 +104,7 @@ impl Album {
         let Some(photo) = self.photos.get(index) else {
             return Ok(());
         };
-        if let Some(folder) = &self.folder {
+        if let Some(folder) = self.folder.as_ref().filter(|_| self.keeps) {
             let path = folder.join(format!("{}.png", photo.name));
             if path.exists() {
                 fs::remove_file(path)?;
@@ -152,9 +167,9 @@ pub fn png(picture: &Canvas, scale: u32) -> Vec<u8> {
     bytes
 }
 
-/// `picture` saved at `path` as a PNG, `scale` times as big each way.
+/// `picture` saved at `path` as a PNG, `scale` times as big each way: whole, or not at all.
 pub fn write(path: &Path, picture: &Canvas, scale: u32) -> Result<()> {
-    fs::write(path, png(picture, scale))
+    crate::sharing::write_atomically(path, &png(picture, scale))
         .with_context(|| format!("could not create {}", path.display()))
 }
 
@@ -220,6 +235,21 @@ mod tests {
         assert_eq!(again.photos[0].picture, picture());
         assert_eq!(again.photos[0].taken, at);
         assert!(Album::open(Some(&data), "colony-b").photos.is_empty());
+    }
+
+    #[test]
+    fn an_album_only_looked_at_shows_its_photos_but_writes_nothing() {
+        let data = scratch("looked-at");
+        let at = OffsetDateTime::from_unix_timestamp(1_790_000_000).unwrap();
+        Album::open(Some(&data), "c").keep(picture(), at).unwrap();
+        let mut looked = Album::look_at(Some(&data), "c");
+        assert_eq!(looked.photos.len(), 1);
+        looked.keep(picture(), at).unwrap();
+        looked.remove(0).unwrap();
+        assert_eq!(looked.photos.len(), 1, "for the visit");
+        let again = Album::open(Some(&data), "c");
+        assert_eq!(again.photos.len(), 1, "the one kept is all there is");
+        assert_eq!(again.photos[0].name, "20260921T141320Z");
     }
 
     #[test]

@@ -11,23 +11,45 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# Only publishing writes anything, and it says so for itself.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  # The same checks as every change gets, so nothing is published that fails them.
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+      - if: runner.os == 'macOS'
+        run: bash scripts/set-version.sh --check
+
   macos:
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: 1.97.1
           targets: aarch64-apple-darwin, x86_64-apple-darwin
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Package
         run: bash scripts/package-macos.sh
         env:
           FORMIGA_HILL_BUILD_NUMBER: ${{ github.run_number }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: macos
           if-no-files-found: error
@@ -39,18 +61,19 @@ jobs:
   windows:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
+          toolchain: 1.97.1
           targets: x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Install WiX
         run: |
           dotnet tool install --global wix --version 4.0.5
           Add-Content -Path $env:GITHUB_PATH -Value "$env:USERPROFILE\.dotnet\tools"
       - name: Package
         run: ./scripts/package-windows.ps1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: windows
           if-no-files-found: error
@@ -61,11 +84,13 @@ jobs:
 
   publish:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [macos, windows]
+    needs: [test, macos, windows]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: dist
           merge-multiple: true
