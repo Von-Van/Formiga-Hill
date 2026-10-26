@@ -211,8 +211,9 @@ pub fn about(
             .into_iter()
             .filter(|fish| fish.tier == least)
             .collect();
-        let pick = (dice.unit() * candidates.len() as f32) as usize % candidates.len();
-        about.push(candidates[pick]);
+        if let Some(&fish) = dice.choose(&candidates) {
+            about.push(fish);
+        }
     }
     about
 }

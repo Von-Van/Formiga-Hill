@@ -31,6 +31,10 @@ pub struct ColonyMemories {
     pub souvenirs: Vec<String>,
     #[serde(default)]
     pub visits: u32,
+    /// When the train last pulled in with this colony, in seconds since 1970: only for letting
+    /// go of the colonies seen least lately, should the book ever grow too big to read back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_arrived: Option<i64>,
     /// The quickest each traveller has found everyone at hide-and-seek, in seconds, by its
     /// Desktop id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -273,6 +277,14 @@ struct Book {
     colonies: BTreeMap<String, ColonyMemories>,
 }
 
+/// The book as it is written: the same as `Book`, borrowing the colonies rather than copying
+/// every one of them each time anything is kept.
+#[derive(Serialize)]
+struct Written<'a> {
+    version: u32,
+    colonies: &'a BTreeMap<String, ColonyMemories>,
+}
+
 /// The memories of one colony, and where to keep them.
 pub struct Memories {
     path: Option<PathBuf>,
@@ -331,8 +343,9 @@ impl Memories {
         let last_good = folder.join(LAST_GOOD);
         match find(&path) {
             Found::Missing => {}
-            Found::Good(book) => {
-                if let Err(error) = write(&last_good, &book) {
+            Found::Good(mut book) => {
+                // The copy is written as the book itself is, so it can always be read back too.
+                if let Err(error) = write(&last_good, &mut book, colony) {
                     eprintln!("formiga-hill: could not keep a copy of the memories: {error}");
                 }
                 memories.book = book;
@@ -402,6 +415,7 @@ impl Memories {
     pub fn arrived(&mut self) -> Vec<(u8, Standing)> {
         let colony = self.colony_mut();
         colony.visits += 1;
+        colony.last_arrived = Some(time::OffsetDateTime::now_utc().unix_timestamp());
         let mut grown = Vec::new();
         for (spot, standing) in &mut colony.hilltop {
             if standing.grow() {
@@ -895,15 +909,11 @@ impl Memories {
 
     /// Writes the book to disk beside itself and renames it into place. A failure is reported
     /// and otherwise ignored: the visit goes on, it is only not remembered.
-    fn keep(&self) {
+    fn keep(&mut self) {
         let Some(path) = &self.path else {
             return;
         };
-        let book = Book {
-            version: VERSION,
-            colonies: self.book.colonies.clone(),
-        };
-        if let Err(error) = write(path, &book) {
+        if let Err(error) = write(path, &mut self.book, &self.colony) {
             eprintln!("formiga-hill: could not keep the colony's memories: {error}");
         }
     }
@@ -1025,7 +1035,7 @@ fn find(path: &Path) -> Found {
 /// aside before is never overwritten by the next, which matters when the first was the one
 /// worth keeping: a book from a newer Hill, set aside by an older one that then started afresh,
 /// is still there after the fresh book is set aside in its turn.
-fn set_aside(path: &Path) -> PathBuf {
+pub fn set_aside(path: &Path) -> PathBuf {
     let named = |number: u32| {
         let mut aside = path.as_os_str().to_owned();
         aside.push(".unreadable");
@@ -1041,8 +1051,54 @@ fn set_aside(path: &Path) -> PathBuf {
     named(number)
 }
 
-fn write(path: &Path, book: &Book) -> std::io::Result<()> {
-    crate::sharing::write_atomically(path, &serde_json::to_vec_pretty(book)?)
+/// Writes `book` at `path`, whole and small enough for Hill to read back (see `fit`). Should the
+/// colony visiting be too big on its own, nothing is written, so the last book kept stays as it
+/// is and can still be read.
+fn write(path: &Path, book: &mut Book, colony: &str) -> std::io::Result<()> {
+    let bytes = fit(book, colony).ok_or_else(|| {
+        std::io::Error::other(
+            "this colony's memories are too big to read back, so the visit is not remembered",
+        )
+    })?;
+    crate::sharing::write_atomically(path, &bytes)
+}
+
+/// The book as it is to be written, small enough for Hill to read back: laid out to read if
+/// that fits, packed tight if not. Should even that be too big, the other colonies seen least
+/// lately are let go of, one at a time, each said so; `colony`, the one visiting, never is.
+/// `None` if `colony` on its own is too big.
+fn fit(book: &mut Book, colony: &str) -> Option<Vec<u8>> {
+    let encode = |book: &Book, pretty: bool| {
+        let written = Written {
+            version: VERSION,
+            colonies: &book.colonies,
+        };
+        let bytes = if pretty {
+            serde_json::to_vec_pretty(&written)
+        } else {
+            serde_json::to_vec(&written)
+        };
+        bytes.ok().filter(|bytes| bytes.len() as u64 <= MAX_BYTES)
+    };
+    if let Some(bytes) = encode(book, true) {
+        return Some(bytes);
+    }
+    loop {
+        if let Some(bytes) = encode(book, false) {
+            return Some(bytes);
+        }
+        let (least_lately, _) = book
+            .colonies
+            .iter()
+            .filter(|(id, _)| id.as_str() != colony)
+            .min_by_key(|(id, other)| (other.last_arrived, other.visits, id.as_str()))?;
+        let least_lately = least_lately.clone();
+        book.colonies.remove(&least_lately);
+        eprintln!(
+            "formiga-hill: the memories grew too big to read back, so the colony seen least \
+             lately ({least_lately}) is no longer remembered"
+        );
+    }
 }
 
 /// Fish and bugs caught on the way, into the journal as they were let go; says which kinds.
@@ -1685,6 +1741,91 @@ mod tests {
         // And nothing about expeditions is written until there has been one.
         let written = serde_json::to_string(colony).unwrap();
         assert!(!written.contains("expedition") && !written.contains("furthest"));
+    }
+
+    #[test]
+    fn a_book_too_big_to_read_back_lets_go_of_the_colonies_seen_least_lately() {
+        let dir = scratch("too-big");
+        let mut memories = Memories::open(Some(&dir), "visiting");
+        // A colony with a great many stories finished: well over a third of all the book holds.
+        let big = |last_arrived: Option<i64>, tag: &str| ColonyMemories {
+            stories: (0..5000)
+                .map(|n| {
+                    format!(
+                        "org.example.{tag}/{n:06}-{}",
+                        "a-story-with-a-long-name-".repeat(2)
+                    )
+                })
+                .collect(),
+            last_arrived,
+            visits: 1,
+            ..ColonyMemories::default()
+        };
+        let colonies = &mut memories.book.colonies;
+        colonies.insert("visiting".into(), big(Some(10), "visiting"));
+        colonies.insert("long-ago".into(), big(Some(20), "long-ago"));
+        colonies.insert("never-stamped".into(), big(None, "never-stamped"));
+        colonies.insert("lately".into(), big(Some(30), "lately"));
+        memories.finished("p/s".into(), &[]);
+        let bytes = fs::read(dir.join(FILE)).unwrap();
+        assert!(bytes.len() as u64 <= MAX_BYTES, "{} bytes", bytes.len());
+        let again = Memories::open(Some(&dir), "visiting");
+        let kept: Vec<&str> = again.book.colonies.keys().map(String::as_str).collect();
+        assert_eq!(kept, ["lately", "visiting"]);
+        assert!(again.colony().stories.contains("p/s"));
+        assert_eq!(again.colony().stories.len(), 5001);
+        // A visiting colony too big on its own is never written, nor the last book lost.
+        let mut alone = Memories::open(Some(&dir), "visiting");
+        alone
+            .book
+            .colonies
+            .insert("visiting".into(), big(None, &"x".repeat(400)));
+        alone.finished("p/t".into(), &[]);
+        assert_eq!(fs::read(dir.join(FILE)).unwrap(), bytes);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_book_packed_tight_is_copied_packed_tight_to_go_back_to() {
+        let dir = scratch("tight-copy");
+        let mut memories = Memories::open(Some(&dir), "c");
+        // Short names, so laid out to read the book is half as big again as packed tight.
+        memories.colony_mut().stories = (0..70_000).map(|n| format!("p/{n:05}")).collect();
+        memories.finished("p/s".into(), &[]);
+        assert!(fs::metadata(dir.join(FILE)).unwrap().len() <= MAX_BYTES);
+        Memories::open(Some(&dir), "c");
+        assert!(fs::metadata(dir.join(LAST_GOOD)).unwrap().len() <= MAX_BYTES);
+        fs::write(dir.join(FILE), b"not json at all").unwrap();
+        let memories = Memories::open(Some(&dir), "c");
+        assert_eq!(memories.trouble(), Some(Trouble::WentBack));
+        assert_eq!(memories.colony().stories.len(), 70_001);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn memories_only_looked_at_are_never_written() {
+        let dir = scratch("looked-at");
+        Memories::open(Some(&dir), "c").arrived();
+        Memories::open(Some(&dir), "c").arrived();
+        let before = fs::read(dir.join(FILE)).unwrap();
+        let copy = fs::read(dir.join(LAST_GOOD)).unwrap();
+        let mut looked = Memories::look(Some(&dir), "c");
+        assert_eq!(looked.colony().visits, 2, "what is remembered shows");
+        looked.arrived();
+        looked.finished("p/s".into(), &["oak_acorn".into()]);
+        looked.back_from_the_woods(&[7], &["acorn_stash"]);
+        assert_eq!(looked.colony().visits, 3, "and lasts the visit");
+        assert_eq!(
+            fs::read(dir.join(FILE)).unwrap(),
+            before,
+            "but is never written"
+        );
+        assert_eq!(
+            fs::read(dir.join(LAST_GOOD)).unwrap(),
+            copy,
+            "nor is the copy from the start of the last visit"
+        );
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]

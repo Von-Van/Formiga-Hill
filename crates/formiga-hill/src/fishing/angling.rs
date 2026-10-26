@@ -1187,10 +1187,22 @@ mod tests {
         from: f32,
         to: f32,
     ) -> Vec<Event> {
+        run_at(ground, angling, cast, from, to, 1.0 / 30.0)
+    }
+
+    /// Plays on from `from` to `to`, `tick` seconds a frame.
+    fn run_at(
+        ground: &mut Playground,
+        angling: &mut Angling,
+        cast: &Cast,
+        from: f32,
+        to: f32,
+        tick: f32,
+    ) -> Vec<Event> {
         let mut events = Vec::new();
         let mut now = from;
         while now < to {
-            now += 1.0 / 30.0;
+            now += tick;
             ground.tick(cast, now);
             angling.tick(ground, now);
             events.extend(angling.take_events());
@@ -1204,6 +1216,17 @@ mod tests {
         angling: &mut Angling,
         cast: &Cast,
         from: f32,
+    ) -> f32 {
+        cast_and_hook_at(ground, angling, cast, from, 1.0 / 30.0)
+    }
+
+    /// As `cast_and_hook`, `tick` seconds a frame.
+    fn cast_and_hook_at(
+        ground: &mut Playground,
+        angling: &mut Angling,
+        cast: &Cast,
+        from: f32,
+        tick: f32,
     ) -> f32 {
         let mut now = from;
         while now < from + 240.0 {
@@ -1235,10 +1258,113 @@ mod tests {
             if matches!(angling.phase(), Phase::Fighting(_)) {
                 return now;
             }
-            run(ground, angling, cast, now, now + 1.0 / 30.0);
-            now += 1.0 / 30.0;
+            run_at(ground, angling, cast, now, now + tick, tick);
+            now += tick;
         }
         panic!("nothing bit in four minutes: {:?}", angling.phase());
+    }
+
+    /// One angler out with the dice seeded by `seed` hooks whatever bites, `tick` seconds a
+    /// frame, and then has a fish of a set kind and size on the line, `out` pixels out, starting
+    /// to pull; then plays it, patiently (reeling only while it isn't pulling) or holding on
+    /// through everything. Whether it was landed, and how long that, or losing it, took.
+    fn fight_at(
+        cast: &Cast,
+        angler: usize,
+        (kind, length, out): (&str, f32, f32),
+        patient: bool,
+        tick: f32,
+        seed: u64,
+    ) -> (bool, f32) {
+        let mut ground = fishing::open(cast, &[cast.members[angler].id], 0.0);
+        let outset = Outset {
+            party: vec![cast.members[angler].id],
+            drought: 0,
+            influence: crate::woods::Influence::default(),
+            seed,
+        };
+        let mut angling = Angling::new(&mut ground, outset, |_| false, |_| false, 0.0);
+        run_at(&mut ground, &mut angling, cast, 0.0, 6.0, tick);
+        let mut now = cast_and_hook_at(&mut ground, &mut angling, cast, 6.0, tick);
+        if let Phase::Fighting(mut fight) = angling.phase() {
+            angling.swimmers[fight.swimmer].fish = fish::fish(kind).unwrap();
+            angling.swimmers[fight.swimmer].length = length;
+            fight.out = out;
+            fight.strain = 0.0;
+            fight.next_pull = now;
+            angling.phase = Phase::Fighting(fight);
+        }
+        let hooked = now;
+        while now < hooked + 120.0 {
+            let Phase::Fighting(fight) = angling.phase() else {
+                break;
+            };
+            angling.hold(!patient || (now >= fight.pulling_until && fight.strain < 0.6));
+            run_at(&mut ground, &mut angling, cast, now, now + tick, tick);
+            now += tick;
+        }
+        let landed = matches!(angling.phase(), Phase::Landed { .. });
+        (landed, now - hooked)
+    }
+
+    /// A frame every thirtieth of a second, as the tests run; a common screen's sixtieth; and a
+    /// fast screen's hundred and forty-fourth.
+    const RATES: [f32; 3] = [1.0 / 30.0, 1.0 / 60.0, 1.0 / 144.0];
+
+    #[test]
+    fn a_trout_is_landed_in_much_the_same_time_at_any_frame_rate() {
+        let cast = sample();
+        let mut means = Vec::new();
+        for tick in RATES {
+            let mut took = Vec::new();
+            for seed in 0..3 {
+                for angler in 0..cast.members.len() {
+                    let (landed, time) =
+                        fight_at(&cast, angler, ("trout", 40.0, 90.0), true, tick, seed);
+                    assert!(landed, "lost at {:.0} a second", 1.0 / tick);
+                    took.push(time);
+                }
+            }
+            means.push(took.iter().sum::<f32>() / took.len() as f32);
+        }
+        // The pulls come when the dice say, and the dice are rolled as the fish about swim, so
+        // each fight goes its own way; on average they take the same time.
+        for (tick, mean) in RATES.iter().zip(&means).skip(1) {
+            assert!(
+                (mean - means[0]).abs() < means[0] * 0.2,
+                "{mean:.2}s on average at {:.0} a second, {:.2}s at 30",
+                1.0 / tick,
+                means[0]
+            );
+        }
+    }
+
+    #[test]
+    fn holding_on_snaps_the_line_as_soon_at_any_frame_rate() {
+        let cast = sample();
+        for angler in 0..cast.members.len() {
+            let snaps: Vec<f32> = RATES
+                .iter()
+                .map(|&tick| {
+                    let (landed, took) =
+                        fight_at(&cast, angler, ("old_one", 110.0, 120.0), false, tick, 9);
+                    assert!(
+                        !landed,
+                        "the old one was landed at {:.0} a second",
+                        1.0 / tick
+                    );
+                    took
+                })
+                .collect();
+            for (tick, snap) in RATES.iter().zip(&snaps).skip(1) {
+                assert!(
+                    (snap - snaps[0]).abs() < 0.1,
+                    "snapped after {snap:.2}s at {:.0} a second, {:.2}s at 30",
+                    1.0 / tick,
+                    snaps[0]
+                );
+            }
+        }
     }
 
     #[test]

@@ -161,7 +161,9 @@ pub fn layout() -> Layout {
 
 /// Shows what stands on the Hilltop now, far off over the trees.
 pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
-    ground.set_backdrop(scenery::backdrop(hilltop));
+    let backdrop = scenery::backdrop(hilltop);
+    let sky = scenery::night_sky(&backdrop);
+    ground.set_backdrop_and_sky(backdrop, sky);
 }
 
 /// The meadow, with the companions who came walking out of the trees.

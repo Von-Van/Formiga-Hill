@@ -25,7 +25,6 @@ use crate::story::{self, Files, Package, PackageError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 /// What a share file's name ends with, after a dot.
@@ -220,11 +219,7 @@ pub fn install(folder: &Path, files: &Files) -> Result<Installed, PackageError> 
     let _ = fs::remove_dir_all(&incoming);
     let written = (|| -> std::io::Result<()> {
         for (path, bytes) in files {
-            let path = incoming.join(path);
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            fs::write(path, bytes)?;
+            write_atomically(&incoming.join(path), bytes)?;
         }
         if let Some(existing) = &existing {
             let _ = fs::remove_dir_all(&outgoing);
@@ -237,7 +232,7 @@ pub fn install(folder: &Path, files: &Files) -> Result<Installed, PackageError> 
             }
             return Err(error);
         }
-        Ok(())
+        sync_folder(folder)
     })();
     if let Err(error) = written {
         let _ = fs::remove_dir_all(&incoming);
@@ -296,21 +291,34 @@ fn name_of(path: &Path) -> String {
     )
 }
 
-/// Writes a file whole or not at all: to a file beside it first, then put in its place.
+/// Writes a file whole or not at all, making its folder first if need be: everything Hill
+/// keeps is written this way. It is Desktop's own way, to a file beside it that is synced to the
+/// disk and then put in its place, with the folder synced so the move lasts too. Nothing is left
+/// beside it if the writing fails.
 pub fn write_atomically(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
-    if let Some(folder) = path.parent()
-        && !folder.as_os_str().is_empty()
-    {
+    // A bare file name is in the current folder, which is the folder synced.
+    let path = match path.parent() {
+        Some(folder) if folder.as_os_str().is_empty() => Path::new(".").join(path),
+        _ => path.to_owned(),
+    };
+    if let Some(folder) = path.parent() {
         fs::create_dir_all(folder)?;
     }
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
-    let temporary = PathBuf::from(temporary);
-    let mut file = fs::File::create(&temporary)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&temporary, path)
+    formiga_travel::write_atomically(&path, bytes).inspect_err(|_| {
+        let mut temporary = path.as_os_str().to_owned();
+        temporary.push(".tmp");
+        let _ = fs::remove_file(PathBuf::from(temporary));
+    })
+}
+
+/// Makes a folder's latest changes last, as a file moved into it. Windows has nothing to sync:
+/// a move there is written through already.
+fn sync_folder(folder: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    fs::File::open(folder)?.sync_all()?;
+    #[cfg(not(unix))]
+    let _ = folder;
+    Ok(())
 }
 
 /// Unfinished work, kept by an editor in its own folder of Hill's data, one file each, in
@@ -437,6 +445,27 @@ pub fn slug(words: &str, most: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_written_whole_leaves_nothing_beside_it_either_way() {
+        let dir = std::env::temp_dir().join(format!("hill-whole-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let path = dir.join("deeper").join("kept.json");
+        write_atomically(&path, b"first").unwrap();
+        write_atomically(&path, b"second").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"second");
+        let beside = |dir: &Path| fs::read_dir(dir).unwrap().count();
+        assert_eq!(beside(&dir.join("deeper")), 1);
+        // Something in the way that it can't be put in place of: a folder, not empty.
+        let blocked = dir.join("blocked");
+        fs::create_dir_all(blocked.join("in-the-way")).unwrap();
+        assert!(write_atomically(&blocked, b"never").is_err());
+        assert!(
+            !dir.join("blocked.tmp").exists(),
+            "the half-way file is cleared up"
+        );
+        fs::remove_dir_all(dir).unwrap();
+    }
 
     fn official(name: &str) -> Files {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))

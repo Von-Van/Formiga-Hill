@@ -3,7 +3,7 @@
 //! and a sawdust ground scattered with things to hide behind.
 //!
 //! Like every place it is painted by day, and the hour's light is laid over it (`daylight`). What
-//! shines of its own after dark is painted separately, in `lamplight`: every bulb lit with its
+//! shines of its own after dark is painted separately, as lamplight: every bulb lit with its
 //! halo, the carousel and the stall lit from within, the big top's door, the caravan's window and
 //! the lantern on the barrel, and their light lying in pools on the sawdust. Both are painted by
 //! the same brushwork in one pass (`paint`), so a light is always where its bulb is.
@@ -133,15 +133,16 @@ pub fn backdrop(hilltop: &Arrangement) -> Canvas {
     scene
 }
 
-/// What shines here after dark, at full strength, on a clear canvas: every bulb lit in its
-/// colour with its halo, the big top's door, the carousel and the stall lit from within, the
-/// caravan's window and the lanterns, and the pools of light they throw on the sawdust. Nothing
-/// that isn't a light is painted.
-pub fn lamplight() -> Canvas {
+/// The place by day, and what shines here after dark, at full strength, on a clear canvas:
+/// every bulb lit in its colour with its halo, the big top's door, the carousel and the stall lit
+/// from within, the caravan's window and the lanterns, and the pools of light they throw on the
+/// sawdust. Nothing that isn't a light is painted in the second. Both come from one painting of
+/// the fair, as the lights are wherever their bulbs are painted, whatever is on the skyline.
+pub fn backdrop_and_lamplight(hilltop: &Arrangement) -> (Canvas, Canvas) {
     let mut scene = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
     let mut lamps = Canvas::new(SCENE_WIDTH, SCENE_HEIGHT);
-    paint(&mut scene, &mut lamps, &Arrangement::new());
-    lamps
+    paint(&mut scene, &mut lamps, hilltop);
+    (scene, lamps)
 }
 
 /// The sky after dark, deepened, with its stars and the moon.
@@ -2557,7 +2558,7 @@ mod tests {
 
     #[test]
     fn only_what_shines_is_in_the_lamplight() {
-        let lamps = lamplight();
+        let (_, lamps) = backdrop_and_lamplight(&Arrangement::new());
         let lit = lamps.pixels().iter().filter(|pixel| pixel.a > 0).count();
         assert!(lit > 0, "nothing shines");
         assert!(

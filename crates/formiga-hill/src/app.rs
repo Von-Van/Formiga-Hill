@@ -55,7 +55,8 @@ pub enum Visit {
     /// A real trip: Desktop is waiting for the colony to come home.
     Trip(Trip),
     /// A development visit, from the sample colony or a colony file read for testing. Nobody is
-    /// waiting for it, so it writes nothing.
+    /// waiting for it, so nothing is kept for the colony: its memories and album show as they
+    /// are, and whatever happens lasts the visit.
     Rehearsal(String),
 }
 
@@ -274,6 +275,9 @@ pub struct HillApp {
     last_hour_check: Option<f32>,
     /// The story being played in the Clubhouse, if any, and the package it came from.
     story: Option<(String, Director)>,
+    /// Whether what happens is kept for the colony, in its memories and its album: only on a real
+    /// trip, and never for a review picture.
+    keeps: bool,
     memories: Memories,
     /// What has grown on the Hilltop since the last visit, as it is now, spot by spot.
     grown: Vec<(u8, crate::hilltop::Standing)>,
@@ -298,6 +302,7 @@ impl HillApp {
         arrival: Arrival,
         library: Library,
         clock: Clock,
+        snap: Option<Snap>,
     ) -> Self {
         let presentation = arrival.cast.snapshot.presentation;
         // Paper over the scene looks the same in light and dark, as Desktop's bubbles do.
@@ -307,7 +312,13 @@ impl HillApp {
         cc.egui_ctx
             .set_zoom_factor(f32::from(play.text_scale(presentation.text_scale_percent)) / 100.0);
         // Every visit begins with the train pulling in.
-        let mut memories = Memories::open(
+        let keeps = matches!(arrival.visit, Visit::Trip(_)) && snap.is_none();
+        let open = if keeps {
+            Memories::open
+        } else {
+            Memories::look
+        };
+        let mut memories = open(
             Memories::folder().as_deref(),
             &arrival.cast.snapshot.colony_id,
         );
@@ -329,7 +340,7 @@ impl HillApp {
             card: None,
             chapter: None,
             last_chapter: None,
-            snap: None,
+            snap: snap.map(|snap| (snap, false, false)),
             scene: egui::Rect::NOTHING,
             set_aside: SetAside::open(Memories::folder().as_deref()),
             packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
@@ -376,6 +387,7 @@ impl HillApp {
             daylight: clock.daylight(),
             last_hour_check: None,
             story: None,
+            keeps,
             memories,
             grown,
             notice: None,
@@ -414,14 +426,6 @@ impl HillApp {
         }
         self.last_recall_check = now;
         trip.recalled()
-    }
-
-    /// Looks at the clock now and then, and lights everywhere for the hour it is: everywhere
-    /// the colony has been, so a place gone back to is already in the right light.
-    /// For review only: take the picture `snap` describes, then close.
-    pub fn snap(mut self, snap: Snap) -> Self {
-        self.snap = Some((snap, false, false));
-        self
     }
 
     /// Goes where the review picture is to be taken, opens its card, and begins its story,
@@ -541,6 +545,8 @@ impl HillApp {
         }
     }
 
+    /// Looks at the clock now and then, and lights everywhere for the hour it is: everywhere
+    /// the colony has been, so a place gone back to is already in the right light.
     fn keep_hours(&mut self, now: f32) {
         if self
             .last_hour_check
@@ -558,41 +564,36 @@ impl HillApp {
             self.green.as_mut(),
             self.fairground.as_mut().map(|(ground, _)| ground),
             self.hilltop.as_mut(),
-            self.woods.empty.as_mut(),
-            self.woods.pool.as_mut(),
-            self.woods.meadow.as_mut(),
-            self.woods.hedgerow.as_mut(),
-            self.woods.track.as_mut(),
         ];
-        for ground in grounds.into_iter().flatten() {
+        for ground in grounds
+            .into_iter()
+            .flatten()
+            .chain(self.woods.grounds_mut())
+        {
             ground.set_daylight(daylight);
         }
-        if let Some((ground, rummage)) = &mut self.woods.outing {
-            ground.set_daylight(daylight);
-            rummage.set_hour_dark(daylight.darkness());
+        // What is under way in the Woods goes by how dark the hour is, too.
+        let dark = daylight.darkness();
+        if let Some((_, rummage)) = &mut self.woods.outing {
+            rummage.set_hour_dark(dark);
         }
-        if let Some((ground, trip)) = &mut self.woods.fishing {
-            ground.set_daylight(daylight);
-            trip.set_hour_dark(daylight.darkness());
+        if let Some((_, trip)) = &mut self.woods.fishing {
+            trip.set_hour_dark(dark);
         }
-        if let Some((ground, hunt)) = &mut self.woods.hunt {
-            ground.set_daylight(daylight);
-            hunt.set_hour_dark(daylight.darkness());
+        if let Some((_, hunt)) = &mut self.woods.hunt {
+            hunt.set_hour_dark(dark);
         }
-        if let Some((ground, foray)) = &mut self.woods.foray {
-            ground.set_daylight(daylight);
-            foray.set_hour_dark(daylight.darkness());
+        if let Some((_, foray)) = &mut self.woods.foray {
+            foray.set_hour_dark(dark);
         }
         if let Some(expedition) = &mut self.woods.expedition {
             expedition.set_daylight(daylight);
         }
-        if let Some((ground, scavenge)) = &mut self.woods.scavenge {
-            ground.set_daylight(daylight);
-            scavenge.set_hour_dark(daylight.darkness());
+        if let Some((_, scavenge)) = &mut self.woods.scavenge {
+            scavenge.set_hour_dark(dark);
         }
-        if let Some((ground, hunt)) = &mut self.woods.treasure {
-            ground.set_daylight(daylight);
-            hunt.set_hour_dark(daylight.darkness());
+        if let Some((_, hunt)) = &mut self.woods.treasure {
+            hunt.set_hour_dark(dark);
         }
     }
 
@@ -795,9 +796,16 @@ impl HillApp {
             }
             _ => Vec::new(),
         };
-        if self.texture.is_none() || frames.is_empty() || frames != self.shown_frames {
+        // The scene is kept for photos only while the camera is out to take them.
+        if !self.camera.out {
+            self.last_scene = None;
+        }
+        let unframed = self.camera.out && self.last_scene.is_none();
+        if self.texture.is_none() || frames.is_empty() || frames != self.shown_frames || unframed {
             let mut canvas = self.compose(now);
-            self.last_scene = Some(canvas.clone());
+            if self.camera.out {
+                self.last_scene = Some(canvas.clone());
+            }
             if let Some((before, since)) = &self.leaving {
                 let progress = (now - since) / DISSOLVE_SECS;
                 if progress >= 1.0 {
@@ -806,10 +814,7 @@ impl HillApp {
                     dissolve(&mut canvas, before, progress);
                 }
             }
-            let image = egui::ColorImage::from_rgba_unmultiplied(
-                [SCENE_WIDTH as usize, SCENE_HEIGHT as usize],
-                &canvas.rgba_bytes(),
-            );
+            let image = color_image(&canvas);
             match &mut self.texture {
                 Some(texture) => texture.set(image, egui::TextureOptions::NEAREST),
                 None => {
@@ -1403,6 +1408,18 @@ impl Pointed {
     }
 }
 
+/// A picture as egui takes it for a texture, made in one go.
+pub fn color_image(canvas: &Canvas) -> egui::ColorImage {
+    egui::ColorImage::new(
+        [canvas.width() as usize, canvas.height() as usize],
+        canvas
+            .pixels()
+            .iter()
+            .map(|pixel| egui::Color32::from_rgba_unmultiplied(pixel.r, pixel.g, pixel.b, pixel.a))
+            .collect(),
+    )
+}
+
 /// Mixes `before` into `scene` in an ordered dither, `progress` of the way to `scene`: a pixel
 /// art dissolve, with no colour in it that neither picture has.
 fn dissolve(scene: &mut Canvas, before: &Canvas, progress: f32) {
@@ -1520,6 +1537,27 @@ fn plural(count: usize) -> &'static str {
 mod tests {
     use super::*;
     use crate::cast::sample;
+
+    #[test]
+    fn a_scene_reaches_the_screen_as_egui_would_read_its_bytes() {
+        let mut canvas = Canvas::new(256, 3);
+        for value in 0..=255u8 {
+            let x = i32::from(value);
+            canvas.set(
+                x,
+                0,
+                formiga_art::Rgba::new(value, 255 - value, value / 2, 255),
+            );
+            canvas.set(x, 1, formiga_art::Rgba::new(200, value / 3, 90, value));
+            canvas.set(
+                x,
+                2,
+                formiga_art::Rgba::new(value, value, value, 255 - value),
+            );
+        }
+        let expected = egui::ColorImage::from_rgba_unmultiplied([256, 3], &canvas.rgba_bytes());
+        assert_eq!(color_image(&canvas), expected);
+    }
 
     #[test]
     fn words_read_as_they_would_in_a_sentence() {

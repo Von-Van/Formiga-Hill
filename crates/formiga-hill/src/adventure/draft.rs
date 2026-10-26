@@ -191,7 +191,8 @@ impl Draft {
         fits.then_some(draft)
     }
 
-    fn index(&self, number: u32) -> Option<usize> {
+    /// Where the place with this number stands among the places, if it is still on the map.
+    pub fn index(&self, number: u32) -> Option<usize> {
         self.places.iter().position(|place| place.number == number)
     }
 
