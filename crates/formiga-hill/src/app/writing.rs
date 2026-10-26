@@ -5,6 +5,7 @@
 
 use super::{Area, Card, HillApp, paper};
 use crate::sharing::{self, Drafts};
+use crate::story::PackageError;
 use crate::story::draft::{
     self, Choice, Draft, DraftRole, EVERYONE, FEELINGS, KIND_NAMES, KINDS_OF_STEP, MAX_LINE_CHARS,
     MAX_NAME_CHARS, MAX_TITLE_CHARS, MOST_ROLES, MOST_SCENES, MOST_STEPS, PICKS, PLACE_NAMES,
@@ -713,30 +714,16 @@ impl HillApp {
         Some(out)
     }
 
+    /// Shares the open draft: a new version of it, written as one share file wherever the person
+    /// chooses, and a word on how that went.
     fn share_draft(&mut self, now: f32) {
         let Some((title, files)) = self.next_version(now) else {
             return;
         };
-        let name = format!(
-            "{}.{}",
-            title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], ""),
-            sharing::EXTENSION
-        );
-        let Some(path) = rfd::FileDialog::new()
-            .set_title("Share a story")
-            .set_file_name(&name)
-            .add_filter("Formiga Hill story", &[sharing::EXTENSION])
-            .save_file()
-        else {
+        let Some(path) = ask_where_to_share(&share_file_name(&title)) else {
             return;
         };
-        let line = match sharing::export(&files, &path) {
-            Ok(()) => format!(
-                "Saved \u{201c}{title}\u{201d} to share. A friend opens it from the Clubhouse's \
-                 Story packages."
-            ),
-            Err(error) => format!("The story couldn't be saved: {}.", error.problem),
-        };
+        let line = shared_line(&title, sharing::export(&files, &path));
         self.notice = Some((line, now));
     }
 
@@ -763,6 +750,37 @@ impl HillApp {
             Err(error) => format!("It couldn't be put on the board: {}.", error.problem),
         };
         self.notice = Some((line, now));
+    }
+}
+
+/// The file name offered for a shared story: its title, less anything a file can't be called,
+/// under the share file's extension.
+fn share_file_name(title: &str) -> String {
+    format!(
+        "{}.{}",
+        title.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], ""),
+        sharing::EXTENSION
+    )
+}
+
+/// Asks the person where to save a shared story, as `name` unless they say otherwise; nothing
+/// if they think better of it.
+fn ask_where_to_share(name: &str) -> Option<std::path::PathBuf> {
+    rfd::FileDialog::new()
+        .set_title("Share a story")
+        .set_file_name(name)
+        .add_filter("Formiga Hill story", &[sharing::EXTENSION])
+        .save_file()
+}
+
+/// The notice once a story has been saved to share, or couldn't be.
+fn shared_line(title: &str, saved: Result<(), PackageError>) -> String {
+    match saved {
+        Ok(()) => format!(
+            "Saved \u{201c}{title}\u{201d} to share. A friend opens it from the Clubhouse's \
+             Story packages."
+        ),
+        Err(error) => format!("The story couldn't be saved: {}.", error.problem),
     }
 }
 
@@ -1217,4 +1235,29 @@ fn step_editor(
         }
     }
     changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_shared_story_is_named_after_its_title_and_the_notice_says_how_it_went() {
+        assert_eq!(
+            share_file_name("A Day: Out?"),
+            format!("A Day Out.{}", sharing::EXTENSION)
+        );
+        assert_eq!(share_file_name(""), format!(".{}", sharing::EXTENSION));
+        let saved = shared_line("Picnic", Ok(()));
+        assert!(saved.starts_with("Saved \u{201c}Picnic\u{201d} to share."));
+        let not_saved = shared_line(
+            "Picnic",
+            Err(PackageError {
+                package: "picnic".into(),
+                file: None,
+                problem: "the disk is full".into(),
+            }),
+        );
+        assert_eq!(not_saved, "The story couldn't be saved: the disk is full.");
+    }
 }

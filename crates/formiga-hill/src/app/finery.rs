@@ -2,7 +2,7 @@
 //! dress-up box, and carrying what everyone has on, who shines, and whatever was won at hoopla,
 //! from place to place for the rest of the visit. None of it goes home.
 
-use super::{Area, Card, HillApp, lower, paper};
+use super::{Area, Card, HillApp, Pointed, Stage, lower, paper, sound};
 use crate::audio::Cue;
 use crate::cast::Id;
 use crate::character::{Brushing, Offer};
@@ -172,6 +172,62 @@ impl HillApp {
                 app.picked = (!taking_off).then_some(Pick::TakeOff);
             }
         });
+    }
+
+    /// Whatever the pointer is over or does on the green: someone to dress or to offer what the
+    /// person is holding, and the dress-up box.
+    pub(super) fn pointer_on_green(
+        &mut self,
+        stage: &Stage,
+        pointer: Option<(f32, f32)>,
+    ) -> Pointed {
+        let now = stage.now;
+        let mut pointed = Pointed::default();
+        let Some(green) = &mut self.green else {
+            return pointed;
+        };
+        green.set_pointer(pointer);
+        let hovered = point_on_green(
+            green,
+            pointer,
+            now,
+            &self.costumes,
+            &self.groomed,
+            self.picked,
+        );
+        if let Some(id) = hovered {
+            stage.ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+            if stage.response.clicked() {
+                if self.picked.is_some() {
+                    pointed.dress_on = Some(id);
+                } else {
+                    green.offer(id, self.tool, &mut self.trust, now);
+                    self.sound.play(sound::offered(self.tool));
+                }
+            }
+        }
+        if let Some(id) = hovered {
+            // Only the one under the pointer wears a name on the green.
+            if let (Some((x, y)), Some(member)) =
+                (green.head(id, now), self.arrival.cast.member(id))
+            {
+                stage.tag(&member.name, stage.to_screen(x, y - 6.0));
+            }
+        }
+        // The dress-up box opens with a click, as well as from its button.
+        let (left, top, right, bottom) = crate::green::DRESS_UP;
+        pointed.on_box = hovered.is_none()
+            && pointer.is_some_and(|(x, y)| {
+                (left as f32..right as f32).contains(&x) && (top as f32..bottom as f32).contains(&y)
+            });
+        if pointed.on_box {
+            stage.ctx.set_cursor_icon(egui::CursorIcon::PointingHand);
+            if stage.response.clicked() {
+                self.toggle(Card::DressUp);
+            }
+        }
+        pointed.hovered = hovered;
+        pointed
     }
 }
 
