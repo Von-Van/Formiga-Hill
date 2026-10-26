@@ -314,6 +314,23 @@ impl Playground {
         self.still_life();
     }
 
+    /// Repaints what lies behind everyone and the night sky over it together, as when the Hilltop
+    /// seen on the skyline changes, so the stars never come out over anything new on it.
+    pub fn set_backdrop_and_sky(&mut self, backdrop: Canvas, sky: Canvas) {
+        if let Some(nightlights) = &mut self.nightlights {
+            nightlights.sky = sky;
+        }
+        self.set_backdrop(backdrop);
+    }
+
+    /// The night sky as it stands, for tests: `None` for a place that is always as painted.
+    #[cfg(test)]
+    pub fn night_sky(&self) -> Option<&Canvas> {
+        self.nightlights
+            .as_ref()
+            .map(|nightlights| &nightlights.sky)
+    }
+
     /// Changes what stands on the ground, as when something is placed on the Hilltop.
     pub fn set_props(&mut self, props: Vec<Prop>) {
         self.props = props;

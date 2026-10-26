@@ -5,7 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const FILE: &str = "settings.json";
@@ -199,26 +198,15 @@ fn read(path: &Path) -> Contents {
         .flatten()
         .and_then(|bytes| serde_json::from_slice::<Contents>(&bytes).ok());
     parsed.unwrap_or_else(|| {
-        // Keep what was there for whoever wants to look at it, and start again.
-        let mut aside = path.as_os_str().to_owned();
-        aside.push(".unreadable");
-        let _ = fs::rename(path, PathBuf::from(aside));
+        // Keep what was there for whoever wants to look at it, never over anything set aside
+        // before, and start again.
+        let _ = fs::rename(path, crate::memories::set_aside(path));
         Contents::default()
     })
 }
 
 fn write(path: &Path, contents: &Contents) -> std::io::Result<()> {
-    if let Some(folder) = path.parent() {
-        fs::create_dir_all(folder)?;
-    }
-    let mut temporary = path.as_os_str().to_owned();
-    temporary.push(".tmp");
-    let temporary = PathBuf::from(temporary);
-    let mut file = fs::File::create(&temporary)?;
-    file.write_all(&serde_json::to_vec_pretty(contents)?)?;
-    file.sync_all()?;
-    drop(file);
-    fs::rename(&temporary, path)
+    crate::sharing::write_atomically(path, &serde_json::to_vec_pretty(contents)?)
 }
 
 #[cfg(test)]
@@ -388,9 +376,14 @@ mod tests {
         assert_eq!(Settings::open(Some(&dir)).levels(), Levels::default());
         assert!(dir.join("settings.json.unreadable").exists());
         assert!(!dir.join(FILE).exists());
-        // Too big to be Hill's is the same.
+        // Too big to be Hill's is the same, and never set aside over the first.
         fs::write(dir.join(FILE), vec![b' '; MAX_BYTES as usize + 1]).unwrap();
         assert_eq!(Settings::open(Some(&dir)).levels(), Levels::default());
+        assert_eq!(
+            fs::read(dir.join("settings.json.unreadable")).unwrap(),
+            b"{ this is not json"
+        );
+        assert!(dir.join("settings.json.unreadable-2").exists());
     }
 
     #[test]

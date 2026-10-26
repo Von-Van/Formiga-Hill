@@ -201,7 +201,9 @@ fn point_along(path: &[(f32, f32)], distance: f32) -> Option<(f32, f32)> {
 
 /// Shows what stands on the Hilltop, in silhouette on the skyline.
 pub fn show_hilltop(ground: &mut Playground, hilltop: &Arrangement) {
-    ground.set_backdrop(scenery::backdrop(hilltop));
+    let backdrop = scenery::backdrop(hilltop);
+    let sky = scenery::night_sky(&backdrop);
+    ground.set_backdrop_and_sky(backdrop, sky);
 }
 
 /// The fairground with the colony walking in, and its games ready to play.
