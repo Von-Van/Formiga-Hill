@@ -85,6 +85,8 @@ pub fn read_folder(root: &Path) -> Result<Files, PackageError> {
     let mut files = Files::new();
     let mut total = 0;
     walk(root, "", 0, &mut files, &mut total).map_err(|(file, problem)| refuse(file, problem))?;
+    // A folder on a disk that tells capitals apart can hold names a share file could not.
+    check_files(&files, &label)?;
     Ok(files)
 }
 
@@ -166,9 +168,10 @@ fn walk(
     Ok(())
 }
 
-/// Checks package files that did not come from a folder, such as those in a share file, by the
-/// same rules `read_folder` reads a folder by: plain names, nothing hidden, only text files,
-/// folders nested at most a few deep, and nothing too large.
+/// Checks package files, such as those in a share file, by the same rules `read_folder` reads a
+/// folder by: plain names, nothing hidden, no two spelt alike but for capitals, only text files,
+/// folders nested at most a few deep, and nothing too large. `read_folder` checks what it reads
+/// with this too.
 pub fn check_files(files: &Files, label: &str) -> Result<(), PackageError> {
     let refuse = |file: Option<&str>, problem: String| PackageError {
         package: label.to_owned(),
@@ -669,6 +672,24 @@ mod tests {
         {
             std::os::unix::fs::symlink("/etc/hosts", root.join("content/hosts.toml")).unwrap();
             assert!(read_folder(&root).unwrap_err().problem.contains("links"));
+        }
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn a_folder_with_names_spelt_alike_but_for_capitals_is_refused() {
+        let root = std::env::temp_dir().join(format!("hill-capitals-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("manifest.toml"), "x = 1").unwrap();
+        fs::write(root.join("MANIFEST.toml"), "x = 2").unwrap();
+        // A disk that does not tell capitals apart keeps the two as one file, as a computer
+        // Hill runs on would; only a disk that does can hold both.
+        if fs::read_dir(&root).unwrap().count() == 2 {
+            let error = read_folder(&root).unwrap_err();
+            assert!(error.problem.contains("capitals"), "{}", error.problem);
+        } else {
+            assert!(read_folder(&root).is_ok());
         }
         fs::remove_dir_all(&root).unwrap();
     }
