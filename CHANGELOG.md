@@ -4,6 +4,16 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.68.1 (2026-10-26)
+
+Hill is built on Formiga Desktop 0.68.1 and still speaks travel version 6, so it takes the same
+trips as 0.68.0.
+
+- Every place but the station redraws its picture only when something on it changes, so a quiet
+  scene costs less to keep open. The pictures are the same, pixel for pixel.
+- Inside, the six Woods outings share one way of starting, carrying on and ending, and the app and
+  its map editor are now tested without a window.
+
 ## 0.68.0 (2026-10-26)
 
 Hill is built on Formiga Desktop 0.68.0 and speaks travel version 6, so a creature reshaped in
