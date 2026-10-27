@@ -407,16 +407,21 @@ impl HillApp {
             .add(paper::Button::new("Set off").enabled(ready))
             .clicked()
         {
-            match self.woods.activity {
-                Activity::Rummage => self.set_off(now),
-                Activity::Fish => self.set_off_fishing(now),
-                Activity::Bugs => self.set_off_bug_hunting(now),
-                Activity::Forage => self.set_off_foraging(now),
-                Activity::Expedition => self.set_off_expedition(now),
-                Activity::Adventure => self.set_off_adventure(now),
-                Activity::Scavenge => self.set_off_scavenging(now),
-                Activity::Treasure => self.set_off_treasure(now),
-            }
+            self.set_off_on(self.woods.activity, now);
+        }
+    }
+
+    /// Sets off to do `activity` with whoever was chosen.
+    pub(super) fn set_off_on(&mut self, activity: Activity, now: f32) {
+        match activity {
+            Activity::Rummage => self.set_off(now),
+            Activity::Fish => self.set_off_fishing(now),
+            Activity::Bugs => self.set_off_bug_hunting(now),
+            Activity::Forage => self.set_off_foraging(now),
+            Activity::Expedition => self.set_off_expedition(now),
+            Activity::Adventure => self.set_off_adventure(now),
+            Activity::Scavenge => self.set_off_scavenging(now),
+            Activity::Treasure => self.set_off_treasure(now),
         }
     }
 

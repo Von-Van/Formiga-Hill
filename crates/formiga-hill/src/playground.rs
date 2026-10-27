@@ -303,6 +303,12 @@ impl Playground {
         self.daylight = daylight;
     }
 
+    /// The hour's light, as last laid over this place.
+    #[cfg(test)]
+    pub fn daylight(&self) -> Daylight {
+        self.daylight
+    }
+
     /// What lies behind everyone: the place as painted, with nobody in it.
     pub fn backdrop(&self) -> &Canvas {
         &self.backdrop

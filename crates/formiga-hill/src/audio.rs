@@ -73,6 +73,13 @@ impl Sound {
         }
     }
 
+    /// Sound with nothing to play on, for the tests: nothing is ever heard, and no speaker is
+    /// looked for.
+    #[cfg(test)]
+    pub fn quiet() -> Self {
+        Self::with(None, |_, _| Err("nothing to play on in a test".to_owned()))
+    }
+
     pub fn levels(&self) -> Levels {
         self.settings.levels()
     }

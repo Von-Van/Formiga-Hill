@@ -13,6 +13,8 @@ mod finery;
 mod fishing_trip;
 mod foraging;
 mod games;
+#[cfg(test)]
+mod headless;
 mod keys;
 mod mapmaking;
 mod outing;
@@ -277,8 +279,9 @@ pub struct HillApp {
     /// The story being played in the Clubhouse, if any, and the package it came from.
     story: Option<(String, Director)>,
     /// Whether what happens is kept for the colony, in its memories and its album: only on a real
-    /// trip, and never for a review picture.
+    /// trip, and never for a review picture. Where it is kept: Hill's data folder.
     keeps: bool,
+    data: Option<std::path::PathBuf>,
     memories: Memories,
     /// What has grown on the Hilltop since the last visit, as it is now, spot by spot.
     grown: Vec<(u8, crate::hilltop::Standing)>,
@@ -305,13 +308,25 @@ impl HillApp {
         clock: Clock,
         snap: Option<Snap>,
     ) -> Self {
-        let presentation = arrival.cast.snapshot.presentation;
-        // Paper over the scene looks the same in light and dark, as Desktop's bubbles do.
-        paper::dress(&cc.egui_ctx);
-        let sound = Sound::open(Memories::folder().as_deref());
+        let data = Memories::folder();
+        let sound = Sound::open(data.as_deref());
+        let app = Self::begin(arrival, library, clock, snap, data, sound);
+        app.dress_window(&cc.egui_ctx);
+        app
+    }
+
+    /// The Hill as a visit begins, before there is any window to show it in: who has come and
+    /// how, the stories, the clock, the folder the colony's things are kept in, and what its
+    /// sound plays on.
+    fn begin(
+        arrival: Arrival,
+        library: Library,
+        clock: Clock,
+        snap: Option<Snap>,
+        data: Option<std::path::PathBuf>,
+        sound: Sound,
+    ) -> Self {
         let play = sound.playing();
-        cc.egui_ctx
-            .set_zoom_factor(f32::from(play.text_scale(presentation.text_scale_percent)) / 100.0);
         // Every visit begins with the train pulling in.
         let keeps = matches!(arrival.visit, Visit::Trip(_)) && snap.is_none();
         let open = if keeps {
@@ -319,10 +334,7 @@ impl HillApp {
         } else {
             Memories::look
         };
-        let mut memories = open(
-            Memories::folder().as_deref(),
-            &arrival.cast.snapshot.colony_id,
-        );
+        let mut memories = open(data.as_deref(), &arrival.cast.snapshot.colony_id);
         let grown = memories.arrived();
         let mut station = Station::new(
             &arrival.cast,
@@ -343,9 +355,9 @@ impl HillApp {
             last_chapter: None,
             snap: snap.map(|snap| (snap, false, false)),
             scene: egui::Rect::NOTHING,
-            set_aside: SetAside::open(Memories::folder().as_deref()),
-            packages_folder: Memories::folder().map(|data| crate::story::shelf::folder(&data)),
-            writing: writing::Writing::new(Memories::folder().as_deref()),
+            set_aside: SetAside::open(data.as_deref()),
+            packages_folder: data.as_deref().map(crate::story::shelf::folder),
+            writing: writing::Writing::new(data.as_deref()),
             trying: None,
             importing: None,
             removing: None,
@@ -389,6 +401,7 @@ impl HillApp {
             last_hour_check: None,
             story: None,
             keeps,
+            data,
             memories,
             grown,
             notice: None,
@@ -399,6 +412,19 @@ impl HillApp {
         app.make_wishes();
         app.pin_notices();
         app
+    }
+
+    /// The window dressed for the Hill: paper over the scene, and words at the size the person
+    /// reads them.
+    fn dress_window(&self, ctx: &egui::Context) {
+        // Paper over the scene looks the same in light and dark, as Desktop's bubbles do.
+        paper::dress(ctx);
+        let presentation = self.arrival.cast.snapshot.presentation;
+        let scale = self
+            .sound
+            .playing()
+            .text_scale(presentation.text_scale_percent);
+        ctx.set_zoom_factor(f32::from(scale) / 100.0);
     }
 
     /// The way home. Keeps anything still in a basket in the Woods, then writes the receipt
@@ -928,8 +954,31 @@ fn clock(seconds: f32) -> String {
 
 impl eframe::App for HillApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
         let now = self.now();
+        self.frame(ui, now);
+    }
+
+    /// While a review picture is being taken nothing the keys or pointer do reaches the Hill,
+    /// so a review never changes anything.
+    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        if self.snap.is_some() {
+            raw_input
+                .events
+                .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
+        }
+    }
+
+    fn on_exit(&mut self) {
+        self.depart();
+        self.sound.keep_at_last();
+    }
+}
+
+impl HillApp {
+    /// One frame of the window, `now` seconds into the visit: everything that goes on, the
+    /// scene, and the paper over it.
+    fn frame(&mut self, ui: &mut egui::Ui, now: f32) {
+        let ctx = ui.ctx().clone();
         self.begin_frame(&ctx, now);
         self.read_keys(&ctx, now);
         self.tick(&ctx, now);
@@ -958,23 +1007,6 @@ impl eframe::App for HillApp {
         self.ask_for_the_next_frame(&ctx, now);
     }
 
-    /// While a review picture is being taken nothing the keys or pointer do reaches the Hill,
-    /// so a review never changes anything.
-    fn raw_input_hook(&mut self, _ctx: &egui::Context, raw_input: &mut egui::RawInput) {
-        if self.snap.is_some() {
-            raw_input
-                .events
-                .retain(|event| matches!(event, egui::Event::Screenshot { .. }));
-        }
-    }
-
-    fn on_exit(&mut self) {
-        self.depart();
-        self.sound.keep_at_last();
-    }
-}
-
-impl HillApp {
     /// The frame's bookkeeping before anything is drawn: the review picture, the hour, who is
     /// pleased, the station's clock, and whether the visit has ended one way or the other.
     fn begin_frame(&mut self, ctx: &egui::Context, now: f32) {

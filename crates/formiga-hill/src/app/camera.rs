@@ -75,9 +75,8 @@ impl HillApp {
         } else {
             Album::look_at
         };
-        self.camera
-            .album
-            .get_or_insert_with(|| open(crate::memories::Memories::folder().as_deref(), &colony))
+        let data = self.data.as_deref();
+        self.camera.album.get_or_insert_with(|| open(data, &colony))
     }
 
     /// The album and camera buttons, beside the sound wherever the camera can go.
