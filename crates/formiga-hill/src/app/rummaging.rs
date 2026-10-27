@@ -65,9 +65,8 @@ pub struct Woods {
     pub meadow: Option<Playground>,
     /// Whether the person is holding to creep up on a bug.
     pub creeping: bool,
-    /// The hedgerow with nobody foraging, and a foray under way.
+    /// The hedgerow with nobody foraging.
     pub hedgerow: Option<Playground>,
-    pub foray: Option<(Playground, crate::hedgerow::foraging::Foray)>,
     /// An expedition under way, and the map as planned for whoever is chosen.
     pub expedition: Option<crate::expedition::Expedition>,
     pub plan: Option<(PlannedFor, Canvas)>,
@@ -81,11 +80,8 @@ pub struct Woods {
     pub making: Option<super::mapmaking::Making>,
     pub making_history: super::undo::History<crate::adventure::draft::Draft>,
     pub begun: Option<Vec<(String, String)>>,
-    /// The old track with nobody there, a scavenge under way, and a map being followed, and
-    /// which of the colony's maps is chosen to follow.
+    /// The old track with nobody there, and which of the colony's maps is chosen to follow.
     pub track: Option<Playground>,
-    pub scavenge: Option<(Playground, crate::track::scavenging::Scavenge)>,
-    pub treasure: Option<(Playground, crate::track::treasure::Hunt)>,
     pub map: usize,
 }
 
@@ -104,7 +100,6 @@ impl Woods {
             meadow,
             creeping: _,
             hedgerow,
-            foray,
             expedition,
             plan: _,
             adventure: _,
@@ -113,8 +108,6 @@ impl Woods {
             making_history: _,
             begun: _,
             track,
-            scavenge,
-            treasure,
             map: _,
         } = self;
         [
@@ -124,9 +117,6 @@ impl Woods {
             hedgerow.as_mut(),
             track.as_mut(),
             outing.as_mut().map(Outing::ground_mut),
-            foray.as_mut().map(|(ground, _)| ground),
-            scavenge.as_mut().map(|(ground, _)| ground),
-            treasure.as_mut().map(|(ground, _)| ground),
         ]
         .into_iter()
         .flatten()
@@ -217,18 +207,6 @@ impl HillApp {
             self.tick_expedition(now, holding, self.woods.creeping, dt);
             return;
         }
-        if self.woods.foray.is_some() {
-            self.tick_foraging(now);
-            return;
-        }
-        if self.woods.scavenge.is_some() {
-            self.tick_scavenging(now);
-            return;
-        }
-        if self.woods.treasure.is_some() {
-            self.tick_treasure(now);
-            return;
-        }
         let Some(outing) = &mut self.woods.outing else {
             if let Some(empty) = &mut self.woods.empty {
                 empty.tick(cast, now);
@@ -296,15 +274,6 @@ impl HillApp {
         if let Some(outing) = &mut self.woods.outing {
             return outing.compose(now, self.pointer);
         }
-        if let Some(scene) = self.compose_foray(now) {
-            return scene;
-        }
-        if let Some(scene) = self.compose_scavenge(now) {
-            return scene;
-        }
-        if let Some(scene) = self.compose_treasure(now) {
-            return scene;
-        }
         // Nothing under way: the place for whatever is chosen, with nobody there.
         let place = match self.woods.activity {
             Activity::Scavenge | Activity::Treasure => self.woods.track.as_mut(),
@@ -327,18 +296,6 @@ impl HillApp {
         }
         if self.woods.making.is_some() {
             self.making_click(pointer, now);
-            return;
-        }
-        if self.woods.foray.is_some() {
-            self.foraging_click(pointer, now);
-            return;
-        }
-        if self.woods.scavenge.is_some() {
-            self.scavenging_click(pointer, now);
-            return;
-        }
-        if self.woods.treasure.is_some() {
-            self.treasure_click(pointer, now);
             return;
         }
         if let Some(outing) = &mut self.woods.outing
@@ -366,15 +323,6 @@ impl HillApp {
         if self.woods.making.is_some() {
             return self.making_hover(pointer);
         }
-        if self.woods.foray.is_some() {
-            return self.foraging_hover(pointer);
-        }
-        if self.woods.scavenge.is_some() {
-            return self.scavenging_hover(pointer);
-        }
-        if self.woods.treasure.is_some() {
-            return self.treasure_hover(pointer);
-        }
         self.woods.outing.as_ref()?.hover(pointer)
     }
 
@@ -389,18 +337,6 @@ impl HillApp {
         }
         if let Some(outing) = &mut self.woods.outing {
             outing.tray(ui, &self.arrival.cast, now);
-            return;
-        }
-        if self.woods.foray.is_some() {
-            self.foraging_tray(ui, now);
-            return;
-        }
-        if self.woods.scavenge.is_some() {
-            self.scavenging_tray(ui, now);
-            return;
-        }
-        if self.woods.treasure.is_some() {
-            self.treasure_tray(ui, now);
             return;
         }
         let doing = paper::Button::new(format!("{} \u{25b4}", self.woods.activity.label()));
@@ -509,20 +445,8 @@ impl HillApp {
         if let Some(outing) = &mut self.woods.outing {
             hovered = outing.point(pointer, now);
         }
-        if let Some((ground, _)) = &mut self.woods.foray {
-            ground.set_pointer(pointer);
-            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
-        }
         if self.woods.expedition.is_some() {
             hovered = self.expedition_point(pointer, now);
-        }
-        if let Some((ground, _)) = &mut self.woods.scavenge {
-            ground.set_pointer(pointer);
-            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
-        }
-        if let Some((ground, _)) = &mut self.woods.treasure {
-            ground.set_pointer(pointer);
-            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
         }
         let spot = self.woods_hover(pointer);
         if let Some((label, (x, y))) = &spot {
@@ -690,15 +614,10 @@ mod tests {
     use crate::woods::Influence;
 
     #[test]
-    fn every_ground_in_the_woods_is_reached_foraging_and_scavenging_too() {
+    fn every_ground_in_the_woods_is_reached_whatever_is_under_way() {
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
         let party: Vec<Id> = cast.members.iter().take(PARTY).map(|m| m.id).collect();
         let hilltop = crate::hilltop::Arrangement::new();
-        let mut woods = Woods {
-            empty: Some(woods::open(&cast, &[], 0.0)),
-            hedgerow: Some(crate::hedgerow::open(&cast, &[], 0.0, &hilltop)),
-            ..Woods::default()
-        };
         let mut lane = crate::hedgerow::open(&cast, &party, 0.0, &hilltop);
         let outset = foraging::Outset {
             party: party.clone(),
@@ -708,7 +627,6 @@ mod tests {
             seed: 1,
         };
         let foray = Foray::new(&mut lane, outset, |_| false, 0.0);
-        woods.foray = Some((lane, foray));
         let mut track = crate::track::open(&cast, &party, 0.0, &hilltop);
         let outset = scavenging::Outset {
             party,
@@ -719,15 +637,23 @@ mod tests {
             seed: 1,
         };
         let scavenge = Scavenge::new(&mut track, outset, |_| false, 0.0);
-        woods.scavenge = Some((track, scavenge));
-        let reached: Vec<*const Playground> = woods
-            .grounds_mut()
-            .map(|ground| ground as *const Playground)
-            .collect();
-        assert_eq!(reached.len(), 4);
-        let foraging = &woods.foray.as_ref().unwrap().0 as *const Playground;
-        let scavenging = &woods.scavenge.as_ref().unwrap().0 as *const Playground;
-        assert!(reached.contains(&foraging), "the foray is left out");
-        assert!(reached.contains(&scavenging), "the scavenge is left out");
+        for outing in [
+            Outing::Foraging(lane, foray),
+            Outing::Scavenging(track, scavenge),
+        ] {
+            let mut woods = Woods {
+                empty: Some(woods::open(&cast, &[], 0.0)),
+                hedgerow: Some(crate::hedgerow::open(&cast, &[], 0.0, &hilltop)),
+                outing: Some(outing),
+                ..Woods::default()
+            };
+            let reached: Vec<*const Playground> = woods
+                .grounds_mut()
+                .map(|ground| ground as *const Playground)
+                .collect();
+            assert_eq!(reached.len(), 3);
+            let under_way = woods.outing.as_ref().unwrap().ground() as *const Playground;
+            assert!(reached.contains(&under_way), "the outing is left out");
+        }
     }
 }

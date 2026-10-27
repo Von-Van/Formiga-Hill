@@ -578,17 +578,8 @@ impl HillApp {
         if let Some(outing) = &mut self.woods.outing {
             outing.set_hour_dark(dark);
         }
-        if let Some((_, foray)) = &mut self.woods.foray {
-            foray.set_hour_dark(dark);
-        }
         if let Some(expedition) = &mut self.woods.expedition {
             expedition.set_daylight(daylight);
-        }
-        if let Some((_, scavenge)) = &mut self.woods.scavenge {
-            scavenge.set_hour_dark(dark);
-        }
-        if let Some((_, hunt)) = &mut self.woods.treasure {
-            hunt.set_hour_dark(dark);
         }
     }
 
@@ -651,10 +642,7 @@ impl HillApp {
     /// away, by the window closing or by Desktop calling everyone home, nothing found is lost.
     fn bring_the_basket_home(&mut self, now: f32) {
         self.finish_outing(now);
-        self.finish_foraging(now);
         self.finish_expedition(now);
-        self.finish_scavenging(now);
-        self.finish_treasure(now);
     }
 
     fn compose(&mut self, now: f32) -> Canvas {

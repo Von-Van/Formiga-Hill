@@ -1,15 +1,17 @@
 //! Foraging along the hedgerow, in the window: setting off, choosing where to go and what to
 //! pick, putting things back to make room, and bringing the basket home.
 
+use super::outing::{Outing, Told};
 use super::{HillApp, lower, paper, plural};
-use crate::cast::Id;
+use crate::audio::Cue;
+use crate::cast::{Cast, Id};
 use crate::finds::{self, FORAGED};
 use crate::hedgerow::foraging::{BASKET, Ending, Event, Foray, Outset, Phase};
 use crate::hedgerow::produce::Stage;
 use crate::hedgerow::{self, PATCHES, Plant, Reach};
 use crate::memories::ColonyMemories;
+use crate::playground::Playground;
 use eframe::egui;
-use formiga_art::Canvas;
 use formiga_travel::Band;
 
 impl HillApp {
@@ -63,7 +65,7 @@ impl HillApp {
         let found = |id: &str| colony.finds.contains_key(id);
         let mut foray = Foray::new(&mut lane, outset, found, now);
         foray.set_hour_dark(self.daylight.darkness());
-        self.woods.foray = Some((lane, foray));
+        self.woods.outing = Some(Outing::Foraging(lane, foray));
         let line = note.unwrap_or(
             "Everything here ripens in its own time. Click a bush to go to it, and pick what is \
              ripe.",
@@ -71,29 +73,44 @@ impl HillApp {
         self.notice = Some((line.to_owned(), now));
     }
 
-    /// Plays the foray on.
-    pub(super) fn tick_foraging(&mut self, now: f32) {
-        let cast = &self.arrival.cast;
-        let Some((lane, foray)) = &mut self.woods.foray else {
-            return;
+    /// Brings the basket home: into the journal and the satchel, ready for the Hilltop.
+    pub(super) fn finish_foraging(&mut self, foray: &Foray, now: f32) {
+        let basket = foray.basket().to_vec();
+        let new = self.memories.back_from_foraging(foray.party(), &basket);
+        let line = match (basket.len(), new.len()) {
+            (0, _) => "Home from the hedgerow, the basket empty this time.".to_owned(),
+            (count, 0) => format!(
+                "Home from the hedgerow with {count} thing{} picked. They're in the satchel, \
+                 for the Hilltop.",
+                plural(count)
+            ),
+            (count, fresh) => format!(
+                "Home from the hedgerow with {count} thing{} picked, {fresh} new to the \
+                 journal. They're in the satchel, for the Hilltop.",
+                plural(count)
+            ),
         };
-        lane.tick(cast, now);
-        foray.tick(lane, now);
-        let events = foray.take_events();
-        let name = |id: Id| {
-            cast.member(id)
-                .map_or("Someone", |member| member.name.as_str())
-        };
-        let what = |item: usize| {
-            foray
-                .item(item)
-                .map_or("something", |(plant, _, _)| plant.produce())
-        };
-        let find_name = |id: &str| finds::find(id).map_or("something", |find| find.name);
-        for event in events {
-            if let Some(cue) = super::sound::foraged(&event) {
-                self.sound.play(cue);
-            }
+        self.notice = Some((line, now));
+        self.grant(super::departures::Outing::Foraging, foray.party(), now);
+    }
+}
+
+/// What the foray's events sound like, and say.
+pub(super) fn told(cast: &Cast, foray: &Foray, events: Vec<Event>) -> Vec<Told> {
+    let name = |id: Id| {
+        cast.member(id)
+            .map_or("Someone", |member| member.name.as_str())
+    };
+    let what = |item: usize| {
+        foray
+            .item(item)
+            .map_or("something", |(plant, _, _)| plant.produce())
+    };
+    let find_name = |id: &str| finds::find(id).map_or("something", |find| find.name);
+    events
+        .into_iter()
+        .map(|event| {
+            let cue = super::sound::foraged(&event);
             let line = match event {
                 Event::Opened { who, reach, pair } => match (reach, pair) {
                     (Reach::Tucked, _) => {
@@ -152,7 +169,7 @@ impl HillApp {
                         .item(item)
                         .is_some_and(|(plant, _, _)| plant.find().tier >= finds::Tier::Rare);
                     if !rare {
-                        continue;
+                        return Told { cue, line: None };
                     }
                     format!("The {} has gone over and dropped.", what(item))
                 }
@@ -174,139 +191,94 @@ impl HillApp {
                 Event::Leaving(Ending::Dusk) => "The light's gone. Time to head home.".to_owned(),
                 Event::Leaving(Ending::Chose) => "Heading home.".to_owned(),
             };
-            self.notice = Some((line, now));
-        }
-        if foray.phase() == Phase::Over {
-            self.finish_foraging(now);
-        }
-    }
-
-    /// Brings the basket home: into the journal and the satchel, ready for the Hilltop.
-    pub(super) fn finish_foraging(&mut self, now: f32) {
-        let Some((_, foray)) = self.woods.foray.take() else {
-            return;
-        };
-        let basket = foray.basket().to_vec();
-        let new = self.memories.back_from_foraging(foray.party(), &basket);
-        let line = match (basket.len(), new.len()) {
-            (0, _) => "Home from the hedgerow, the basket empty this time.".to_owned(),
-            (count, 0) => format!(
-                "Home from the hedgerow with {count} thing{} picked. They're in the satchel, \
-                 for the Hilltop.",
-                plural(count)
-            ),
-            (count, fresh) => format!(
-                "Home from the hedgerow with {count} thing{} picked, {fresh} new to the \
-                 journal. They're in the satchel, for the Hilltop.",
-                plural(count)
-            ),
-        };
-        self.notice = Some((line, now));
-        self.grant(super::departures::Outing::Foraging, foray.party(), now);
-    }
-
-    /// The hedgerow with a foray under way: what grows there as it ripens, and the thing under
-    /// the pointer marked.
-    pub(super) fn compose_foray(&mut self, now: f32) -> Option<Canvas> {
-        let pointer = self.pointer;
-        let (lane, foray) = self.woods.foray.as_mut()?;
-        lane.set_fliers(foray.produce(now));
-        let mut scene = lane.compose(now);
-        let hovered = pointer.and_then(|(x, y)| foray.item_at(x, y));
-        foray.draw(&mut scene, hovered, now);
-        Some(scene)
-    }
-
-    /// A click along the hedgerow: put something back from the basket, pick something ripe where
-    /// the party is, or go to wherever was clicked.
-    pub(super) fn foraging_click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
-        let Some((lane, foray)) = &mut self.woods.foray else {
-            return;
-        };
-        let Some((x, y)) = pointer else {
-            return;
-        };
-        if let Some(slot) = foray.basket_slot_at(x, y, super::SCENE_WIDTH) {
-            foray.put_back(slot);
-            return;
-        }
-        if let Some(item) = foray.item_at(x, y)
-            && let Some((_, patch, _)) = foray.item(item)
-            && foray.at() == Some(patch)
-        {
-            foray.pick(lane, item, now);
-            return;
-        }
-        if let Some(patch) = foray.patch_at(x, y) {
-            foray.choose(lane, patch, now);
-            self.sound.play(crate::audio::Cue::Forage);
-        }
-    }
-
-    /// What is under the pointer along the hedgerow, and where to say so.
-    pub(super) fn foraging_hover(
-        &self,
-        pointer: Option<(f32, f32)>,
-    ) -> Option<(String, (f32, f32))> {
-        let (_, foray) = self.woods.foray.as_ref()?;
-        if matches!(foray.phase(), Phase::Leaving { .. } | Phase::Over) {
-            return None;
-        }
-        let (x, y) = pointer?;
-        if let Some(slot) = foray.basket_slot_at(x, y, super::SCENE_WIDTH) {
-            let find = foray.basket()[slot];
-            let name = finds::find(find).map_or("it", |find| find.name);
-            return Some((format!("Put back {}", lower(name)), (x, y + 14.0)));
-        }
-        if let Some(item) = foray.item_at(x, y)
-            && let Some((plant, patch, at)) = foray.item(item)
-        {
-            // One that looks food over says how ripe it really is.
-            let verdict = match foray.inspected(item) {
-                Some(Stage::Ripe) => " \u{b7} ripe!",
-                Some(Stage::Over) => " \u{b7} past its best",
-                Some(_) => " \u{b7} not yet",
-                None => "",
-            };
-            let label = if foray.at() == Some(patch) {
-                format!("{}{verdict}", plant.produce())
-            } else {
-                format!("{} \u{b7} {}", PATCHES[patch].name, plant.produce())
-            };
-            return Some((label, (at.0, at.1 - 8.0)));
-        }
-        let patch = foray.patch_at(x, y)?;
-        let place = &PATCHES[patch];
-        (foray.at() != Some(patch))
-            .then(|| (place.name.to_owned(), (place.stand.0, place.stand.1 - 40.0)))
-    }
-
-    pub(super) fn foraging_tray(&mut self, ui: &mut egui::Ui, now: f32) {
-        let Some((lane, foray)) = &self.woods.foray else {
-            return;
-        };
-        paper::meter(ui, foray.light_left(), "light");
-        paper::slip(ui, format!("Basket {}/{BASKET}", foray.basket().len()));
-        let hint = match foray.phase() {
-            Phase::Choosing | Phase::Going { .. } => "Click a bush to go to it.",
-            Phase::At { .. } if foray.basket().len() >= BASKET => {
-                "Full! Click a basket slot to put something back."
+            Told {
+                cue,
+                line: Some(line),
             }
-            Phase::At { .. } => "Pick what's ripe. Click elsewhere to move on.",
-            _ => "",
+        })
+        .collect()
+}
+
+/// A click along the hedgerow: put something back from the basket, pick something ripe where
+/// the party is, or go to wherever was clicked.
+pub(super) fn click(
+    lane: &mut Playground,
+    foray: &mut Foray,
+    pointer: Option<(f32, f32)>,
+    now: f32,
+) -> Option<Cue> {
+    let (x, y) = pointer?;
+    if let Some(slot) = foray.basket_slot_at(x, y, super::SCENE_WIDTH) {
+        foray.put_back(slot);
+        return None;
+    }
+    if let Some(item) = foray.item_at(x, y)
+        && let Some((_, patch, _)) = foray.item(item)
+        && foray.at() == Some(patch)
+    {
+        foray.pick(lane, item, now);
+        return None;
+    }
+    let patch = foray.patch_at(x, y)?;
+    foray.choose(lane, patch, now);
+    Some(Cue::Forage)
+}
+
+/// What is under the pointer along the hedgerow, and where to say so.
+pub(super) fn hover(foray: &Foray, pointer: Option<(f32, f32)>) -> Option<(String, (f32, f32))> {
+    if matches!(foray.phase(), Phase::Leaving { .. } | Phase::Over) {
+        return None;
+    }
+    let (x, y) = pointer?;
+    if let Some(slot) = foray.basket_slot_at(x, y, super::SCENE_WIDTH) {
+        let find = foray.basket()[slot];
+        let name = finds::find(find).map_or("it", |find| find.name);
+        return Some((format!("Put back {}", lower(name)), (x, y + 14.0)));
+    }
+    if let Some(item) = foray.item_at(x, y)
+        && let Some((plant, patch, at)) = foray.item(item)
+    {
+        // One that looks food over says how ripe it really is.
+        let verdict = match foray.inspected(item) {
+            Some(Stage::Ripe) => " \u{b7} ripe!",
+            Some(Stage::Over) => " \u{b7} past its best",
+            Some(_) => " \u{b7} not yet",
+            None => "",
         };
-        if !hint.is_empty() {
-            paper::hint(ui, hint);
+        let label = if foray.at() == Some(patch) {
+            format!("{}{verdict}", plant.produce())
+        } else {
+            format!("{} \u{b7} {}", PATCHES[patch].name, plant.produce())
+        };
+        return Some((label, (at.0, at.1 - 8.0)));
+    }
+    let patch = foray.patch_at(x, y)?;
+    let place = &PATCHES[patch];
+    (foray.at() != Some(patch))
+        .then(|| (place.name.to_owned(), (place.stand.0, place.stand.1 - 40.0)))
+}
+
+/// The foray's tray: the light left, the basket, what to do, and the way home.
+pub(super) fn tray(ui: &mut egui::Ui, lane: &mut Playground, foray: &mut Foray, now: f32) {
+    paper::meter(ui, foray.light_left(), "light");
+    paper::slip(ui, format!("Basket {}/{BASKET}", foray.basket().len()));
+    let hint = match foray.phase() {
+        Phase::Choosing | Phase::Going { .. } => "Click a bush to go to it.",
+        Phase::At { .. } if foray.basket().len() >= BASKET => {
+            "Full! Click a basket slot to put something back."
         }
-        let _ = lane;
-        let leaving = matches!(foray.phase(), Phase::Leaving { .. } | Phase::Over);
-        if ui
-            .add(paper::Button::new("Head home").enabled(!leaving))
-            .clicked()
-            && let Some((lane, foray)) = &mut self.woods.foray
-        {
-            foray.head_home(lane, now);
-        }
+        Phase::At { .. } => "Pick what's ripe. Click elsewhere to move on.",
+        _ => "",
+    };
+    if !hint.is_empty() {
+        paper::hint(ui, hint);
+    }
+    let leaving = matches!(foray.phase(), Phase::Leaving { .. } | Phase::Over);
+    if ui
+        .add(paper::Button::new("Head home").enabled(!leaving))
+        .clicked()
+    {
+        foray.head_home(lane, now);
     }
 }
 

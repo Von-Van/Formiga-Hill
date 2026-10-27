@@ -1,7 +1,9 @@
 //! The old track in the window: setting off to scavenge or to follow a map, choosing who does
 //! what at a heap, the way at a fork and where to dig, and bringing everything home.
 
+use super::outing::{Outing, Told};
 use super::{HillApp, capital, lower, paper, plural};
+use crate::audio::Cue;
 use crate::cast::{Cast, Id};
 use crate::character::Character;
 use crate::finds::{self, SCAVENGED, Tier};
@@ -13,7 +15,6 @@ use crate::track::scavenging::{BASKET, Ending, Event, Outset, Phase, Scavenge};
 use crate::track::treasure::{self, Hunt};
 use crate::track::{self, routes};
 use eframe::egui;
-use formiga_art::Canvas;
 use formiga_travel::Band;
 
 impl HillApp {
@@ -80,7 +81,7 @@ impl HillApp {
         let found = |id: &str| colony.finds.contains_key(id);
         let mut scavenge = Scavenge::new(&mut ground, outset, found, now);
         scavenge.set_hour_dark(self.daylight.darkness());
-        self.woods.scavenge = Some((ground, scavenge));
+        self.woods.outing = Some(Outing::Scavenging(ground, scavenge));
         let line = note.unwrap_or(
             "The good things are underneath. Click a heap to go to it, then choose who does what.",
         );
@@ -113,7 +114,7 @@ impl HillApp {
         let found = |id: &str| colony.finds.contains_key(id);
         let mut hunt = Hunt::new(&mut ground, outset, found, now);
         hunt.set_hour_dark(self.daylight.darkness());
-        self.woods.treasure = Some((ground, hunt));
+        self.woods.outing = Some(Outing::Treasure(ground, Box::new(hunt)));
         self.notice = Some((
             "Off along the old track with the map. Match each line to the ways, and click the way \
              to take."
@@ -122,33 +123,9 @@ impl HillApp {
         ));
     }
 
-    /// Plays the scavenge on.
-    pub(super) fn tick_scavenging(&mut self, now: f32) {
-        let cast = &self.arrival.cast;
-        let Some((ground, scavenge)) = &mut self.woods.scavenge else {
-            return;
-        };
-        ground.tick(cast, now);
-        scavenge.tick(ground, now);
-        for event in scavenge.take_events() {
-            if let Some(cue) = super::sound::scavenged(&event) {
-                self.sound.play(cue);
-            }
-            if let Some(line) = heap_line(cast, event) {
-                self.notice = Some((line, now));
-            }
-        }
-        if scavenge.phase() == Phase::Over {
-            self.finish_scavenging(now);
-        }
-    }
-
     /// Brings the basket home from the old track: into the journal and the satchel, with any maps
     /// found kept for another day.
-    pub(super) fn finish_scavenging(&mut self, now: f32) {
-        let Some((_, scavenge)) = self.woods.scavenge.take() else {
-            return;
-        };
+    pub(super) fn finish_scavenging(&mut self, scavenge: &Scavenge, now: f32) {
         let basket = scavenge.basket().to_vec();
         let maps = scavenge.maps().to_vec();
         let new = self
@@ -175,111 +152,8 @@ impl HillApp {
         self.notice = Some((line, now));
     }
 
-    /// Plays the treasure hunt on.
-    pub(super) fn tick_treasure(&mut self, now: f32) {
-        let cast = &self.arrival.cast;
-        let Some((ground, hunt)) = &mut self.woods.treasure else {
-            return;
-        };
-        ground.tick(cast, now);
-        hunt.tick(ground, now);
-        let name = |id: Id| cast.member(id).map_or("Someone", |m| m.name.as_str());
-        let mut treasure_found: Option<&'static str> = None;
-        for event in hunt.take_events() {
-            if let Some(cue) = super::sound::treasure_heard(&event) {
-                self.sound.play(cue);
-            }
-            let route = hunt.route();
-            let read = hunt.reads_faded();
-            let way_name = |way: usize| {
-                hunt.way_dir(way)
-                    .map_or("that way", routes::Dir::name)
-                    .to_owned()
-            };
-            let line = match event {
-                treasure::Event::Fork { fork } => route
-                    .forks
-                    .get(fork)
-                    .map(|fork| format!("The map says: {}", fork.line(read))),
-                treasure::Event::Read { who } => Some(format!(
-                    "{} can make out the faded words: {}",
-                    name(who),
-                    hunt.line().unwrap_or_default()
-                )),
-                treasure::Event::Spotted { who, way } => {
-                    let landmark = hunt
-                        .fork()
-                        .and_then(|fork| route.forks[fork].sought())
-                        .map_or("something", |(landmark, _)| landmark.name());
-                    Some(format!(
-                        "{} spots {landmark}, far off down {}!",
-                        name(who),
-                        way_name(way)
-                    ))
-                }
-                treasure::Event::Hunch { who, way } => Some(match hunt.phase() {
-                    treasure::Phase::AtDig => {
-                        let by = route.dig.spots[way].feature.name();
-                        format!("{} has a hunch about the place by {by}.", name(who))
-                    }
-                    _ => format!("{} has a hunch it's {}.", name(who), way_name(way)),
-                }),
-                treasure::Event::Doubt { who, way } => Some(format!(
-                    "{} isn't sure about {}. Click it again to go anyway.",
-                    name(who),
-                    way_name(way)
-                )),
-                treasure::Event::Tried { .. } => {
-                    Some("You've been that way: it only led to a heap.".to_owned())
-                }
-                treasure::Event::Nook => Some(
-                    "A dead end, but there's a heap here. Scavenge it, or go back to the fork."
-                        .to_owned(),
-                ),
-                treasure::Event::Back => Some("Back at the fork.".to_owned()),
-                treasure::Event::Heap(event) => heap_line(cast, event),
-                treasure::Event::Milestone => Some(format!(
-                    "The old milestone! The map says: {}",
-                    route.dig.line(read)
-                )),
-                treasure::Event::Nothing { .. } => {
-                    Some("Only roots and stones down there.".to_owned())
-                }
-                treasure::Event::Chest => Some("There's something down there\u{2026}".to_owned()),
-                treasure::Event::Treasure { find } => {
-                    treasure_found = Some(find);
-                    Some(format!("A chest! And in it: {}!", lower(find_name(find))))
-                }
-                treasure::Event::Also { find } => Some(match treasure_found {
-                    Some(first) => format!(
-                        "A chest! And in it: {}, and {}.",
-                        lower(find_name(first)),
-                        lower(find_name(find))
-                    ),
-                    None => format!("And {} too.", lower(find_name(find))),
-                }),
-                treasure::Event::Leaving(treasure::Ending::Found) => None,
-                treasure::Event::Leaving(treasure::Ending::Dusk) => {
-                    Some("The light's gone. The map will keep for another day.".to_owned())
-                }
-                treasure::Event::Leaving(treasure::Ending::Chose) => {
-                    Some("Heading home. The map will keep.".to_owned())
-                }
-            };
-            if let Some(line) = line {
-                self.notice = Some((line, now));
-            }
-        }
-        if hunt.phase() == treasure::Phase::Over {
-            self.finish_treasure(now);
-        }
-    }
-
     /// Brings home whatever the hunt found, the chest too if it was dug up.
-    pub(super) fn finish_treasure(&mut self, now: f32) {
-        let Some((_, hunt)) = self.woods.treasure.take() else {
-            return;
-        };
+    pub(super) fn finish_treasure(&mut self, hunt: &Hunt, now: f32) {
         let new = self.memories.back_from_a_treasure_hunt(
             hunt.party(),
             hunt.map(),
@@ -308,164 +182,6 @@ impl HillApp {
             )
         };
         self.notice = Some((line, now));
-    }
-
-    pub(super) fn compose_scavenge(&mut self, now: f32) -> Option<Canvas> {
-        let pointer = self.pointer;
-        let (ground, scavenge) = self.woods.scavenge.as_mut()?;
-        ground.set_fliers(scavenge.props(now));
-        let mut scene = ground.compose(now);
-        let hovered = pointer.and_then(|(x, y)| scavenge.item_at(x, y));
-        scavenge.draw(&mut scene, hovered, now);
-        Some(scene)
-    }
-
-    pub(super) fn compose_treasure(&mut self, now: f32) -> Option<Canvas> {
-        let pointer = self.pointer;
-        let (ground, hunt) = self.woods.treasure.as_mut()?;
-        ground.set_fliers(hunt.props(now));
-        let mut scene = ground.compose(now);
-        let hovered = pointer.and_then(|(x, y)| hunt.nook().and_then(|nook| nook.item_at(x, y)));
-        hunt.draw(&mut scene, hovered, now);
-        Some(scene)
-    }
-
-    /// A click on the old track: put something back from the basket, pick up something lying in
-    /// the open, do the chosen thing to something in the heap the party is at, or go to a heap.
-    pub(super) fn scavenging_click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
-        let Some((ground, scavenge)) = &mut self.woods.scavenge else {
-            return;
-        };
-        heap_click(ground, scavenge, pointer, now, true);
-    }
-
-    /// A click on a treasure hunt: a way at a fork, a place to dig, or the nook's heap.
-    pub(super) fn treasure_click(&mut self, pointer: Option<(f32, f32)>, now: f32) {
-        let Some((ground, hunt)) = &mut self.woods.treasure else {
-            return;
-        };
-        let Some((x, y)) = pointer else {
-            return;
-        };
-        if let Some(nook) = hunt.nook_mut() {
-            heap_click(ground, nook, pointer, now, false);
-            return;
-        }
-        if let Some(way) = hunt.way_at(x, y) {
-            hunt.choose(ground, way, now);
-        } else if let Some(spot) = hunt.spot_at(x, y) {
-            hunt.dig(ground, spot, now);
-            self.sound.play(crate::audio::Cue::Rummage);
-        }
-    }
-
-    pub(super) fn scavenging_hover(
-        &self,
-        pointer: Option<(f32, f32)>,
-    ) -> Option<(String, (f32, f32))> {
-        let (_, scavenge) = self.woods.scavenge.as_ref()?;
-        heap_hover(scavenge, pointer, true)
-    }
-
-    pub(super) fn treasure_hover(
-        &self,
-        pointer: Option<(f32, f32)>,
-    ) -> Option<(String, (f32, f32))> {
-        let (_, hunt) = self.woods.treasure.as_ref()?;
-        if let Some(nook) = hunt.nook() {
-            return heap_hover(nook, pointer, false);
-        }
-        let (x, y) = pointer?;
-        if let Some(way) = hunt.way_at(x, y) {
-            let label = hunt.describe_way(way)?;
-            return Some((label, (x, y - 14.0)));
-        }
-        let spot = hunt.spot_at(x, y)?;
-        let at = hunt.route().dig.spots[spot].at;
-        Some((hunt.describe_spot(spot)?, (at.0, at.1 - 16.0)))
-    }
-
-    pub(super) fn scavenging_tray(&mut self, ui: &mut egui::Ui, now: f32) {
-        let cast = &self.arrival.cast;
-        let Some((ground, scavenge)) = &mut self.woods.scavenge else {
-            return;
-        };
-        light_and_basket(ui, scavenge.light_left(), scavenge.basket().len(), 0);
-        if !scavenge.maps().is_empty() {
-            paper::slip(
-                ui,
-                format!(
-                    "{} torn map{}",
-                    scavenge.maps().len(),
-                    plural(scavenge.maps().len())
-                ),
-            );
-        }
-        hands_tray(ui, cast, scavenge);
-        let hint = match scavenge.phase() {
-            Phase::Choosing | Phase::Going { .. } => "Click a heap to go to it.",
-            Phase::At { .. } if scavenge.basket().len() >= BASKET => {
-                "Full! Click a basket slot to put something back."
-            }
-            Phase::At { .. } => "Click something in the heap.",
-            _ => "",
-        };
-        if !hint.is_empty() {
-            paper::hint(ui, hint);
-        }
-        let leaving = matches!(scavenge.phase(), Phase::Leaving { .. } | Phase::Over);
-        if ui
-            .add(paper::Button::new("Head home").enabled(!leaving))
-            .clicked()
-        {
-            scavenge.head_home(ground, now);
-        }
-    }
-
-    pub(super) fn treasure_tray(&mut self, ui: &mut egui::Ui, now: f32) {
-        let cast = &self.arrival.cast;
-        let Some((ground, hunt)) = &mut self.woods.treasure else {
-            return;
-        };
-        if let Some(nook) = hunt.nook_mut() {
-            light_and_basket(ui, nook.light_left(), nook.basket().len(), 0);
-            hands_tray(ui, cast, nook);
-            if paper::button(ui, "Back to the fork").clicked() {
-                hunt.back(ground, now);
-            }
-        } else {
-            light_and_basket(
-                ui,
-                hunt.light_left(),
-                hunt.basket().len(),
-                hunt.chest().len(),
-            );
-            let read = hunt.reads_faded();
-            let lines = hunt.route().lines(read);
-            if let Some(line) = hunt.line() {
-                let whole = lines.join("\n");
-                let map = paper::hint(ui, format!("The map: {line}"));
-                paper::explain(ui, map, &format!("The whole map:\n{whole}"));
-            }
-            let hint = match hunt.phase() {
-                treasure::Phase::Reading { .. } => "Click the way to take.",
-                treasure::Phase::AtDig => "Click where to dig.",
-                _ => "",
-            };
-            if !hint.is_empty() {
-                paper::hint(ui, hint);
-            }
-        }
-        let leaving = matches!(
-            hunt.phase(),
-            treasure::Phase::Leaving { .. } | treasure::Phase::Over
-        );
-        if ui
-            .add(paper::Button::new("Head home").enabled(!leaving))
-            .clicked()
-        {
-            hunt.head_home(ground, now);
-        }
     }
 
     /// The old track's choices among the Woods' others: scavenging, and following a map once
@@ -530,6 +246,250 @@ impl HillApp {
         if let Some(Some(index)) = picked {
             self.woods.map = index;
         }
+    }
+}
+
+/// What the scavenge's events sound like, and say.
+pub(super) fn told(cast: &Cast, events: Vec<Event>) -> Vec<Told> {
+    events
+        .into_iter()
+        .map(|event| Told {
+            cue: super::sound::scavenged(&event),
+            line: heap_line(cast, event),
+        })
+        .collect()
+}
+
+/// What the treasure hunt's events sound like, and say: a chest and what else was in it, told
+/// together.
+pub(super) fn treasure_told(cast: &Cast, hunt: &Hunt, events: Vec<treasure::Event>) -> Vec<Told> {
+    let name = |id: Id| cast.member(id).map_or("Someone", |m| m.name.as_str());
+    let mut treasure_found: Option<&'static str> = None;
+    let mut told = Vec::new();
+    for event in events {
+        let cue = super::sound::treasure_heard(&event);
+        let route = hunt.route();
+        let read = hunt.reads_faded();
+        let way_name = |way: usize| {
+            hunt.way_dir(way)
+                .map_or("that way", routes::Dir::name)
+                .to_owned()
+        };
+        let line = match event {
+            treasure::Event::Fork { fork } => route
+                .forks
+                .get(fork)
+                .map(|fork| format!("The map says: {}", fork.line(read))),
+            treasure::Event::Read { who } => Some(format!(
+                "{} can make out the faded words: {}",
+                name(who),
+                hunt.line().unwrap_or_default()
+            )),
+            treasure::Event::Spotted { who, way } => {
+                let landmark = hunt
+                    .fork()
+                    .and_then(|fork| route.forks[fork].sought())
+                    .map_or("something", |(landmark, _)| landmark.name());
+                Some(format!(
+                    "{} spots {landmark}, far off down {}!",
+                    name(who),
+                    way_name(way)
+                ))
+            }
+            treasure::Event::Hunch { who, way } => Some(match hunt.phase() {
+                treasure::Phase::AtDig => {
+                    let by = route.dig.spots[way].feature.name();
+                    format!("{} has a hunch about the place by {by}.", name(who))
+                }
+                _ => format!("{} has a hunch it's {}.", name(who), way_name(way)),
+            }),
+            treasure::Event::Doubt { who, way } => Some(format!(
+                "{} isn't sure about {}. Click it again to go anyway.",
+                name(who),
+                way_name(way)
+            )),
+            treasure::Event::Tried { .. } => {
+                Some("You've been that way: it only led to a heap.".to_owned())
+            }
+            treasure::Event::Nook => Some(
+                "A dead end, but there's a heap here. Scavenge it, or go back to the fork."
+                    .to_owned(),
+            ),
+            treasure::Event::Back => Some("Back at the fork.".to_owned()),
+            treasure::Event::Heap(event) => heap_line(cast, event),
+            treasure::Event::Milestone => Some(format!(
+                "The old milestone! The map says: {}",
+                route.dig.line(read)
+            )),
+            treasure::Event::Nothing { .. } => Some("Only roots and stones down there.".to_owned()),
+            treasure::Event::Chest => Some("There's something down there\u{2026}".to_owned()),
+            treasure::Event::Treasure { find } => {
+                treasure_found = Some(find);
+                Some(format!("A chest! And in it: {}!", lower(find_name(find))))
+            }
+            treasure::Event::Also { find } => Some(match treasure_found {
+                Some(first) => format!(
+                    "A chest! And in it: {}, and {}.",
+                    lower(find_name(first)),
+                    lower(find_name(find))
+                ),
+                None => format!("And {} too.", lower(find_name(find))),
+            }),
+            treasure::Event::Leaving(treasure::Ending::Found) => None,
+            treasure::Event::Leaving(treasure::Ending::Dusk) => {
+                Some("The light's gone. The map will keep for another day.".to_owned())
+            }
+            treasure::Event::Leaving(treasure::Ending::Chose) => {
+                Some("Heading home. The map will keep.".to_owned())
+            }
+        };
+        told.push(Told { cue, line });
+    }
+    told
+}
+
+/// A click on the old track: put something back from the basket, pick up something lying in
+/// the open, do the chosen thing to something in the heap the party is at, or go to a heap.
+pub(super) fn click(
+    ground: &mut Playground,
+    scavenge: &mut Scavenge,
+    pointer: Option<(f32, f32)>,
+    now: f32,
+) -> Option<Cue> {
+    heap_click(ground, scavenge, pointer, now, true);
+    None
+}
+
+/// A click on a treasure hunt: a way at a fork, a place to dig, or the nook's heap.
+pub(super) fn treasure_click(
+    ground: &mut Playground,
+    hunt: &mut Hunt,
+    pointer: Option<(f32, f32)>,
+    now: f32,
+) -> Option<Cue> {
+    let (x, y) = pointer?;
+    if let Some(nook) = hunt.nook_mut() {
+        heap_click(ground, nook, pointer, now, false);
+        return None;
+    }
+    if let Some(way) = hunt.way_at(x, y) {
+        hunt.choose(ground, way, now);
+        None
+    } else if let Some(spot) = hunt.spot_at(x, y) {
+        hunt.dig(ground, spot, now);
+        Some(Cue::Rummage)
+    } else {
+        None
+    }
+}
+
+/// What is under the pointer on a treasure hunt: a way to go, a place to dig, or something in
+/// the nook's heap.
+pub(super) fn treasure_hover(
+    hunt: &Hunt,
+    pointer: Option<(f32, f32)>,
+) -> Option<(String, (f32, f32))> {
+    if let Some(nook) = hunt.nook() {
+        return heap_hover(nook, pointer, false);
+    }
+    let (x, y) = pointer?;
+    if let Some(way) = hunt.way_at(x, y) {
+        let label = hunt.describe_way(way)?;
+        return Some((label, (x, y - 14.0)));
+    }
+    let spot = hunt.spot_at(x, y)?;
+    let at = hunt.route().dig.spots[spot].at;
+    Some((hunt.describe_spot(spot)?, (at.0, at.1 - 16.0)))
+}
+
+/// The scavenge's tray: the light left, the basket and any maps, who does what, and the way
+/// home.
+pub(super) fn tray(
+    ui: &mut egui::Ui,
+    cast: &Cast,
+    ground: &mut Playground,
+    scavenge: &mut Scavenge,
+    now: f32,
+) {
+    light_and_basket(ui, scavenge.light_left(), scavenge.basket().len(), 0);
+    if !scavenge.maps().is_empty() {
+        paper::slip(
+            ui,
+            format!(
+                "{} torn map{}",
+                scavenge.maps().len(),
+                plural(scavenge.maps().len())
+            ),
+        );
+    }
+    hands_tray(ui, cast, scavenge);
+    let hint = match scavenge.phase() {
+        Phase::Choosing | Phase::Going { .. } => "Click a heap to go to it.",
+        Phase::At { .. } if scavenge.basket().len() >= BASKET => {
+            "Full! Click a basket slot to put something back."
+        }
+        Phase::At { .. } => "Click something in the heap.",
+        _ => "",
+    };
+    if !hint.is_empty() {
+        paper::hint(ui, hint);
+    }
+    let leaving = matches!(scavenge.phase(), Phase::Leaving { .. } | Phase::Over);
+    if ui
+        .add(paper::Button::new("Head home").enabled(!leaving))
+        .clicked()
+    {
+        scavenge.head_home(ground, now);
+    }
+}
+
+/// The treasure hunt's tray: the light left, the basket and the chest, the map's line, and the
+/// way home; or, in a nook, who does what at its heap and the way back to the fork.
+pub(super) fn treasure_tray(
+    ui: &mut egui::Ui,
+    cast: &Cast,
+    ground: &mut Playground,
+    hunt: &mut Hunt,
+    now: f32,
+) {
+    if let Some(nook) = hunt.nook_mut() {
+        light_and_basket(ui, nook.light_left(), nook.basket().len(), 0);
+        hands_tray(ui, cast, nook);
+        if paper::button(ui, "Back to the fork").clicked() {
+            hunt.back(ground, now);
+        }
+    } else {
+        light_and_basket(
+            ui,
+            hunt.light_left(),
+            hunt.basket().len(),
+            hunt.chest().len(),
+        );
+        let read = hunt.reads_faded();
+        let lines = hunt.route().lines(read);
+        if let Some(line) = hunt.line() {
+            let whole = lines.join("\n");
+            let map = paper::hint(ui, format!("The map: {line}"));
+            paper::explain(ui, map, &format!("The whole map:\n{whole}"));
+        }
+        let hint = match hunt.phase() {
+            treasure::Phase::Reading { .. } => "Click the way to take.",
+            treasure::Phase::AtDig => "Click where to dig.",
+            _ => "",
+        };
+        if !hint.is_empty() {
+            paper::hint(ui, hint);
+        }
+    }
+    let leaving = matches!(
+        hunt.phase(),
+        treasure::Phase::Leaving { .. } | treasure::Phase::Over
+    );
+    if ui
+        .add(paper::Button::new("Head home").enabled(!leaving))
+        .clicked()
+    {
+        hunt.head_home(ground, now);
     }
 }
 
