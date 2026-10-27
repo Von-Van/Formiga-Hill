@@ -15,6 +15,7 @@ use formiga_art::{
 use formiga_core::{ActionKind, AppearanceGenome};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 /// One thing an actor does, in order.
@@ -67,6 +68,10 @@ struct Frame {
 const FRAME_CACHE_LIMIT: usize = 1500;
 /// How long one turn of a spin lasts.
 const SPIN_TURN: f32 = 0.22;
+/// How long a blink keeps the eyes shut.
+const BLINK_SECS: f32 = 0.12;
+/// How often the glints on someone groomed till it shines move.
+const SHINE_PER_SECOND: f32 = 2.5;
 /// How much faster a stride is than a stroll.
 const STRIDE: f32 = 1.6;
 
@@ -256,6 +261,86 @@ impl Actor {
         (now - self.step_since).max(0.0)
     }
 
+    /// What it looks like at `now`, as far as the picture goes, as one number: its frame, where
+    /// it is drawn, and everything it has on, shine and all. `None` while it carries a prize
+    /// bobbing with the clock, when it has to be drawn afresh every time.
+    pub fn look(&self, now: f32) -> Option<u64> {
+        if self.prize.is_some() && !self.reduce_motion {
+            return None;
+        }
+        let mut hash = std::hash::DefaultHasher::new();
+        self.pose(now).hash(&mut hash);
+        (
+            self.pos.0.to_bits(),
+            self.pos.1.to_bits(),
+            self.lift.to_bits(),
+        )
+            .hash(&mut hash);
+        (
+            self.tipped,
+            self.sack,
+            self.costume,
+            self.prize,
+            self.shining,
+        )
+            .hash(&mut hash);
+        if self.shining && !self.reduce_motion {
+            shine_beat(now).hash(&mut hash);
+        }
+        Some(hash.finish())
+    }
+
+    /// When what it looks like next changes after `now`, if nothing else happens to it: the next
+    /// frame of what it is doing, a blink beginning or ending, a spin turning, its shine moving,
+    /// or the step it is on being done. `now` itself while it walks, carries a prize, shows a
+    /// sign over its head (unless motion is reduced, when signs are still), or is about to start
+    /// on something.
+    pub fn next_change(&self, now: f32) -> f32 {
+        let still = self.reduce_motion;
+        let moving = (self.prize.is_some() && !still)
+            || (self.current_beat().is_some_and(|beat| beat.cue.is_some()) && !still);
+        let frame_after = |clip: BodyClip, since: f32| {
+            if still {
+                return f32::INFINITY;
+            }
+            let fps = f32::from(AnimationSpec::for_clip(clip).fps.max(1));
+            since + (((now - since) * fps).floor() + 1.0) / fps
+        };
+        let mut next = match self.steps.front() {
+            None => frame_after(BodyClip::Action(ActionKind::Idle), -self.blink.1),
+            Some(Step::Beat(beat)) => {
+                let since = self.step_since;
+                let mut next = since + beat.seconds;
+                if !beat.held {
+                    next = next.min(frame_after(beat.clip, since));
+                }
+                if beat.spin && !still {
+                    let turns = ((now - since) / SPIN_TURN).floor() + 1.0;
+                    next = next.min(since + turns * SPIN_TURN);
+                }
+                next
+            }
+            Some(_) => now,
+        };
+        if moving {
+            next = now;
+        }
+        if !still {
+            // A blink: closed for the first moment of every round.
+            let into = (now + self.blink.1).rem_euclid(self.blink.0);
+            let blink = if into < BLINK_SECS {
+                now + (BLINK_SECS - into)
+            } else {
+                now + (self.blink.0 - into)
+            };
+            next = next.min(blink);
+            if self.shining {
+                next = next.min((shine_beat(now) as f32 + 1.0) / SHINE_PER_SECOND);
+            }
+        }
+        next
+    }
+
     /// Carries out its steps for `dt` seconds up to `now`.
     pub fn advance(&mut self, now: f32, dt: f32, everyone: &[Whereabouts]) {
         let find = |id: Id| everyone.iter().find(|other| other.id == id);
@@ -359,7 +444,7 @@ impl Actor {
             EyelidPose::Closed
         } else if expression == ExpressionKind::Sleepy {
             EyelidPose::Half
-        } else if !still && (now + self.blink.1) % self.blink.0 < 0.12 {
+        } else if !still && (now + self.blink.1) % self.blink.0 < BLINK_SECS {
             EyelidPose::Closed
         } else {
             EyelidPose::Open
@@ -655,6 +740,11 @@ fn turn(canvas: &Canvas, clockwise: bool) -> Canvas {
 
 /// A freshly groomed coat: a few glints that come and go across it, each on a pixel of the
 /// creature itself. With reduced motion they hold still.
+/// Which step of its glints someone shining is on at `now`.
+fn shine_beat(now: f32) -> u32 {
+    (now * SHINE_PER_SECOND) as u32
+}
+
 fn draw_shine(
     scene: &mut Canvas,
     frame: &Canvas,
@@ -667,7 +757,7 @@ fn draw_shine(
         return;
     };
     let (left, top, right, bottom) = (left as i32, top as i32, right as i32, bottom as i32);
-    let beat = if reduce_motion { 0 } else { (now * 2.5) as u32 };
+    let beat = if reduce_motion { 0 } else { shine_beat(now) };
     for glint in 0..3u32 {
         let salt = (id as u32).wrapping_add(glint * 97).wrapping_add(beat * 13);
         let gx = left

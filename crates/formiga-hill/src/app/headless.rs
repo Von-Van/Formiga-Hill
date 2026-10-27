@@ -224,3 +224,28 @@ fn the_map_editor_puts_joins_takes_off_and_undoes_without_a_hitch() {
     assert_eq!(making(&app).draft.paths.len(), 2);
     std::fs::remove_dir_all(&data).unwrap();
 }
+
+#[test]
+fn a_scene_showing_just_the_same_is_not_composed_again() {
+    let data = scratch("unchanged");
+    let mut app = visit(&data, 12.0);
+    let ctx = egui::Context::default();
+    for area in [Area::Station, Area::Green, Area::Woods, Area::Hilltop] {
+        app.go_to(area, 30.0);
+        // Once the move here has dissolved, the same moment is drawn once.
+        for _ in 0..3 {
+            frame(&mut app, &ctx, 31.0, Vec::new());
+        }
+        let composed = app.composed;
+        for _ in 0..5 {
+            frame(&mut app, &ctx, 31.0, Vec::new());
+        }
+        assert_eq!(app.composed, composed, "the same {area:?} composed again");
+        // A moment later, whatever moved is drawn; and in the glade, with nobody there,
+        // nothing has.
+        frame(&mut app, &ctx, 36.0, Vec::new());
+        let moved = usize::from(area != Area::Woods);
+        assert_eq!(app.composed, composed + moved, "{area:?} composed or not");
+    }
+    std::fs::remove_dir_all(&data).unwrap();
+}

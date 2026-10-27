@@ -173,6 +173,11 @@ impl Clubhouse {
         &mut self.ground
     }
 
+    /// What the room shows at `now`, as one number: see `Playground::frame_key`.
+    pub fn frame_key(&self, now: f32) -> Option<u64> {
+        self.ground.frame_key(now)
+    }
+
     /// Shows what stands on the Hilltop now, through the window.
     pub fn show_hilltop(&mut self, hilltop: &Arrangement) {
         if *hilltop != self.hilltop {

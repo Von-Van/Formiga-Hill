@@ -18,7 +18,7 @@ use formiga_art::Canvas;
 pub const PARTY: usize = 2;
 
 /// What the person is going to the Woods to do.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Activity {
     #[default]
     Rummage,
@@ -124,6 +124,39 @@ impl Woods {
                 .iter_mut()
                 .flat_map(crate::expedition::Expedition::grounds_mut),
         )
+    }
+
+    /// Whether nothing is under way, being planned or being made, so what is on show is one of
+    /// the places with nobody there.
+    pub fn quiet(&self) -> bool {
+        self.outing.is_none()
+            && self.expedition.is_none()
+            && self.making.is_none()
+            && !matches!(self.activity, Activity::Expedition | Activity::Adventure)
+    }
+
+    /// The place with nobody there that is on show while nothing is under way: the one for
+    /// whatever is chosen to do, or else the glade.
+    pub fn quiet_place(&self) -> Option<&Playground> {
+        let place = match self.activity {
+            Activity::Scavenge | Activity::Treasure => self.track.as_ref(),
+            Activity::Forage => self.hedgerow.as_ref(),
+            Activity::Bugs => self.meadow.as_ref(),
+            Activity::Fish => self.pool.as_ref(),
+            _ => None,
+        };
+        place.or(self.empty.as_ref())
+    }
+
+    pub fn quiet_place_mut(&mut self) -> Option<&mut Playground> {
+        let place = match self.activity {
+            Activity::Scavenge | Activity::Treasure => self.track.as_mut(),
+            Activity::Forage => self.hedgerow.as_mut(),
+            Activity::Bugs => self.meadow.as_mut(),
+            Activity::Fish => self.pool.as_mut(),
+            _ => None,
+        };
+        place.or(self.empty.as_mut())
     }
 }
 
@@ -263,14 +296,7 @@ impl HillApp {
             return outing.compose(now, self.pointer);
         }
         // Nothing under way: the place for whatever is chosen, with nobody there.
-        let place = match self.woods.activity {
-            Activity::Scavenge | Activity::Treasure => self.woods.track.as_mut(),
-            Activity::Forage => self.woods.hedgerow.as_mut(),
-            Activity::Bugs => self.woods.meadow.as_mut(),
-            Activity::Fish => self.woods.pool.as_mut(),
-            _ => None,
-        };
-        match place.or(self.woods.empty.as_mut()) {
+        match self.woods.quiet_place_mut() {
             Some(place) => place.compose(now),
             None => Canvas::new(super::SCENE_WIDTH, super::SCENE_HEIGHT),
         }

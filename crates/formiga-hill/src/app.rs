@@ -45,6 +45,7 @@ use crate::trip::Trip;
 use arranging::Placing;
 use eframe::egui;
 use formiga_art::Canvas;
+use std::hash::{Hash, Hasher};
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 
@@ -71,7 +72,7 @@ const HOUR_CHECK_SECS: f32 = 10.0;
 const DISSOLVE_SECS: f32 = 0.5;
 
 /// Where the person at the Hill is looking.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Area {
     Station,
     Green,
@@ -265,8 +266,13 @@ pub struct HillApp {
     hearts: Vec<Id>,
     /// The last picture of the area just left, dissolving into the new one.
     leaving: Option<(Canvas, f32)>,
+    /// The scene as last uploaded, and what it showed, so a frame showing just the same is
+    /// neither composed nor uploaded again.
     texture: Option<egui::TextureHandle>,
-    shown_frames: Vec<usize>,
+    shown_key: Option<u64>,
+    /// How many times the scene has been composed, for the tests.
+    #[cfg(test)]
+    composed: usize,
     started: Instant,
     /// The visit is over, one way or another, and nothing more is written.
     departed: bool,
@@ -391,7 +397,9 @@ impl HillApp {
             hearts: Vec::new(),
             leaving: None,
             texture: None,
-            shown_frames: Vec::new(),
+            shown_key: None,
+            #[cfg(test)]
+            composed: 0,
             started: Instant::now(),
             departed: false,
             last_recall_check: 0.0,
@@ -654,7 +662,7 @@ impl HillApp {
             games.stop(ground, now);
         }
         self.area = area;
-        self.shown_frames.clear();
+        self.shown_key = None;
         let everyone: Vec<Id> = self.arrival.cast.members.iter().map(|m| m.id).collect();
         match area {
             Area::Green => self.grant(departures::Outing::Picnic, &everyone, now),
@@ -793,23 +801,49 @@ impl HillApp {
         }
     }
 
-    fn refresh_scene(&mut self, ctx: &egui::Context, now: f32) -> egui::TextureId {
-        // The green is always on the move; the station only when its key says so, or the hour.
-        let frames = match self.area {
-            Area::Station if self.leaving.is_none() => {
-                let mut key = self.station.frame_key(now);
-                key.push((self.daylight.hour() * 60.0) as usize);
-                key
+    /// What the scene shows at `now`, as one number, for telling whether it needs composing
+    /// again: the station's frames and the minute, or the place's own key. `None` while it has
+    /// to be composed every frame: moving between places, or wherever a game, an outing, a plan
+    /// or something going up draws over the place.
+    fn scene_key(&self, now: f32) -> Option<u64> {
+        if self.leaving.is_some() {
+            return None;
+        }
+        let mut hash = std::hash::DefaultHasher::new();
+        self.area.hash(&mut hash);
+        match self.area {
+            Area::Station => {
+                self.station.frame_key(now).hash(&mut hash);
+                ((self.daylight.hour() * 60.0) as usize).hash(&mut hash);
             }
-            _ => Vec::new(),
-        };
+            Area::Green => self.green.as_ref()?.frame_key(now)?.hash(&mut hash),
+            Area::Clubhouse => self.clubhouse.as_ref()?.frame_key(now)?.hash(&mut hash),
+            Area::Fairground => self.fairground.as_ref()?.0.frame_key(now)?.hash(&mut hash),
+            Area::Woods if self.woods.quiet() => {
+                self.woods.activity.hash(&mut hash);
+                self.woods.quiet_place()?.frame_key(now)?.hash(&mut hash);
+            }
+            Area::Hilltop if self.placing.is_none() && self.crafting.quiet() => {
+                self.hilltop.as_ref()?.frame_key(now)?.hash(&mut hash);
+            }
+            Area::Woods | Area::Hilltop | Area::Clearing => return None,
+        }
+        Some(hash.finish())
+    }
+
+    fn refresh_scene(&mut self, ctx: &egui::Context, now: f32) -> egui::TextureId {
+        let key = self.scene_key(now);
         // The scene is kept for photos only while the camera is out to take them.
         if !self.camera.out {
             self.last_scene = None;
         }
         let unframed = self.camera.out && self.last_scene.is_none();
-        if self.texture.is_none() || frames.is_empty() || frames != self.shown_frames || unframed {
+        if self.texture.is_none() || key.is_none() || key != self.shown_key || unframed {
             let mut canvas = self.compose(now);
+            #[cfg(test)]
+            {
+                self.composed += 1;
+            }
             if self.camera.out {
                 self.last_scene = Some(canvas.clone());
             }
@@ -829,7 +863,7 @@ impl HillApp {
                         Some(ctx.load_texture("scene", image, egui::TextureOptions::NEAREST));
                 }
             }
-            self.shown_frames = frames;
+            self.shown_key = key;
         }
         self.texture
             .as_ref()
@@ -1340,19 +1374,57 @@ impl HillApp {
     }
 
     /// When to draw the next frame: straight away while anything is on the move, otherwise only
-    /// when the still station is next due to change.
+    /// when the scene is next due to change.
     fn ask_for_the_next_frame(&self, ctx: &egui::Context, now: f32) {
-        if self.area != Area::Station || self.leaving.is_some() || self.station.in_motion(now) {
-            ctx.request_repaint_after(Duration::from_millis(16));
-        } else {
-            // A still platform is drawn again just as its next frame is due, so the idles and
-            // the smoke keep their own pace, as they do on Desktop; and on a trip at least as
-            // often as Hill looks for a recall, even when nothing on screen moves.
-            let recall = matches!(self.arrival.visit, Visit::Trip(_)).then_some(RECALL_CHECK_SECS);
-            let next = self.station.next_change(now).map(|at| at - now);
-            if let Some(wait) = [next, recall].into_iter().flatten().min_by(f32::total_cmp) {
-                ctx.request_repaint_after(Duration::from_secs_f32(wait.max(0.001)));
+        match self.next_change(now) {
+            Some(at) if at <= now => ctx.request_repaint_after(Duration::from_millis(16)),
+            next => {
+                // A still scene is drawn again just as its next frame is due, so the idles and
+                // the smoke keep their own pace, as they do on Desktop; and on a trip at least as
+                // often as Hill looks for a recall, as often as it looks at the clock, and as a
+                // notice is due to go, even when nothing on screen moves.
+                let recall =
+                    matches!(self.arrival.visit, Visit::Trip(_)).then_some(RECALL_CHECK_SECS);
+                let hour = self
+                    .last_hour_check
+                    .map(|since| since + HOUR_CHECK_SECS - now);
+                let notice = self
+                    .notice
+                    .as_ref()
+                    .map(|(_, since)| since + NOTICE_SECS - now);
+                let next = next.map(|at| at - now);
+                if let Some(wait) = [next, recall, hour, notice]
+                    .into_iter()
+                    .flatten()
+                    .min_by(f32::total_cmp)
+                {
+                    ctx.request_repaint_after(Duration::from_secs_f32(wait.max(0.001)));
+                }
             }
+        }
+    }
+
+    /// When the scene next changes of itself after `now`, where nothing else needs a frame
+    /// before then: the still platform, the green, the Woods with nothing under way, or the
+    /// Hilltop with nothing going up. `now` while anything is on the move, and wherever a game, an
+    /// outing or a story goes on, which want every frame. `None` when nothing will change until
+    /// something is done.
+    fn next_change(&self, now: f32) -> Option<f32> {
+        if self.leaving.is_some() {
+            return Some(now);
+        }
+        let quiet = self.story.is_none();
+        match self.area {
+            Area::Station if self.station.in_motion(now) => Some(now),
+            Area::Station => self.station.next_change(now),
+            Area::Green if quiet => self.green.as_ref()?.next_change(now),
+            Area::Woods if quiet && self.woods.quiet() => {
+                self.woods.quiet_place()?.next_change(now)
+            }
+            Area::Hilltop if quiet && self.placing.is_none() && self.crafting.quiet() => {
+                self.hilltop.as_ref()?.next_change(now)
+            }
+            _ => Some(now),
         }
     }
 }

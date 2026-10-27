@@ -26,155 +26,219 @@ const SPEECH: [&str; 7] = [
 
 /// Draws `cue` with its bottom centre at `(x, y)`, `age` seconds after it began.
 pub fn draw_cue(scene: &mut Canvas, cue: Cue, x: i32, y: i32, age: f32, reduce_motion: bool) {
-    // Signs drift up a little and fade towards the end of a second and a half; held still when
-    // motion is reduced, so the sign is there without anything moving.
-    let rise = if reduce_motion {
-        0
-    } else {
-        (age * 7.0).min(10.0) as i32
-    };
-    // A doze and a speech bubble last as long as what they belong to; the rest are a moment's.
-    let lasting = matches!(cue, Cue::Sleep | Cue::Speech);
-    let fade = if reduce_motion || lasting {
-        255
-    } else {
-        (255.0 * (1.0 - ((age - 1.1) / 0.6).clamp(0.0, 1.0))) as u8
-    };
-    if fade == 0 {
-        return;
-    }
-    match cue {
-        Cue::Heart => {
-            sprite(
-                scene,
-                &HEART,
-                x - 3,
-                y - 6 - rise,
-                [0x8c2a3a, 0xf26b8a, 0xffd3df],
+    Look::of(cue, age, reduce_motion).draw(scene, x, y);
+}
+
+/// How a sign looks `age` seconds after it began: everything about it that moves, worked out
+/// to the pixel, so two moments that look the same are known to before either is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Look {
+    /// Faded right away.
+    Gone,
+    Heart {
+        rise: i32,
+        fade: u8,
+        /// How far the second, smaller heart has risen, once it is there.
+        late: Option<i32>,
+    },
+    Exclaim {
+        hop: i32,
+        fade: u8,
+    },
+    Note {
+        sway: i32,
+        rise: i32,
+        fade: u8,
+    },
+    Sparkle {
+        twinkle: bool,
+        rise: i32,
+        fade: u8,
+    },
+    Huff {
+        drift: i32,
+        alpha: u8,
+    },
+    Speech {
+        /// Which of the dots is lit, or all three.
+        lit: usize,
+    },
+    Sleep {
+        up: i32,
+        alpha: u8,
+    },
+}
+
+impl Look {
+    pub fn of(cue: Cue, age: f32, reduce_motion: bool) -> Self {
+        // Signs drift up a little and fade towards the end of a second and a half; held still
+        // when motion is reduced, so the sign is there without anything moving.
+        let rise = if reduce_motion {
+            0
+        } else {
+            (age * 7.0).min(10.0) as i32
+        };
+        // A doze and a speech bubble last as long as what they belong to; the rest are a
+        // moment's.
+        let lasting = matches!(cue, Cue::Sleep | Cue::Speech);
+        let fade = if reduce_motion || lasting {
+            255
+        } else {
+            (255.0 * (1.0 - ((age - 1.1) / 0.6).clamp(0.0, 1.0))) as u8
+        };
+        if fade == 0 {
+            return Self::Gone;
+        }
+        match cue {
+            Cue::Heart => Self::Heart {
+                rise,
                 fade,
-            );
-            if age > 0.35 || reduce_motion {
-                let late = if reduce_motion {
+                late: (age > 0.35 || reduce_motion).then(|| {
+                    if reduce_motion {
+                        0
+                    } else {
+                        ((age - 0.35) * 7.0).min(10.0) as i32
+                    }
+                }),
+            },
+            Cue::Exclaim => Self::Exclaim {
+                hop: if reduce_motion || age > 0.2 { 0 } else { 2 },
+                fade,
+            },
+            Cue::Note => Self::Note {
+                sway: if reduce_motion {
                     0
                 } else {
-                    ((age - 0.35) * 7.0).min(10.0) as i32
+                    ((age * 5.0).sin() * 2.0) as i32
+                },
+                rise,
+                fade,
+            },
+            Cue::Sparkle => Self::Sparkle {
+                twinkle: reduce_motion || (age * 6.0) as i32 % 2 == 0,
+                rise,
+                fade,
+            },
+            // A puff blown out to one side.
+            Cue::Huff => Self::Huff {
+                drift: if reduce_motion {
+                    2
+                } else {
+                    (age * 9.0).min(8.0) as i32
+                },
+                alpha: (fade as u32 * 3 / 4) as u8,
+            },
+            // Held while the line is on show; the dots light one at a time, then all three.
+            Cue::Speech => Self::Speech {
+                lit: if reduce_motion {
+                    3
+                } else {
+                    (age * 3.0) as usize % 4
+                },
+            },
+            Cue::Sleep => {
+                // Two z's, the second higher and fainter, coming round again and again.
+                let cycle = if reduce_motion {
+                    0.5
+                } else {
+                    (age * 0.6).fract()
                 };
-                sprite(
-                    scene,
-                    &HEART,
-                    x + 4,
-                    y - 3 - late,
-                    [0x8c2a3a, 0xf26b8a, 0xffd3df],
-                    fade / 2 + fade / 4,
-                );
+                Self::Sleep {
+                    up: (cycle * 8.0) as i32,
+                    alpha: (255.0 * (1.0 - cycle * 0.8)) as u8,
+                }
             }
         }
-        Cue::Exclaim => {
-            let hop = if reduce_motion || age > 0.2 { 0 } else { 2 };
-            sprite(
-                scene,
-                &EXCLAIM,
-                x - 1,
-                y - 8 - hop,
-                [0x6b4a24, 0xf5d25e, 0xffffff],
+    }
+
+    /// Draws the sign with its bottom centre at `(x, y)`.
+    pub fn draw(self, scene: &mut Canvas, x: i32, y: i32) {
+        match self {
+            Self::Gone => {}
+            Self::Heart { rise, fade, late } => {
+                let colors = [0x8c2a3a, 0xf26b8a, 0xffd3df];
+                sprite(scene, &HEART, x - 3, y - 6 - rise, colors, fade);
+                if let Some(late) = late {
+                    sprite(
+                        scene,
+                        &HEART,
+                        x + 4,
+                        y - 3 - late,
+                        colors,
+                        fade / 2 + fade / 4,
+                    );
+                }
+            }
+            Self::Exclaim { hop, fade } => {
+                sprite(
+                    scene,
+                    &EXCLAIM,
+                    x - 1,
+                    y - 8 - hop,
+                    [0x6b4a24, 0xf5d25e, 0xffffff],
+                    fade,
+                );
+            }
+            Self::Note { sway, rise, fade } => {
+                sprite(
+                    scene,
+                    &NOTE,
+                    x - 2 + sway,
+                    y - 7 - rise,
+                    [0x3b2a4a, 0x9b7fd0, 0xffffff],
+                    fade,
+                );
+            }
+            Self::Sparkle {
+                twinkle,
+                rise,
                 fade,
-            );
-        }
-        Cue::Note => {
-            let sway = if reduce_motion {
-                0
-            } else {
-                ((age * 5.0).sin() * 2.0) as i32
-            };
-            sprite(
-                scene,
-                &NOTE,
-                x - 2 + sway,
-                y - 7 - rise,
-                [0x3b2a4a, 0x9b7fd0, 0xffffff],
-                fade,
-            );
-        }
-        Cue::Sparkle => {
-            let twinkle = reduce_motion || (age * 6.0) as i32 % 2 == 0;
-            let colors = if twinkle {
-                [0xc9a14e, 0xf6e3a2, 0xffffff]
-            } else {
-                [0xe4c06c, 0xffffff, 0xffffff]
-            };
-            sprite(scene, &SPARKLE, x - 8, y - 5 - rise / 2, colors, fade);
-            sprite(
-                scene,
-                &SPARKLE,
-                x + 4,
-                y - 9 - rise,
-                colors,
-                fade / 2 + fade / 3,
-            );
-        }
-        Cue::Huff => {
-            // A puff blown out to one side.
-            let drift = if reduce_motion {
-                2
-            } else {
-                (age * 9.0).min(8.0) as i32
-            };
-            let alpha = (fade as u32 * 3 / 4) as u8;
-            ellipse(scene, x + 4 + drift, y - 2, 3, 2, rgba(0xd8d4d8, alpha));
-            ellipse(scene, x + 7 + drift, y - 4, 2, 2, rgba(0xeeeaee, alpha));
-        }
-        Cue::Speech => {
-            // Held while the line is on show; the dots light one at a time, then all three.
-            let lit = if reduce_motion {
-                3
-            } else {
-                (age * 3.0) as usize % 4
-            };
-            let middle: String = SPEECH[2]
-                .chars()
-                .enumerate()
-                .map(|(index, cell)| match cell {
-                    '*' if lit < 3 && index != 2 + lit * 2 => 'o',
-                    other => other,
-                })
-                .collect();
-            let rows = [
-                SPEECH[0], SPEECH[1], &middle, SPEECH[3], SPEECH[4], SPEECH[5], SPEECH[6],
-            ];
-            sprite(
-                scene,
-                &rows,
-                x - 4,
-                y - 7,
-                [0x6b5a48, 0xfbf6ee, 0x6b5a48],
-                255,
-            );
-        }
-        Cue::Sleep => {
-            // Two z's, the second higher and fainter, coming round again and again.
-            let cycle = if reduce_motion {
-                0.5
-            } else {
-                (age * 0.6).fract()
-            };
-            let up = (cycle * 8.0) as i32;
-            let alpha = (255.0 * (1.0 - cycle * 0.8)) as u8;
-            sprite(
-                scene,
-                &DOZE,
-                x + 2,
-                y - 5 - up,
-                [0x3b4a6a, 0xffffff, 0xffffff],
-                alpha,
-            );
-            sprite(
-                scene,
-                &DOZE,
-                x + 7,
-                y - 11 - up,
-                [0x3b4a6a, 0xffffff, 0xffffff],
-                alpha / 2,
-            );
+            } => {
+                let colors = if twinkle {
+                    [0xc9a14e, 0xf6e3a2, 0xffffff]
+                } else {
+                    [0xe4c06c, 0xffffff, 0xffffff]
+                };
+                sprite(scene, &SPARKLE, x - 8, y - 5 - rise / 2, colors, fade);
+                sprite(
+                    scene,
+                    &SPARKLE,
+                    x + 4,
+                    y - 9 - rise,
+                    colors,
+                    fade / 2 + fade / 3,
+                );
+            }
+            Self::Huff { drift, alpha } => {
+                ellipse(scene, x + 4 + drift, y - 2, 3, 2, rgba(0xd8d4d8, alpha));
+                ellipse(scene, x + 7 + drift, y - 4, 2, 2, rgba(0xeeeaee, alpha));
+            }
+            Self::Speech { lit } => {
+                let middle: String = SPEECH[2]
+                    .chars()
+                    .enumerate()
+                    .map(|(index, cell)| match cell {
+                        '*' if lit < 3 && index != 2 + lit * 2 => 'o',
+                        other => other,
+                    })
+                    .collect();
+                let rows = [
+                    SPEECH[0], SPEECH[1], &middle, SPEECH[3], SPEECH[4], SPEECH[5], SPEECH[6],
+                ];
+                sprite(
+                    scene,
+                    &rows,
+                    x - 4,
+                    y - 7,
+                    [0x6b5a48, 0xfbf6ee, 0x6b5a48],
+                    255,
+                );
+            }
+            Self::Sleep { up, alpha } => {
+                let colors = [0x3b4a6a, 0xffffff, 0xffffff];
+                sprite(scene, &DOZE, x + 2, y - 5 - up, colors, alpha);
+                sprite(scene, &DOZE, x + 7, y - 11 - up, colors, alpha / 2);
+            }
         }
     }
 }
