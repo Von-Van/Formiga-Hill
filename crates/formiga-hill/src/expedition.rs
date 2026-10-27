@@ -35,7 +35,6 @@ use crate::woods::Influence;
 use crate::woods::rummage::{basket_frame, dim};
 use formiga_art::{Canvas, ExpressionKind};
 use formiga_core::{Gesture, TemperamentKind};
-use formiga_travel::Band;
 use legs::{Caught, Input, Leg, LegEvent, Start};
 use map::{Company, Map, Opener, Stop};
 pub use scenery::Shown;
@@ -115,11 +114,7 @@ pub fn planned(cast: &Cast, map: &Map, party: &[Id], known: &Known) -> Canvas {
         .filter_map(|id| cast.member(*id).map(|member| (*id, Character::of(member))))
         .take(PARTY)
         .collect();
-    let close = |a: Id, b: Id| {
-        cast.bond(a, b)
-            .is_some_and(|bond| bond.warmth >= Band::High)
-    };
-    let company = Company::of(&members, close);
+    let company = Company::of(&members, |a, b| cast.close(a, b));
     let sighted = sighted(map, known);
     scenery::map(
         map,
@@ -315,21 +310,17 @@ impl Expedition {
             .iter()
             .filter_map(|id| cast.member(*id).map(Character::of))
             .collect();
-        let close_bond = |a: Id, b: Id| {
-            cast.bond(a, b)
-                .is_some_and(|bond| bond.warmth >= Band::High)
-        };
         let members: Vec<(Id, Character)> = party
             .iter()
             .copied()
             .zip(characters.iter().cloned())
             .collect();
-        let company = Company::of(&members, close_bond);
+        let company = Company::of(&members, |a, b| cast.close(a, b));
         let close: Vec<(Id, Id)> = party
             .iter()
             .enumerate()
             .flat_map(|(index, a)| party[index + 1..].iter().map(move |b| (*a, *b)))
-            .filter(|(a, b)| close_bond(*a, *b))
+            .filter(|(a, b)| cast.close(*a, *b))
             .collect();
         let refs: Vec<&Character> = characters.iter().collect();
         let pace = map::pace(&refs);

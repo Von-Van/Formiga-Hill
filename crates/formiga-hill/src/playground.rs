@@ -14,13 +14,14 @@
 use crate::actor::{Actor, Step, Whereabouts};
 use crate::cast::{Cast, Id};
 use crate::character::{Brushing, Character, Company, Cue, Idea, Offer};
-use crate::cues::draw_cue;
+use crate::cues::{Look, draw_cue};
 use crate::daylight::{Daylight, Nightlights};
 use crate::dice::Dice;
 use crate::finds::Use;
 use crate::paint::blit;
 use formiga_art::{Canvas, GazeDirection};
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 
 /// How much a creature warms to the person with each kindness, and how far, over one visit.
 const TRUST_STEP: f32 = 0.15;
@@ -170,6 +171,8 @@ pub struct Playground {
     still_set_out: Option<Canvas>,
     /// Who has been brushed, and how far the grooming has got.
     brushing: HashMap<Id, Grooming>,
+    /// Counts each change to what is set out or painted here, for telling frames apart.
+    version: u64,
 }
 
 /// One companion's grooming: how far it has got, from 0 to 1, when the last stroke was, and
@@ -262,6 +265,7 @@ impl Playground {
             still: Canvas::new(1, 1),
             still_set_out: None,
             brushing: HashMap::new(),
+            version: 0,
         }
         .stilled()
     }
@@ -296,11 +300,18 @@ impl Playground {
     /// What shines here after dark: without it, the place is always as painted.
     pub fn set_nightlights(&mut self, nightlights: Nightlights) {
         self.nightlights = Some(nightlights);
+        self.version += 1;
     }
 
     /// The hour's light, laid over everything this place composes.
     pub fn set_daylight(&mut self, daylight: Daylight) {
         self.daylight = daylight;
+    }
+
+    /// The hour's light, as last laid over this place.
+    #[cfg(test)]
+    pub fn daylight(&self) -> Daylight {
+        self.daylight
     }
 
     /// What lies behind everyone: the place as painted, with nobody in it.
@@ -312,6 +323,7 @@ impl Playground {
     pub fn set_backdrop(&mut self, backdrop: Canvas) {
         self.backdrop = backdrop;
         self.still_life();
+        self.version += 1;
     }
 
     /// Repaints what lies behind everyone and the night sky over it together, as when the Hilltop
@@ -335,20 +347,22 @@ impl Playground {
     pub fn set_props(&mut self, props: Vec<Prop>) {
         self.props = props;
         self.still_life();
+        self.version += 1;
     }
 
     /// Places what is flying about this moment, each standing on its own row.
     pub fn set_fliers(&mut self, fliers: Vec<Prop>) {
+        if !same_props(&fliers, &self.fliers) {
+            self.version += 1;
+        }
         self.fliers = fliers;
     }
 
     /// Sets out what stands in the place this moment, lit as the place is after dark.
     pub fn set_fixtures(&mut self, fixtures: Vec<Prop>) {
-        let same = |a: &Prop, b: &Prop| a.at == b.at && a.base == b.base && a.sprite == b.sprite;
-        let unchanged = fixtures.len() == self.fixtures.len()
-            && fixtures.iter().zip(&self.fixtures).all(|(a, b)| same(a, b));
-        if !unchanged {
+        if !same_props(&fixtures, &self.fixtures) {
             self.still_set_out = None;
+            self.version += 1;
         }
         self.fixtures = fixtures;
     }
@@ -760,31 +774,15 @@ impl Playground {
             }
             if let Some(index) = prop {
                 let prop = &self.props[index];
-                let shaking = now - prop.rustled < RUSTLE_SECS && !self.reduce_motion;
-                let nudge = if shaking {
-                    ((now * 40.0) as i32 % 2) * 2 - 1
-                } else {
-                    0
-                };
+                let nudge = nudge(prop, now, self.reduce_motion).unwrap_or(0);
                 blit(&mut scene, &prop.sprite, prop.at.0 + nudge, prop.at.1);
             }
         }
         for &index in &order {
-            let actor = &mut self.actors[index];
-            let speaking = self.speaker == Some(actor.id);
-            let Some(cue) = actor
-                .current_beat()
-                .and_then(|beat| beat.cue)
-                .or(speaking.then_some(Cue::Speech))
-            else {
+            let Some((cue, age)) = sign(self.speaker, &self.actors[index], now) else {
                 continue;
             };
-            let age = if speaking {
-                now
-            } else {
-                actor.step_elapsed(now)
-            };
-            let (left, top, right, _) = actor.bounds(now);
+            let (left, top, right, _) = self.actors[index].bounds(now);
             draw_cue(
                 &mut scene,
                 cue,
@@ -812,6 +810,62 @@ impl Playground {
             }
         }
         scene
+    }
+
+    /// What the place shows at `now`, as one number, for telling whether it needs composing
+    /// again: everything set out in it, the hour's light, each prop as it shakes, and everyone
+    /// in it as they look and stand, with any sign over their heads. `None` while a prize bobs
+    /// as it is carried, when the place has to be composed every time.
+    pub fn frame_key(&self, now: f32) -> Option<u64> {
+        let mut hash = std::hash::DefaultHasher::new();
+        (self.version, self.daylight.hour().to_bits()).hash(&mut hash);
+        for (index, prop) in self.props.iter().enumerate() {
+            if let Some(nudge) = nudge(prop, now, self.reduce_motion) {
+                (index, nudge).hash(&mut hash);
+            }
+        }
+        for index in self.drawing_order() {
+            let actor = &self.actors[index];
+            let sign = sign(self.speaker, actor, now)
+                .map(|(cue, age)| Look::of(cue, age, self.reduce_motion));
+            (index, actor.look(now)?, sign).hash(&mut hash);
+        }
+        Some(hash.finish())
+    }
+
+    /// When what the place shows next changes after `now`, if nothing else happens to it: the
+    /// soonest anyone in it moves on a frame, blinks or finishes what it is doing, a prop stops
+    /// shaking, or someone groomed gets on with its day. `now` while anyone is walking, about to
+    /// start on something, a sign moves over anyone, or a prop is shaking; `None` when nothing
+    /// will change of itself, as with motion reduced and everyone settled.
+    pub fn next_change(&self, now: f32) -> Option<f32> {
+        let actors = self.actors.iter().map(|actor| {
+            if actor.is_idle() && !self.reserved.contains(&actor.id) {
+                now
+            } else {
+                actor.next_change(now)
+            }
+        });
+        let shaking = self
+            .props
+            .iter()
+            .filter(|prop| nudge(prop, now, self.reduce_motion).is_some())
+            .map(|_| now);
+        let groomed = self
+            .brushing
+            .values()
+            .filter(|grooming| grooming.held && grooming.progress < 1.0)
+            .map(|grooming| grooming.last + BRUSH_PATIENCE);
+        let speaking = self
+            .speaker
+            .filter(|id| self.index_of(*id).is_some() && !self.reduce_motion)
+            .map(|_| now);
+        actors
+            .chain(shaking)
+            .chain(groomed)
+            .chain(speaking)
+            .filter(|at| at.is_finite())
+            .min_by(f32::total_cmp)
     }
 
     fn index_of(&self, id: Id) -> Option<usize> {
@@ -1055,6 +1109,37 @@ impl Playground {
             };
         }
     }
+}
+
+/// The sign over an actor's head, if any, and how long it has been there: its beat's own, or a
+/// speech bubble over whoever is `speaking`, there as long as the line is.
+fn sign(speaking: Option<Id>, actor: &Actor, now: f32) -> Option<(Cue, f32)> {
+    let speaking = speaking == Some(actor.id);
+    let cue = actor
+        .current_beat()
+        .and_then(|beat| beat.cue)
+        .or(speaking.then_some(Cue::Speech))?;
+    let age = if speaking {
+        now
+    } else {
+        actor.step_elapsed(now)
+    };
+    Some((cue, age))
+}
+
+/// Whether two sets of things set out are the same, each where it was and as it looked.
+fn same_props(a: &[Prop], b: &[Prop]) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|(a, b)| a.at == b.at && a.base == b.base && a.sprite == b.sprite)
+}
+
+/// How far a prop is shaken aside at `now`, while it is shaking, as when someone looks behind
+/// it.
+fn nudge(prop: &Prop, now: f32, reduce_motion: bool) -> Option<i32> {
+    let shaking = now - prop.rustled < RUSTLE_SECS && !reduce_motion;
+    shaking.then(|| ((now * 40.0) as i32 % 2) * 2 - 1)
 }
 
 pub fn distance(a: (f32, f32), b: (f32, f32)) -> f32 {
@@ -1319,5 +1404,105 @@ mod tests {
             scene.get(200, 140),
             formiga_art::Rgba::new(120, 80, 40, 255)
         );
+    }
+
+    /// Plays the green on for `seconds` at sixty frames a second once everyone has settled in,
+    /// in the light of dusk, and says at each frame what time it was, what the place showed by
+    /// its key, when it said it would next change, and the picture composed.
+    fn played(seconds: f32, reduce_motion: bool) -> Vec<(f32, Option<u64>, Option<f32>, Canvas)> {
+        let mut cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        cast.snapshot.presentation.reduce_motion = reduce_motion;
+        let mut green = crate::green::open(&cast, 0.0);
+        green.set_daylight(Daylight::at_hour(20.5));
+        // Settled in first: the walk in from the lane is every frame anyway.
+        run(&mut green, &cast, 0.0, 20.0);
+        (0..(seconds * 60.0) as usize)
+            .map(|frame| {
+                let now = 20.0 + frame as f32 / 60.0;
+                green.tick(&cast, now);
+                let key = green.frame_key(now);
+                let next = green.next_change(now);
+                (now, key, next, green.compose(now))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_frame_showing_the_same_has_the_same_key_and_every_change_is_foreseen() {
+        for reduce_motion in [false, true] {
+            let frames = played(30.0, reduce_motion);
+            let mut keyed = 0;
+            for pair in frames.windows(2) {
+                let ((_, was, next, before), (now, key, _, after)) = (&pair[0], &pair[1]);
+                if key.is_some() && key == was {
+                    keyed += 1;
+                    assert!(
+                        before == after,
+                        "the same key, but not the same picture at {now}"
+                    );
+                }
+                // Nothing changes of itself before the place said it would.
+                if next.is_none_or(|next| *now < next) {
+                    assert_eq!(key, was, "changed at {now} before {next:?}");
+                }
+            }
+            // A green in full swing has someone walking or dozing nearly every frame; with
+            // motion reduced, it is still nearly all the time.
+            assert!(
+                !reduce_motion || keyed > frames.len() * 9 / 10,
+                "hardly a frame was the same: {keyed}"
+            );
+        }
+    }
+
+    #[test]
+    fn anything_that_changes_the_picture_changes_the_key() {
+        let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let mut green = crate::green::open(&cast, 0.0);
+        run(&mut green, &cast, 0.0, 20.0);
+        let now = 20.0;
+        let id = cast.members[0].id;
+        let key = |green: &Playground| green.frame_key(now).unwrap();
+        let mut keys = vec![key(&green)];
+        assert_eq!(green.frame_key(now), Some(keys[0]), "asked twice, the same");
+        type Change = Box<dyn Fn(&mut Playground)>;
+        let changes: Vec<Change> = vec![
+            Box::new(|g| g.set_daylight(Daylight::at_hour(21.0))),
+            Box::new(move |g| g.dress(&HashMap::from([(id, "wizard_hat")]), &HashSet::new())),
+            Box::new(move |g| g.dress(&HashMap::new(), &HashSet::from([id]))),
+            Box::new(move |g| g.sack(id, Some(1))),
+            Box::new(move |g| g.tip(id, true)),
+            Box::new(move |g| g.set_lift(id, 4.0)),
+            Box::new(move |g| g.teleport(id, (120.0, 170.0))),
+            Box::new(|g| g.set_props(Vec::new())),
+            Box::new(|g| g.set_fliers(vec![Prop::new(Canvas::new(2, 2), (40, 40), 41.0)])),
+            Box::new(|g| g.set_fixtures(vec![Prop::new(Canvas::new(3, 3), (60, 60), 61.0)])),
+            Box::new(move |g| g.direct(id, vec![Step::FaceX(0.0)], now - 5.0)),
+        ];
+        for change in changes {
+            change(&mut green);
+            green.tick(&cast, now);
+            let changed = key(&green);
+            assert!(!keys.contains(&changed), "a change left the key as it was");
+            keys.push(changed);
+        }
+        // Fliers set out again just as they were change nothing.
+        green.set_fliers(vec![Prop::new(Canvas::new(2, 2), (40, 40), 41.0)]);
+        assert_eq!(key(&green), *keys.last().unwrap());
+        // A speech bubble over whoever is speaking, and its dots as they light.
+        green.set_speaker(Some(id));
+        let speaking = key(&green);
+        assert!(
+            !keys.contains(&speaking),
+            "the speech bubble left the key as it was"
+        );
+        assert_ne!(
+            green.frame_key(now + 0.34),
+            Some(speaking),
+            "the dots never lit"
+        );
+        // A prize carried bobs with the clock, so it is drawn afresh every time.
+        green.carry(&[(id, crate::fairground::prizes::Prize::ALL[0])]);
+        assert_eq!(green.frame_key(now), None);
     }
 }

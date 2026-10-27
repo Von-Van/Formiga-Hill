@@ -53,13 +53,7 @@ impl HillApp {
         let known = self.known();
         let cast = &self.arrival.cast;
         let colony = self.memories.colony();
-        let seed = cast
-            .snapshot
-            .colony_id
-            .bytes()
-            .fold(u64::from(colony.expeditions) << 32 | 0xe4b, |hash, byte| {
-                (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-            });
+        let seed = self.outing_seed(colony.expeditions, 0xe4b);
         let influence = woods::influence(&colony.hilltop);
         let note = influence.notes.first().copied();
         let outset = Outset {

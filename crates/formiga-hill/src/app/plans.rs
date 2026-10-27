@@ -19,6 +19,13 @@ pub struct Crafting {
     puffs: Vec<(u8, f32)>,
 }
 
+impl Crafting {
+    /// Whether nothing is going up on the Hilltop, and no puff of dust is still clearing.
+    pub fn quiet(&self) -> bool {
+        self.building.is_none() && self.puffs.is_empty()
+    }
+}
+
 /// "a smooth pebble", "2 smooth pebbles", from a find's name, "A smooth pebble".
 fn some(id: &str, count: u32) -> String {
     let Some(find) = finds::find(id) else {

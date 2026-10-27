@@ -214,7 +214,7 @@ fn way_label(way: Option<Opener>) -> &'static str {
 
 impl HillApp {
     fn drafts(&self) -> Drafts {
-        Drafts::open(crate::memories::Memories::folder().as_deref(), DRAFTS)
+        Drafts::open(self.data.as_deref(), DRAFTS)
     }
 
     /// The adventures being made, by name and title, the latest worked on first: read from the
@@ -267,7 +267,7 @@ impl HillApp {
     }
 
     /// Begins a new adventure, with the way in from the lane on the map already.
-    fn begin_adventure(&mut self) {
+    pub(super) fn begin_adventure(&mut self) {
         let key = format!(
             "{}{}",
             self.arrival.cast.snapshot.colony_id,
