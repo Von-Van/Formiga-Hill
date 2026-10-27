@@ -270,6 +270,19 @@ impl Outing {
 }
 
 impl HillApp {
+    /// A seed for setting off, from the colony and how many outings like it there have been,
+    /// with `salt` for the kind: the same each time for the same colony and outing.
+    pub(super) fn outing_seed(&self, count: u32, salt: u64) -> u64 {
+        self.arrival
+            .cast
+            .snapshot
+            .colony_id
+            .bytes()
+            .fold(u64::from(count) << 32 | salt, |hash, byte| {
+                (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
+            })
+    }
+
     /// Brings whatever the outing found home, into the journal and the satchel, if one is under
     /// way.
     pub(super) fn finish_outing(&mut self, now: f32) {

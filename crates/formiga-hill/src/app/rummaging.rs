@@ -13,7 +13,6 @@ use crate::woods::rummage::{self, BASKET, Ending, Event, Outset, Phase, Rummage}
 use crate::woods::{self, Opener};
 use eframe::egui;
 use formiga_art::Canvas;
-use formiga_travel::Band;
 
 /// How many companions can come along at once.
 pub const PARTY: usize = 2;
@@ -168,20 +167,9 @@ impl HillApp {
             return;
         }
         let cast = &self.arrival.cast;
-        let close_pair = match party.as_slice() {
-            [a, b] => cast
-                .bond(*a, *b)
-                .is_some_and(|bond| bond.warmth >= Band::High),
-            _ => false,
-        };
+        let close_pair = cast.close_pair(&party);
         let colony = self.memories.colony();
-        let seed = cast
-            .snapshot
-            .colony_id
-            .bytes()
-            .fold(u64::from(colony.outings) << 32, |hash, byte| {
-                (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-            });
+        let seed = self.outing_seed(colony.outings, 0);
         let mut ground = woods::open(cast, &party, now);
         let influence = woods::influence(&colony.hilltop);
         let note = influence.notes.first().copied();

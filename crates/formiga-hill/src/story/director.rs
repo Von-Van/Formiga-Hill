@@ -15,7 +15,6 @@ use crate::character::{Beat as ActorBeat, Cue};
 use crate::playground::Playground;
 use formiga_art::ExpressionKind;
 use formiga_core::{ActionKind, Gesture};
-use formiga_travel::Band;
 use std::collections::BTreeSet;
 
 /// A line on show: who says it, if anyone, and the words.
@@ -376,9 +375,7 @@ impl Director {
             Condition::High(role, axis) => member(role).is_some_and(|m| axis.of(&m.axes()) >= 0.65),
             Condition::Low(role, axis) => member(role).is_some_and(|m| axis.of(&m.axes()) <= 0.35),
             Condition::Close(a, b) => match (self.player(*a), self.player(*b)) {
-                (Some(a), Some(b)) => cast
-                    .bond(a, b)
-                    .is_some_and(|bond| bond.warmth >= Band::High),
+                (Some(a), Some(b)) => cast.close(a, b),
                 _ => false,
             },
             Condition::Rivals(a, b) => match (self.player(*a), self.player(*b)) {

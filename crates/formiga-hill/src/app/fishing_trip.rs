@@ -20,10 +20,7 @@ impl HillApp {
         }
         let cast = &self.arrival.cast;
         let colony = self.memories.colony();
-        let seed = cast.snapshot.colony_id.bytes().fold(
-            u64::from(colony.fishing_trips) << 32 | 0xf15,
-            |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3),
-        );
+        let seed = self.outing_seed(colony.fishing_trips, 0xf15);
         let mut ground = fishing::open(cast, &party, now);
         let influence = crate::woods::influence(&colony.hilltop);
         let note = influence.notes.first().copied();

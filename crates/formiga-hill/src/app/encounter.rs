@@ -11,7 +11,6 @@ use crate::clearing::{
 };
 use eframe::egui;
 use formiga_art::Canvas;
-use formiga_travel::Band;
 
 impl HillApp {
     /// The party followed the glint: the basket so far comes home, and they are in the clearing.
@@ -22,12 +21,7 @@ impl HillApp {
         let party: Vec<Id> = outing.party().to_vec();
         self.finish_outing(now);
         let cast = &self.arrival.cast;
-        let close_pair = match party.as_slice() {
-            [a, b] => cast
-                .bond(*a, *b)
-                .is_some_and(|bond| bond.warmth >= Band::High),
-            _ => false,
-        };
+        let close_pair = cast.close_pair(&party);
         let mut ground = clearing::open(cast, &party, now);
         let sovereign = Sovereign::new(&mut ground, cast, &party, close_pair, now);
         self.clearing = Some((ground, sovereign));

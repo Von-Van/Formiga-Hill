@@ -163,6 +163,20 @@ impl Cast {
             .map(|(other, _)| other)
     }
 
+    /// Whether a pair are close friends.
+    pub fn close(&self, a: Id, b: Id) -> bool {
+        self.bond(a, b)
+            .is_some_and(|bond| bond.warmth >= Band::High)
+    }
+
+    /// Whether a party is two close friends.
+    pub fn close_pair(&self, party: &[Id]) -> bool {
+        match party {
+            [a, b] => self.close(*a, *b),
+            _ => false,
+        }
+    }
+
     /// Whether a pair rubs each other up the wrong way enough to keep apart.
     pub fn at_odds(&self, a: Id, b: Id) -> bool {
         self.bond(a, b)

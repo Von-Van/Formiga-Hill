@@ -10,7 +10,6 @@ use crate::meadow::catching::{Event, Hunt, Outset, Phase, Why};
 use crate::meadow::{self, bugs};
 use crate::playground::Playground;
 use eframe::egui;
-use formiga_travel::Band;
 
 impl HillApp {
     /// Sets off for the meadow with whoever was chosen; the first carries the net.
@@ -21,19 +20,8 @@ impl HillApp {
         }
         let cast = &self.arrival.cast;
         let colony = self.memories.colony();
-        let close_pair = match party.as_slice() {
-            [a, b] => cast
-                .bond(*a, *b)
-                .is_some_and(|bond| bond.warmth >= Band::High),
-            _ => false,
-        };
-        let seed = cast
-            .snapshot
-            .colony_id
-            .bytes()
-            .fold(u64::from(colony.bug_hunts) << 32 | 0xb06, |hash, byte| {
-                (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-            });
+        let close_pair = cast.close_pair(&party);
+        let seed = self.outing_seed(colony.bug_hunts, 0xb06);
         let mut ground = meadow::open(cast, &party, now, &colony.hilltop);
         ground.set_daylight(self.daylight);
         let influence = crate::woods::influence(&colony.hilltop);

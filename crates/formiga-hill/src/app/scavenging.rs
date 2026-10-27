@@ -15,7 +15,6 @@ use crate::track::scavenging::{BASKET, Ending, Event, Outset, Phase, Scavenge};
 use crate::track::treasure::{self, Hunt};
 use crate::track::{self, routes};
 use eframe::egui;
-use formiga_travel::Band;
 
 impl HillApp {
     /// Readies the old track, with nobody there, its heaps lying as they lie and the Hilltop
@@ -33,39 +32,15 @@ impl HillApp {
         }
     }
 
-    /// Whether the two going are close friends.
-    fn close_pair(&self, party: &[Id]) -> bool {
-        match party {
-            [a, b] => self
-                .arrival
-                .cast
-                .bond(*a, *b)
-                .is_some_and(|bond| bond.warmth >= Band::High),
-            _ => false,
-        }
-    }
-
-    /// A seed for an outing, from the colony and how many outings like it there have been.
-    fn seed(&self, count: u32, salt: u64) -> u64 {
-        self.arrival
-            .cast
-            .snapshot
-            .colony_id
-            .bytes()
-            .fold(u64::from(count) << 32 | salt, |hash, byte| {
-                (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01b3)
-            })
-    }
-
     /// Sets off up the old track to scavenge, with whoever was chosen; the first leads.
     pub(super) fn set_off_scavenging(&mut self, now: f32) {
         let party = self.woods.party.clone();
         if party.is_empty() {
             return;
         }
-        let close_pair = self.close_pair(&party);
+        let close_pair = self.arrival.cast.close_pair(&party);
         let colony = self.memories.colony();
-        let seed = self.seed(colony.scavenges, 0x5ca);
+        let seed = self.outing_seed(colony.scavenges, 0x5ca);
         let mut ground = track::open(&self.arrival.cast, &party, now, &colony.hilltop);
         ground.set_daylight(self.daylight);
         let influence = crate::woods::influence(&colony.hilltop);
@@ -98,8 +73,8 @@ impl HillApp {
         if party.is_empty() {
             return;
         }
-        let close_pair = self.close_pair(&party);
-        let seed = self.seed(colony.treasure_hunts, 0x7ea);
+        let close_pair = self.arrival.cast.close_pair(&party);
+        let seed = self.outing_seed(colony.treasure_hunts, 0x7ea);
         let mut ground = track::hunt_ground(&self.arrival.cast, &party, now);
         ground.set_daylight(self.daylight);
         let influence = crate::woods::influence(&colony.hilltop);
