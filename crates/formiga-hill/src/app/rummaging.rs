@@ -1,9 +1,12 @@
 //! The Woods in the window: choosing who comes along, the outing's controls, and keeping what
 //! came home.
 
+use super::outing::{Outing, Told};
 use super::{HillApp, Stage, paper, plural};
-use crate::cast::Id;
+use crate::audio::Cue;
+use crate::cast::{Cast, Id};
 use crate::character::Character;
+use crate::expedition::legs::Input;
 use crate::finds;
 use crate::playground::Playground;
 use crate::woods::rummage::{self, BASKET, Ending, Event, Outset, Phase, Rummage};
@@ -56,11 +59,10 @@ pub struct Woods {
     /// The glade and the pool with nobody there, between trips.
     pub empty: Option<Playground>,
     pub pool: Option<Playground>,
-    pub outing: Option<(Playground, Rummage)>,
-    pub fishing: Option<(Playground, crate::fishing::angling::Angling)>,
-    /// The meadow with nobody there between hunts, and a hunt under way.
+    /// Whatever is under way: a rummage, a fishing trip, a bug hunt, and so on.
+    pub outing: Option<Outing>,
+    /// The meadow with nobody there between hunts.
     pub meadow: Option<Playground>,
-    pub hunt: Option<(Playground, crate::meadow::catching::Hunt)>,
     /// Whether the person is holding to creep up on a bug.
     pub creeping: bool,
     /// The hedgerow with nobody foraging, and a foray under way.
@@ -99,9 +101,7 @@ impl Woods {
             empty,
             pool,
             outing,
-            fishing,
             meadow,
-            hunt,
             creeping: _,
             hedgerow,
             foray,
@@ -123,9 +123,7 @@ impl Woods {
             meadow.as_mut(),
             hedgerow.as_mut(),
             track.as_mut(),
-            outing.as_mut().map(|(ground, _)| ground),
-            fishing.as_mut().map(|(ground, _)| ground),
-            hunt.as_mut().map(|(ground, _)| ground),
+            outing.as_mut().map(Outing::ground_mut),
             foray.as_mut().map(|(ground, _)| ground),
             scavenge.as_mut().map(|(ground, _)| ground),
             treasure.as_mut().map(|(ground, _)| ground),
@@ -207,7 +205,7 @@ impl HillApp {
         };
         let found = |id: &str| colony.finds.contains_key(id);
         let rummage = Rummage::new(&mut ground, outset, found, now);
-        self.woods.outing = Some((ground, rummage));
+        self.woods.outing = Some(Outing::Rummage(ground, rummage));
         let line = note.unwrap_or("Choose somewhere to search. Watch for signs.");
         self.notice = Some((line.to_owned(), now));
     }
@@ -217,14 +215,6 @@ impl HillApp {
         let cast = &self.arrival.cast;
         if self.woods.expedition.is_some() {
             self.tick_expedition(now, holding, self.woods.creeping, dt);
-            return;
-        }
-        if self.woods.fishing.is_some() {
-            self.tick_fishing(now, holding);
-            return;
-        }
-        if self.woods.hunt.is_some() {
-            self.tick_bug_hunt(now, self.woods.creeping);
             return;
         }
         if self.woods.foray.is_some() {
@@ -239,75 +229,34 @@ impl HillApp {
             self.tick_treasure(now);
             return;
         }
-        if let Some(empty) = &mut self.woods.empty
-            && self.woods.outing.is_none()
-        {
-            empty.tick(cast, now);
-        }
-        let Some((ground, rummage)) = &mut self.woods.outing else {
+        let Some(outing) = &mut self.woods.outing else {
+            if let Some(empty) = &mut self.woods.empty {
+                empty.tick(cast, now);
+            }
             return;
         };
-        ground.tick(cast, now);
-        rummage.hold(ground, holding, dt, now);
-        rummage.tick(ground, now);
-        let name = |id: Id| {
-            cast.member(id)
-                .map_or("Someone", |member| member.name.as_str())
+        let input = Input {
+            holding,
+            creeping: self.woods.creeping,
+            dt,
         };
-        let events = rummage.take_events();
-        let place = |spot: usize| rummage.spot(spot).map_or("somewhere", |spot| spot.name);
-        for event in events {
-            if let Some(cue) = super::sound::rummaged(&event) {
+        for told in outing.tick(cast, input, now) {
+            if let Some(cue) = told.cue {
                 self.sound.play(cue);
             }
-            let line = match event {
-                Event::Opened { who, spot } => match rummage.opener_of(spot) {
-                    Some(Opener::Explorer) => {
-                        format!("{} has found a way to {}!", name(who), place(spot))
-                    }
-                    Some(Opener::LittleOne) => {
-                        format!("{} is small enough for {}!", name(who), place(spot))
-                    }
-                    _ => format!("Together, these two could shift {}!", place(spot)),
-                },
-                Event::Noticed { who, spot } => {
-                    format!("{} spotted something by {}.", name(who), place(spot))
-                }
-                Event::Got { find, .. } => {
-                    let find = finds::find(find).map_or("something", |find| find.name);
-                    format!("Got it! {find}.")
-                }
-                Event::Slipped { .. } => "It slipped away deeper. Try again!".to_owned(),
-                Event::Nothing { spot } => format!("Nothing at {}.", place(spot)),
-                Event::AlreadyLooked { spot } => {
-                    format!("You've looked at {} already.", place(spot))
-                }
-                Event::Leaving(Ending::Dusk) => "The light's going. Time to head home.".to_owned(),
-                Event::Leaving(Ending::Full) => "The basket's full! Home we go.".to_owned(),
-                Event::Leaving(Ending::Chose) => "Heading home.".to_owned(),
-                Event::Glint => {
-                    "Something is glinting between the trees, far off. It doesn't look like \
-                                 it belongs here."
-                        .to_owned()
-                }
-                Event::Beckoned => {
-                    "Through the trees, into a clearing that isn't on any map\u{2026}".to_owned()
-                }
-            };
-            self.notice = Some((line, now));
+            if let Some(line) = told.line {
+                self.notice = Some((line, now));
+            }
         }
-        match rummage.phase() {
-            Phase::Over => self.finish_outing(now),
-            Phase::Beckoned => self.follow_the_glint(now),
-            _ => {}
+        if outing.over() {
+            self.finish_outing(now);
+        } else if outing.beckoned() {
+            self.follow_the_glint(now);
         }
     }
 
     /// Brings the basket home: into the journal and the satchel, ready for the Hilltop.
-    pub(super) fn finish_outing(&mut self, now: f32) {
-        let Some((_, rummage)) = self.woods.outing.take() else {
-            return;
-        };
+    pub(super) fn finish_rummage(&mut self, rummage: &Rummage, now: f32) {
         let basket = rummage.basket().to_vec();
         let new = self.memories.back_from_the_woods(rummage.party(), &basket);
         // Now and then, rolled up in a hollow with whatever was found there: a torn map.
@@ -344,11 +293,8 @@ impl HillApp {
         if let Some(scene) = self.compose_expedition(now) {
             return scene;
         }
-        if let Some(scene) = self.compose_pool(now) {
-            return scene;
-        }
-        if let Some(scene) = self.compose_meadow(now) {
-            return scene;
+        if let Some(outing) = &mut self.woods.outing {
+            return outing.compose(now, self.pointer);
         }
         if let Some(scene) = self.compose_foray(now) {
             return scene;
@@ -359,38 +305,17 @@ impl HillApp {
         if let Some(scene) = self.compose_treasure(now) {
             return scene;
         }
-        if matches!(self.woods.activity, Activity::Scavenge | Activity::Treasure)
-            && self.woods.outing.is_none()
-            && let Some(track) = &mut self.woods.track
-        {
-            return track.compose(now);
-        }
-        if self.woods.activity == Activity::Forage
-            && self.woods.outing.is_none()
-            && let Some(lane) = &mut self.woods.hedgerow
-        {
-            return lane.compose(now);
-        }
-        if self.woods.activity == Activity::Bugs
-            && self.woods.outing.is_none()
-            && let Some(meadow) = &mut self.woods.meadow
-        {
-            return meadow.compose(now);
-        }
-        if self.woods.activity == Activity::Fish
-            && self.woods.outing.is_none()
-            && let Some(pool) = &mut self.woods.pool
-        {
-            return pool.compose(now);
-        }
-        match (&mut self.woods.outing, &mut self.woods.empty) {
-            (Some((ground, rummage)), _) => {
-                let mut scene = ground.compose(now);
-                rummage.draw(&mut scene, now);
-                scene
-            }
-            (None, Some(empty)) => empty.compose(now),
-            (None, None) => Canvas::new(super::SCENE_WIDTH, super::SCENE_HEIGHT),
+        // Nothing under way: the place for whatever is chosen, with nobody there.
+        let place = match self.woods.activity {
+            Activity::Scavenge | Activity::Treasure => self.woods.track.as_mut(),
+            Activity::Forage => self.woods.hedgerow.as_mut(),
+            Activity::Bugs => self.woods.meadow.as_mut(),
+            Activity::Fish => self.woods.pool.as_mut(),
+            _ => None,
+        };
+        match place.or(self.woods.empty.as_mut()) {
+            Some(place) => place.compose(now),
+            None => Canvas::new(super::SCENE_WIDTH, super::SCENE_HEIGHT),
         }
     }
 
@@ -402,14 +327,6 @@ impl HillApp {
         }
         if self.woods.making.is_some() {
             self.making_click(pointer, now);
-            return;
-        }
-        if self.woods.fishing.is_some() {
-            self.fishing_click(pointer, now);
-            return;
-        }
-        if self.woods.hunt.is_some() {
-            self.bug_hunt_click(pointer, now);
             return;
         }
         if self.woods.foray.is_some() {
@@ -424,36 +341,20 @@ impl HillApp {
             self.treasure_click(pointer, now);
             return;
         }
-        let Some((ground, rummage)) = &mut self.woods.outing else {
-            return;
-        };
-        let spot = pointer.and_then(|(x, y)| rummage.spot_at(x, y));
-        match rummage.phase() {
-            Phase::Catching(catch) if spot.is_none_or(|spot| spot == catch.spot) => {
-                if !ground.reduce_motion() {
-                    rummage.strike(ground, now);
-                }
-            }
-            Phase::Exploring | Phase::Catching(_) => {
-                if let Some(spot) = spot {
-                    rummage.choose(ground, spot, now);
-                    self.sound.play(crate::audio::Cue::Rummage);
-                }
-            }
-            _ => {}
+        if let Some(outing) = &mut self.woods.outing
+            && let Some(cue) = outing.click(pointer, now)
+        {
+            self.sound.play(cue);
         }
     }
 
     /// The key for catching, for anyone not using the pointer.
     pub(super) fn woods_strike(&mut self, now: f32) {
         self.expedition_strike(now);
-        self.fishing_strike(now);
-        self.bug_hunt_swing(now);
-        if let Some((ground, rummage)) = &mut self.woods.outing
-            && matches!(rummage.phase(), Phase::Catching(_))
-            && !ground.reduce_motion()
+        if let Some(outing) = &mut self.woods.outing
+            && let Some(cue) = outing.strike(now)
         {
-            rummage.strike(ground, now);
+            self.sound.play(cue);
         }
     }
 
@@ -465,12 +366,6 @@ impl HillApp {
         if self.woods.making.is_some() {
             return self.making_hover(pointer);
         }
-        if self.woods.fishing.is_some() {
-            return self.fishing_hover(pointer);
-        }
-        if self.woods.hunt.is_some() {
-            return self.bug_hunt_hover(pointer);
-        }
         if self.woods.foray.is_some() {
             return self.foraging_hover(pointer);
         }
@@ -480,23 +375,10 @@ impl HillApp {
         if self.woods.treasure.is_some() {
             return self.treasure_hover(pointer);
         }
-        let (_, rummage) = self.woods.outing.as_ref()?;
-        if !matches!(rummage.phase(), Phase::Exploring | Phase::Catching(_)) {
-            return None;
-        }
-        let spot = pointer.and_then(|(x, y)| rummage.spot_at(x, y))?;
-        let place = *rummage.spot(spot)?;
-        let label = if rummage.searched(spot) {
-            format!("{} (looked)", place.name)
-        } else {
-            format!("{} \u{b7} {}", place.name, place.kind.verb())
-        };
-        Some((label, (place.sign.0, place.sign.1 - 12.0)))
+        self.woods.outing.as_ref()?.hover(pointer)
     }
 
     pub(super) fn woods_tray(&mut self, ui: &mut egui::Ui, now: f32) {
-        let mut set_off = false;
-        let mut home = false;
         if self.woods.expedition.is_some() {
             self.expedition_tray(ui, now);
             return;
@@ -505,12 +387,8 @@ impl HillApp {
             self.making_tray(ui, now);
             return;
         }
-        if self.woods.fishing.is_some() {
-            self.fishing_tray(ui, now);
-            return;
-        }
-        if self.woods.hunt.is_some() {
-            self.bug_hunt_tray(ui, now);
+        if let Some(outing) = &mut self.woods.outing {
+            outing.tray(ui, &self.arrival.cast, now);
             return;
         }
         if self.woods.foray.is_some() {
@@ -525,112 +403,86 @@ impl HillApp {
             self.treasure_tray(ui, now);
             return;
         }
-        match &self.woods.outing {
-            None => {
-                let doing = paper::Button::new(format!("{} \u{25b4}", self.woods.activity.label()));
-                paper::menu(ui, doing, false, |ui| {
-                    for activity in [
-                        Activity::Rummage,
-                        Activity::Fish,
-                        Activity::Bugs,
-                        Activity::Forage,
-                        Activity::Expedition,
-                        Activity::Adventure,
-                    ] {
-                        paper::choice(ui, &mut self.woods.activity, activity, activity.label());
-                    }
-                    self.track_activities(ui);
-                });
-                self.map_choice(ui);
-                if self.woods.activity == Activity::Adventure {
-                    self.adventure_choice(ui);
-                    self.making_choice(ui);
-                    let bring = ui.add(paper::Button::new("Open a shared one\u{2026}"));
-                    if paper::explain(ui, bring, "Look over an adventure someone shared, first")
-                        .clicked()
-                    {
-                        self.choose_shared_file(now);
-                    }
-                }
-                // Only an expedition, or an adventure, takes three.
-                let most = if matches!(
-                    self.woods.activity,
-                    Activity::Expedition | Activity::Adventure
-                ) {
-                    crate::expedition::PARTY
-                } else {
-                    PARTY
-                };
-                self.woods.party.truncate(most);
-                paper::slip(ui, "Who's coming?");
-                let cast = &self.arrival.cast;
-                let colony = self.memories.colony();
-                for member in &cast.members {
-                    let chosen = self.woods.party.contains(&member.id);
-                    let character = Character::of(member);
-                    let outings = colony
-                        .outings_by
-                        .get(&member.id.to_string())
-                        .copied()
-                        .unwrap_or(0);
-                    let hint = match self.woods.activity {
-                        Activity::Rummage => format!(
-                            "Good at {}. {} outing{} so far.",
-                            rummage::best_at(&character).knack(),
-                            outings,
-                            plural(outings as usize)
-                        ),
-                        Activity::Fish => angler(&character).to_owned(),
-                        Activity::Bugs => crate::meadow::catching::netter(&character).to_owned(),
-                        Activity::Forage => {
-                            super::foraging::forager_hint(colony, member.id, &character)
-                        }
-                        Activity::Expedition | Activity::Adventure => {
-                            super::expedition::expeditioner_hint(colony, member.id, &character)
-                        }
-                        Activity::Scavenge => {
-                            super::scavenging::scavenger_hint(colony, member.id, &character)
-                        }
-                        Activity::Treasure => super::scavenging::reader_hint(&character),
-                    };
-                    let pick = ui.add(paper::Button::new(&member.name).selected(chosen));
-                    if paper::explain(ui, pick, &hint).clicked() {
-                        if chosen {
-                            self.woods.party.retain(|id| *id != member.id);
-                        } else if self.woods.party.len() < most {
-                            self.woods.party.push(member.id);
-                        } else {
-                            // Swap out whoever was chosen last.
-                            self.woods.party.pop();
-                            self.woods.party.push(member.id);
-                        }
-                    }
-                }
-                let ready = !self.woods.party.is_empty();
-                set_off = ui
-                    .add(paper::Button::new("Set off").enabled(ready))
-                    .clicked();
+        let doing = paper::Button::new(format!("{} \u{25b4}", self.woods.activity.label()));
+        paper::menu(ui, doing, false, |ui| {
+            for activity in [
+                Activity::Rummage,
+                Activity::Fish,
+                Activity::Bugs,
+                Activity::Forage,
+                Activity::Expedition,
+                Activity::Adventure,
+            ] {
+                paper::choice(ui, &mut self.woods.activity, activity, activity.label());
             }
-            Some((ground, rummage)) => {
-                paper::meter(ui, rummage.light_left(), "light");
-                paper::slip(ui, format!("Basket {}/{BASKET}", rummage.basket().len()));
-                let hint = match rummage.phase() {
-                    Phase::Catching(_) if ground.reduce_motion() => {
-                        "Hold to turn the marker; let go on the gold."
-                    }
-                    Phase::Catching(_) => "Click (or Space) as the marker crosses the gold!",
-                    _ => "",
-                };
-                if !hint.is_empty() {
-                    paper::hint(ui, hint);
-                }
-                let leaving = matches!(rummage.phase(), Phase::Leaving { .. } | Phase::Over);
-                home = ui
-                    .add(paper::Button::new("Head home").enabled(!leaving))
-                    .clicked();
+            self.track_activities(ui);
+        });
+        self.map_choice(ui);
+        if self.woods.activity == Activity::Adventure {
+            self.adventure_choice(ui);
+            self.making_choice(ui);
+            let bring = ui.add(paper::Button::new("Open a shared one\u{2026}"));
+            if paper::explain(ui, bring, "Look over an adventure someone shared, first").clicked() {
+                self.choose_shared_file(now);
             }
         }
-        if set_off {
+        // Only an expedition, or an adventure, takes three.
+        let most = if matches!(
+            self.woods.activity,
+            Activity::Expedition | Activity::Adventure
+        ) {
+            crate::expedition::PARTY
+        } else {
+            PARTY
+        };
+        self.woods.party.truncate(most);
+        paper::slip(ui, "Who's coming?");
+        let cast = &self.arrival.cast;
+        let colony = self.memories.colony();
+        for member in &cast.members {
+            let chosen = self.woods.party.contains(&member.id);
+            let character = Character::of(member);
+            let outings = colony
+                .outings_by
+                .get(&member.id.to_string())
+                .copied()
+                .unwrap_or(0);
+            let hint = match self.woods.activity {
+                Activity::Rummage => format!(
+                    "Good at {}. {} outing{} so far.",
+                    rummage::best_at(&character).knack(),
+                    outings,
+                    plural(outings as usize)
+                ),
+                Activity::Fish => angler(&character).to_owned(),
+                Activity::Bugs => crate::meadow::catching::netter(&character).to_owned(),
+                Activity::Forage => super::foraging::forager_hint(colony, member.id, &character),
+                Activity::Expedition | Activity::Adventure => {
+                    super::expedition::expeditioner_hint(colony, member.id, &character)
+                }
+                Activity::Scavenge => {
+                    super::scavenging::scavenger_hint(colony, member.id, &character)
+                }
+                Activity::Treasure => super::scavenging::reader_hint(&character),
+            };
+            let pick = ui.add(paper::Button::new(&member.name).selected(chosen));
+            if paper::explain(ui, pick, &hint).clicked() {
+                if chosen {
+                    self.woods.party.retain(|id| *id != member.id);
+                } else if self.woods.party.len() < most {
+                    self.woods.party.push(member.id);
+                } else {
+                    // Swap out whoever was chosen last.
+                    self.woods.party.pop();
+                    self.woods.party.push(member.id);
+                }
+            }
+        }
+        let ready = !self.woods.party.is_empty();
+        if ui
+            .add(paper::Button::new("Set off").enabled(ready))
+            .clicked()
+        {
             match self.woods.activity {
                 Activity::Rummage => self.set_off(now),
                 Activity::Fish => self.set_off_fishing(now),
@@ -641,9 +493,6 @@ impl HillApp {
                 Activity::Scavenge => self.set_off_scavenging(now),
                 Activity::Treasure => self.set_off_treasure(now),
             }
-        }
-        if home && let Some((ground, rummage)) = &mut self.woods.outing {
-            rummage.head_home(ground, now);
         }
     }
 
@@ -657,9 +506,8 @@ impl HillApp {
     ) -> Option<Id> {
         let now = stage.now;
         let mut hovered = None;
-        if let Some((ground, _)) = &mut self.woods.outing {
-            ground.set_pointer(pointer);
-            hovered = pointer.and_then(|(x, y)| ground.actor_at(x, y, now));
+        if let Some(outing) = &mut self.woods.outing {
+            hovered = outing.point(pointer, now);
         }
         if let Some((ground, _)) = &mut self.woods.foray {
             ground.set_pointer(pointer);
@@ -696,6 +544,124 @@ impl HillApp {
             );
         }
         hovered.filter(|_| spot.is_none())
+    }
+}
+
+/// What the rummage's events sound like, and say.
+pub(super) fn told(cast: &Cast, rummage: &Rummage, events: Vec<Event>) -> Vec<Told> {
+    let name = |id: Id| {
+        cast.member(id)
+            .map_or("Someone", |member| member.name.as_str())
+    };
+    let place = |spot: usize| rummage.spot(spot).map_or("somewhere", |spot| spot.name);
+    events
+        .into_iter()
+        .map(|event| {
+            let cue = super::sound::rummaged(&event);
+            let line = match event {
+                Event::Opened { who, spot } => match rummage.opener_of(spot) {
+                    Some(Opener::Explorer) => {
+                        format!("{} has found a way to {}!", name(who), place(spot))
+                    }
+                    Some(Opener::LittleOne) => {
+                        format!("{} is small enough for {}!", name(who), place(spot))
+                    }
+                    _ => format!("Together, these two could shift {}!", place(spot)),
+                },
+                Event::Noticed { who, spot } => {
+                    format!("{} spotted something by {}.", name(who), place(spot))
+                }
+                Event::Got { find, .. } => {
+                    let find = finds::find(find).map_or("something", |find| find.name);
+                    format!("Got it! {find}.")
+                }
+                Event::Slipped { .. } => "It slipped away deeper. Try again!".to_owned(),
+                Event::Nothing { spot } => format!("Nothing at {}.", place(spot)),
+                Event::AlreadyLooked { spot } => {
+                    format!("You've looked at {} already.", place(spot))
+                }
+                Event::Leaving(Ending::Dusk) => "The light's going. Time to head home.".to_owned(),
+                Event::Leaving(Ending::Full) => "The basket's full! Home we go.".to_owned(),
+                Event::Leaving(Ending::Chose) => "Heading home.".to_owned(),
+                Event::Glint => {
+                    "Something is glinting between the trees, far off. It doesn't look like \
+                                 it belongs here."
+                        .to_owned()
+                }
+                Event::Beckoned => {
+                    "Through the trees, into a clearing that isn't on any map\u{2026}".to_owned()
+                }
+            };
+            Told {
+                cue,
+                line: Some(line),
+            }
+        })
+        .collect()
+}
+
+/// A click in the glade: choose a spot, or catch the moment.
+pub(super) fn click(
+    ground: &mut Playground,
+    rummage: &mut Rummage,
+    pointer: Option<(f32, f32)>,
+    now: f32,
+) -> Option<Cue> {
+    let spot = pointer.and_then(|(x, y)| rummage.spot_at(x, y));
+    match rummage.phase() {
+        Phase::Catching(catch) if spot.is_none_or(|spot| spot == catch.spot) => {
+            if !ground.reduce_motion() {
+                rummage.strike(ground, now);
+            }
+            None
+        }
+        Phase::Exploring | Phase::Catching(_) => {
+            let spot = spot?;
+            rummage.choose(ground, spot, now);
+            Some(Cue::Rummage)
+        }
+        _ => None,
+    }
+}
+
+/// What to call the spot under the pointer, and where, while choosing.
+pub(super) fn hover(
+    rummage: &Rummage,
+    pointer: Option<(f32, f32)>,
+) -> Option<(String, (f32, f32))> {
+    if !matches!(rummage.phase(), Phase::Exploring | Phase::Catching(_)) {
+        return None;
+    }
+    let spot = pointer.and_then(|(x, y)| rummage.spot_at(x, y))?;
+    let place = *rummage.spot(spot)?;
+    let label = if rummage.searched(spot) {
+        format!("{} (looked)", place.name)
+    } else {
+        format!("{} \u{b7} {}", place.name, place.kind.verb())
+    };
+    Some((label, (place.sign.0, place.sign.1 - 12.0)))
+}
+
+/// The rummage's tray: the light left, the basket, how to catch, and the way home.
+pub(super) fn tray(ui: &mut egui::Ui, ground: &mut Playground, rummage: &mut Rummage, now: f32) {
+    paper::meter(ui, rummage.light_left(), "light");
+    paper::slip(ui, format!("Basket {}/{BASKET}", rummage.basket().len()));
+    let hint = match rummage.phase() {
+        Phase::Catching(_) if ground.reduce_motion() => {
+            "Hold to turn the marker; let go on the gold."
+        }
+        Phase::Catching(_) => "Click (or Space) as the marker crosses the gold!",
+        _ => "",
+    };
+    if !hint.is_empty() {
+        paper::hint(ui, hint);
+    }
+    let leaving = matches!(rummage.phase(), Phase::Leaving { .. } | Phase::Over);
+    if ui
+        .add(paper::Button::new("Head home").enabled(!leaving))
+        .clicked()
+    {
+        rummage.head_home(ground, now);
     }
 }
 

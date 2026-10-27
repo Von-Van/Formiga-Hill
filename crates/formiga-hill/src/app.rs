@@ -15,6 +15,7 @@ mod foraging;
 mod games;
 mod keys;
 mod mapmaking;
+mod outing;
 mod paper;
 mod plans;
 mod rummaging;
@@ -574,14 +575,8 @@ impl HillApp {
         }
         // What is under way in the Woods goes by how dark the hour is, too.
         let dark = daylight.darkness();
-        if let Some((_, rummage)) = &mut self.woods.outing {
-            rummage.set_hour_dark(dark);
-        }
-        if let Some((_, trip)) = &mut self.woods.fishing {
-            trip.set_hour_dark(dark);
-        }
-        if let Some((_, hunt)) = &mut self.woods.hunt {
-            hunt.set_hour_dark(dark);
+        if let Some(outing) = &mut self.woods.outing {
+            outing.set_hour_dark(dark);
         }
         if let Some((_, foray)) = &mut self.woods.foray {
             foray.set_hour_dark(dark);
@@ -656,8 +651,6 @@ impl HillApp {
     /// away, by the window closing or by Desktop calling everyone home, nothing found is lost.
     fn bring_the_basket_home(&mut self, now: f32) {
         self.finish_outing(now);
-        self.finish_fishing(now);
-        self.finish_bug_hunt(now);
         self.finish_foraging(now);
         self.finish_expedition(now);
         self.finish_scavenging(now);

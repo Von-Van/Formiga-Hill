@@ -16,10 +16,10 @@ use formiga_travel::Band;
 impl HillApp {
     /// The party followed the glint: the basket so far comes home, and they are in the clearing.
     pub(super) fn follow_the_glint(&mut self, now: f32) {
-        let Some((_, rummage)) = &self.woods.outing else {
+        let Some(outing) = &self.woods.outing else {
             return;
         };
-        let party: Vec<Id> = rummage.party().to_vec();
+        let party: Vec<Id> = outing.party().to_vec();
         self.finish_outing(now);
         let cast = &self.arrival.cast;
         let close_pair = match party.as_slice() {
