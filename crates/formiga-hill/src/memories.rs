@@ -909,12 +909,135 @@ impl Memories {
 
     /// Writes the book to disk beside itself and renames it into place. A failure is reported
     /// and otherwise ignored: the visit goes on, it is only not remembered.
+    ///
+    /// The book is laid out here, but written and flushed to disk on a thread of its own, so a
+    /// piece moved on the Hilltop never waits on the disk; `settle` waits for it.
     fn keep(&mut self) {
         let Some(path) = &self.path else {
             return;
         };
-        if let Err(error) = write(path, &mut self.book, &self.colony) {
+        match fit(&mut self.book, &self.colony) {
+            Some(bytes) => scribe::write(path.clone(), bytes),
+            None => eprintln!(
+                "formiga-hill: could not keep the colony's memories: they are too big to read \
+                 back, so the visit is not remembered"
+            ),
+        }
+    }
+}
+
+impl Drop for Memories {
+    /// Whatever this book asked to be written is on disk before it is let go of.
+    fn drop(&mut self) {
+        if self.path.is_some() {
+            settle();
+        }
+    }
+}
+
+/// Waits until every book asked to be written has been: before reading one back, and before Hill
+/// closes, so nothing kept is lost.
+pub fn settle() {
+    scribe::settle();
+}
+
+/// The one thread that writes memories to disk, with the latest book for each file waiting its
+/// turn: a book asked to be written again before the last was is written once, as it is now.
+mod scribe {
+    use std::collections::BTreeMap;
+    use std::path::{Path, PathBuf};
+    use std::sync::{Condvar, Mutex, MutexGuard, OnceLock};
+
+    #[derive(Default)]
+    struct Queue {
+        waiting: BTreeMap<PathBuf, Vec<u8>>,
+        /// Whether a book is being written this moment.
+        writing: bool,
+        /// Whether there is no thread to write on, so each book is written as it is kept.
+        alone: bool,
+    }
+
+    #[derive(Default)]
+    struct Scribe {
+        queue: Mutex<Queue>,
+        changed: Condvar,
+    }
+
+    fn scribe() -> &'static Scribe {
+        static SCRIBE: OnceLock<&'static Scribe> = OnceLock::new();
+        SCRIBE.get_or_init(|| {
+            let scribe: &'static Scribe = Box::leak(Box::default());
+            let started = std::thread::Builder::new()
+                .name("formiga-hill memories".into())
+                .spawn(|| scribe.work());
+            if let Err(error) = started {
+                eprintln!("formiga-hill: memories will be written as they are kept: {error}");
+                scribe.queue().alone = true;
+            }
+            scribe
+        })
+    }
+
+    impl Scribe {
+        fn queue(&self) -> MutexGuard<'_, Queue> {
+            self.queue
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+        }
+
+        fn wait<'a>(&self, queue: MutexGuard<'a, Queue>) -> MutexGuard<'a, Queue> {
+            self.changed
+                .wait(queue)
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+        }
+
+        /// Writes each book as it comes, for as long as Hill runs.
+        fn work(&self) {
+            loop {
+                let (path, bytes) = {
+                    let mut queue = self.queue();
+                    loop {
+                        if let Some(next) = queue.waiting.pop_first() {
+                            queue.writing = true;
+                            break next;
+                        }
+                        queue = self.wait(queue);
+                    }
+                };
+                put_down(&path, &bytes);
+                self.queue().writing = false;
+                self.changed.notify_all();
+            }
+        }
+    }
+
+    /// Writes one book, saying so if it couldn't be: the visit goes on, only not remembered.
+    fn put_down(path: &Path, bytes: &[u8]) {
+        if let Err(error) = crate::sharing::write_atomically(path, bytes) {
             eprintln!("formiga-hill: could not keep the colony's memories: {error}");
+        }
+    }
+
+    /// Has `bytes` written at `path` soon, in place of anything still waiting to be written there.
+    pub fn write(path: PathBuf, bytes: Vec<u8>) {
+        let scribe = scribe();
+        let mut queue = scribe.queue();
+        if queue.alone {
+            drop(queue);
+            put_down(&path, &bytes);
+            return;
+        }
+        queue.waiting.insert(path, bytes);
+        drop(queue);
+        scribe.changed.notify_all();
+    }
+
+    /// Waits until nothing is waiting to be written, or being written.
+    pub fn settle() {
+        let scribe = scribe();
+        let mut queue = scribe.queue();
+        while queue.writing || !queue.waiting.is_empty() {
+            queue = scribe.wait(queue);
         }
     }
 }
@@ -1016,6 +1139,8 @@ fn find(path: &Path) -> Found {
     struct Versioned {
         version: u32,
     }
+    // A book still on its way to disk is read as it will be.
+    settle();
     let Ok(metadata) = fs::metadata(path) else {
         return Found::Missing;
     };
@@ -1767,6 +1892,7 @@ mod tests {
         colonies.insert("never-stamped".into(), big(None, "never-stamped"));
         colonies.insert("lately".into(), big(Some(30), "lately"));
         memories.finished("p/s".into(), &[]);
+        settle();
         let bytes = fs::read(dir.join(FILE)).unwrap();
         assert!(bytes.len() as u64 <= MAX_BYTES, "{} bytes", bytes.len());
         let again = Memories::open(Some(&dir), "visiting");
@@ -1781,6 +1907,7 @@ mod tests {
             .colonies
             .insert("visiting".into(), big(None, &"x".repeat(400)));
         alone.finished("p/t".into(), &[]);
+        settle();
         assert_eq!(fs::read(dir.join(FILE)).unwrap(), bytes);
         fs::remove_dir_all(dir).unwrap();
     }
@@ -1792,6 +1919,7 @@ mod tests {
         // Short names, so laid out to read the book is half as big again as packed tight.
         memories.colony_mut().stories = (0..70_000).map(|n| format!("p/{n:05}")).collect();
         memories.finished("p/s".into(), &[]);
+        settle();
         assert!(fs::metadata(dir.join(FILE)).unwrap().len() <= MAX_BYTES);
         Memories::open(Some(&dir), "c");
         assert!(fs::metadata(dir.join(LAST_GOOD)).unwrap().len() <= MAX_BYTES);
@@ -1799,6 +1927,23 @@ mod tests {
         let memories = Memories::open(Some(&dir), "c");
         assert_eq!(memories.trouble(), Some(Trouble::WentBack));
         assert_eq!(memories.colony().stories.len(), 70_001);
+        fs::remove_dir_all(dir).unwrap();
+    }
+
+    /// A Hilltop rearranged many times over writes the book off the window's thread, and what
+    /// is read back once it has settled is the last arrangement.
+    #[test]
+    fn memories_kept_in_a_hurry_settle_as_the_last_one_kept() {
+        let dir = scratch("hurry");
+        let mut memories = Memories::open(Some(&dir), "c");
+        for visit in 1..=50 {
+            memories.arrived();
+            assert_eq!(memories.colony().visits, visit);
+        }
+        settle();
+        let written: Book = serde_json::from_slice(&fs::read(dir.join(FILE)).unwrap()).unwrap();
+        assert_eq!(written.colonies["c"].visits, 50);
+        assert_eq!(Memories::look(Some(&dir), "c").colony().visits, 50);
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -1848,6 +1993,7 @@ mod tests {
         assert_eq!(second.trouble(), None);
         second.arrived();
         second.back_from_the_woods(&[7], &["acorn_stash"]);
+        settle();
         fs::write(dir.join(FILE), b"not json at all").unwrap();
 
         let memories = Memories::open(Some(&dir), "c");

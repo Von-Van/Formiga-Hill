@@ -333,8 +333,10 @@ impl HillApp {
         sound: Sound,
     ) -> Self {
         let play = sound.playing();
-        // Every visit begins with the train pulling in.
-        let keeps = matches!(arrival.visit, Visit::Trip(_)) && snap.is_none();
+        // Every visit begins with the train pulling in. A trip Desktop called home while the
+        // window was opening is kept nowhere: the first frame sees the recall and closes.
+        let keeps =
+            matches!(&arrival.visit, Visit::Trip(trip) if !trip.recalled()) && snap.is_none();
         let open = if keeps {
             Memories::open
         } else {
@@ -402,7 +404,8 @@ impl HillApp {
             composed: 0,
             started: Instant::now(),
             departed: false,
-            last_recall_check: 0.0,
+            // The first frame looks for a recall straight away.
+            last_recall_check: -RECALL_CHECK_SECS,
             library,
             clock,
             daylight: clock.daylight(),
@@ -443,7 +446,9 @@ impl HillApp {
         }
         let now = self.now();
         self.bring_the_basket_home(now);
+        // A review picture of a real trip only looks: the trip is answered by a real visit.
         if let Visit::Trip(trip) = &self.arrival.visit
+            && self.snap.is_none()
             && let Err(error) = trip.come_home(&self.memories.colony().souvenirs)
         {
             // Desktop treats a trip with no receipt as one that came home unchanged.
@@ -1004,6 +1009,8 @@ impl eframe::App for HillApp {
 
     fn on_exit(&mut self) {
         self.depart();
+        // The memories are written on a thread of their own: all of them, before Hill closes.
+        crate::memories::settle();
         self.sound.keep_at_last();
     }
 }
@@ -1404,12 +1411,21 @@ impl HillApp {
         }
     }
 
-    /// When the scene next changes of itself after `now`, where nothing else needs a frame
-    /// before then: the still platform, the green, the Woods with nothing under way, or the
-    /// Hilltop with nothing going up. `now` while anything is on the move, and wherever a game, an
-    /// outing or a story goes on, which want every frame. `None` when nothing will change until
-    /// something is done.
+    /// When what is on screen next changes of itself after `now`: the scene, or the camera's
+    /// flash over it. The one place that decides how soon the next frame is drawn.
     fn next_change(&self, now: f32) -> Option<f32> {
+        self.next_scene_change(now)
+            .into_iter()
+            .chain(self.next_flash_change(now))
+            .min_by(f32::total_cmp)
+    }
+
+    /// When the scene next changes of itself after `now`, where nothing else needs a frame
+    /// before then: the still platform, the green, the Clubhouse with no story, the Fairground
+    /// with nothing being played, the Woods with nothing under way, or the Hilltop with nothing
+    /// going up. `now` while anything is on the move, and wherever a game, an outing or a story
+    /// goes on, which want every frame. `None` when nothing will change until something is done.
+    fn next_scene_change(&self, now: f32) -> Option<f32> {
         if self.leaving.is_some() {
             return Some(now);
         }
@@ -1418,6 +1434,19 @@ impl HillApp {
             Area::Station if self.station.in_motion(now) => Some(now),
             Area::Station => self.station.next_change(now),
             Area::Green if quiet => self.green.as_ref()?.next_change(now),
+            Area::Clubhouse if quiet => self.clubhouse.as_ref()?.next_change(now),
+            Area::Fairground if self.fairground.as_ref().is_some_and(|(_, g)| g.idle()) => {
+                let (ground, games) = self.fairground.as_ref()?;
+                // A prize carried home bobs with every step, so is drawn every frame.
+                let place = match ground.frame_key(now) {
+                    Some(_) => ground.next_change(now),
+                    None => Some(now),
+                };
+                place
+                    .into_iter()
+                    .chain(games.next_change(now))
+                    .min_by(f32::total_cmp)
+            }
             Area::Woods if quiet && self.woods.quiet() => {
                 self.woods.quiet_place()?.next_change(now)
             }

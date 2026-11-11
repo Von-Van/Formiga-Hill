@@ -129,6 +129,24 @@ impl HillApp {
         self.notice = Some((line, now));
     }
 
+    /// As if a photo had just been taken at `now`, for the flash alone.
+    #[cfg(test)]
+    pub(super) fn camera_flashed(&mut self, now: f32) {
+        self.camera.flashed = Some(now);
+    }
+
+    /// When the flash next changes after `now`: every frame as it fades, or with motion reduced
+    /// the moment its one white frame ends. `None` once it is over.
+    pub(super) fn next_flash_change(&self, now: f32) -> Option<f32> {
+        let since = self.camera.flashed?;
+        if self.arrival.cast.reduce_motion() {
+            let ends = since + FLASH_SECS * 0.5;
+            (now < ends).then_some(ends)
+        } else {
+            (now < since + FLASH_SECS).then_some(now)
+        }
+    }
+
     /// The viewfinder over the scene, and the flash after a photo.
     pub(super) fn draw_camera(
         &self,
