@@ -19,7 +19,15 @@ fn scratch(name: &str) -> PathBuf {
 /// The sample colony on a real trip, as Desktop leaves one, so whatever happens is kept in
 /// `data`: at `hour` by a clock that keeps to it.
 fn visit(data: &Path, hour: f32) -> HillApp {
-    let snapshot = formiga_travel::sample::snapshot();
+    let (_, arrival) = by_train(data, false);
+    open(data, arrival, hour, None)
+}
+
+/// The sample colony arriving on a trip whose files are in `data`, with motion reduced or not:
+/// the trip's folder, and who has come.
+fn by_train(data: &Path, reduce_motion: bool) -> (PathBuf, Arrival) {
+    let mut snapshot = formiga_travel::sample::snapshot();
+    snapshot.presentation.reduce_motion = reduce_motion;
     let dir = data.join("trip").join(snapshot.session_id.as_str());
     std::fs::create_dir_all(&dir).unwrap();
     formiga_travel::write_document(&dir.join(formiga_travel::SNAPSHOT_FILE), &snapshot).unwrap();
@@ -28,11 +36,16 @@ fn visit(data: &Path, hour: f32) -> HillApp {
         cast,
         visit: Visit::Trip(trip),
     };
+    (dir, arrival)
+}
+
+/// The Hill as `arrival` begins, at `hour`, for a review picture or not.
+fn open(data: &Path, arrival: Arrival, hour: f32, snap: Option<Snap>) -> HillApp {
     HillApp::begin(
         arrival,
         Library::load(None, &[]),
         Clock::Held(hour),
-        None,
+        snap,
         Some(data.to_owned()),
         Sound::quiet(),
     )
@@ -246,6 +259,81 @@ fn a_scene_showing_just_the_same_is_not_composed_again() {
         frame(&mut app, &ctx, 36.0, Vec::new());
         let moved = usize::from(area != Area::Woods);
         assert_eq!(app.composed, composed + moved, "{area:?} composed or not");
+    }
+    std::fs::remove_dir_all(&data).unwrap();
+}
+
+#[test]
+fn a_trip_called_home_as_the_window_opens_is_neither_kept_nor_answered() {
+    let data = scratch("recalled-early");
+    let (dir, arrival) = by_train(&data, false);
+    std::fs::write(dir.join(formiga_travel::RECALL_FILE), b"{}").unwrap();
+    let mut app = open(&data, arrival, 12.0, None);
+    assert!(!app.keeps, "nothing is kept of a trip already over");
+    // The very first frame sees the recall, and the window closing answers nothing.
+    let ctx = egui::Context::default();
+    frame(&mut app, &ctx, 0.0, Vec::new());
+    assert!(app.departed);
+    app.depart();
+    assert!(!dir.join(formiga_travel::RECEIPT_FILE).exists());
+    assert_eq!(kept(&data).visits, 0, "and the Hilltop has not grown");
+    std::fs::remove_dir_all(&data).unwrap();
+}
+
+#[test]
+fn a_review_picture_of_a_real_trip_writes_no_receipt() {
+    let data = scratch("snap-trip");
+    let (dir, arrival) = by_train(&data, false);
+    let snap = Snap {
+        path: data.join("review.png"),
+        at: 3.0,
+        place: None,
+        card: None,
+        story: false,
+        chapter: None,
+    };
+    let mut app = open(&data, arrival, 12.0, Some(snap));
+    app.depart();
+    assert!(!dir.join(formiga_travel::RECEIPT_FILE).exists());
+    std::fs::remove_dir_all(&data).unwrap();
+}
+
+/// With motion reduced, nothing at the Fairground with no game on, nor in the Clubhouse with no
+/// story, moves of itself once everyone has settled: the window waits for something to happen
+/// rather than drawing every frame.
+#[test]
+fn the_fairground_and_clubhouse_with_nothing_on_wait_for_something_to_happen() {
+    let data = scratch("idle-places");
+    let (_, arrival) = by_train(&data, true);
+    let mut app = open(&data, arrival, 12.0, None);
+    let ctx = egui::Context::default();
+    let mut time = 0.0;
+    for area in [Area::Fairground, Area::Clubhouse] {
+        app.go_to(area, time as f32);
+        let mut waits = 0;
+        for _ in 0..1200 {
+            time += 1.0 / 60.0;
+            frame(&mut app, &ctx, time, Vec::new());
+            let now = time as f32;
+            if app.next_change(now).is_none_or(|at| at > now) {
+                waits += 1;
+            }
+        }
+        assert!(waits > 0, "{area:?} drew every frame for twenty seconds");
+    }
+    std::fs::remove_dir_all(&data).unwrap();
+}
+
+#[test]
+fn the_camera_flash_is_drawn_through_to_its_end() {
+    let data = scratch("flash");
+    for reduce_motion in [false, true] {
+        let (_, arrival) = by_train(&data, reduce_motion);
+        let mut app = open(&data, arrival, 12.0, None);
+        app.camera_flashed(10.0);
+        let next = app.next_change(10.0).unwrap();
+        assert!(next <= 10.0 + 0.25, "the flash lingers to {next}");
+        assert!(app.next_flash_change(10.5).is_none(), "the flash is over");
     }
     std::fs::remove_dir_all(&data).unwrap();
 }

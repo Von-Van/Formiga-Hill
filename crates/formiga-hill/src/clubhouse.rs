@@ -178,6 +178,16 @@ impl Clubhouse {
         self.ground.frame_key(now)
     }
 
+    /// When the room next shows something new of itself after `now`, with no story on: whatever
+    /// the place does (see `Playground::next_change`), and the fire's next flicker, which burns
+    /// steady with motion reduced.
+    pub fn next_change(&self, now: f32) -> Option<f32> {
+        let place = self.ground.next_change(now);
+        let flicker = (!self.ground.reduce_motion())
+            .then(|| ((now * FLICKER_RATE).floor() + 1.0) / FLICKER_RATE);
+        place.into_iter().chain(flicker).min_by(f32::total_cmp)
+    }
+
     /// Shows what stands on the Hilltop now, through the window.
     pub fn show_hilltop(&mut self, hilltop: &Arrangement) {
         if *hilltop != self.hilltop {

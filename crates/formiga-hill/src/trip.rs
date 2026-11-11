@@ -13,6 +13,7 @@ use formiga_travel::{
     TravelSnapshot, decode, limits, read_bounded, sha256_hex, write_document,
 };
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 use time::OffsetDateTime;
 
 pub const HILL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -21,7 +22,11 @@ pub const HILL_VERSION: &str = env!("CARGO_PKG_VERSION");
 pub struct Trip {
     dir: PathBuf,
     seal: SnapshotSeal,
+    /// When the colony arrived by the wall clock, and by the steady one: every later time on the
+    /// trip is the first plus what the second has counted since, so a wall clock set back during
+    /// a visit never makes it leave before it arrived, which Desktop would refuse.
     arrived_at_utc: OffsetDateTime,
+    arrived: Instant,
     /// Whether this Desktop records visits; Hill asks only for what is offered.
     records_visits: bool,
     /// The souvenirs this Desktop can keep, if it offers to keep any.
@@ -41,6 +46,7 @@ pub fn arrive(dir: &Path, busy: bool) -> Result<(Trip, Cast)> {
     let bytes = read_bounded(&dir.join(SNAPSHOT_FILE), limits::MAX_SNAPSHOT_BYTES)
         .context("could not read the colony's snapshot")?;
     let arrived_at_utc = OffsetDateTime::now_utc();
+    let arrived = Instant::now();
 
     let refuse = |refusal: AckRefusal, why: String| -> Result<(Trip, Cast)> {
         let seal = SnapshotSeal {
@@ -93,6 +99,11 @@ pub fn arrive(dir: &Path, busy: bool) -> Result<(Trip, Cast)> {
         Ok(cast) => cast,
         Err(error) => return refuse(AckRefusal::Invalid, error.to_string()),
     };
+    // Desktop may have called the colony home while Hill was still starting: then the trip is
+    // over before it began, and nothing is written to it, not even an acknowledgement.
+    if recalled(dir) {
+        bail!("Desktop took the colony home before Formiga Hill was ready");
+    }
     write_document(
         &dir.join(ACK_FILE),
         &Acknowledgement::accepted(&seal, HILL_VERSION),
@@ -101,17 +112,28 @@ pub fn arrive(dir: &Path, busy: bool) -> Result<(Trip, Cast)> {
         dir: dir.to_owned(),
         seal,
         arrived_at_utc,
+        arrived,
         records_visits,
         accepts_souvenirs,
     };
     Ok((trip, cast))
 }
 
+/// Whether the trip in `dir` has been called home: a recall left there, or its snapshot gone.
+fn recalled(dir: &Path) -> bool {
+    dir.join(RECALL_FILE).exists() || !dir.join(SNAPSHOT_FILE).exists()
+}
+
 impl Trip {
     /// Desktop has taken the colony home without waiting, by leaving a recall or by sweeping the
     /// trip away: either way the visit ends, with no receipt.
     pub fn recalled(&self) -> bool {
-        self.dir.join(RECALL_FILE).exists() || !self.dir.join(SNAPSHOT_FILE).exists()
+        recalled(&self.dir)
+    }
+
+    /// Now on the trip's own clock: the arrival, and the steady time since.
+    fn now_utc(&self) -> OffsetDateTime {
+        self.arrived_at_utc + self.arrived.elapsed()
     }
 
     /// The souvenirs the colony has `kept` that this Desktop keeps, in the order of Hill's
@@ -136,7 +158,7 @@ impl Trip {
         if self.recalled() {
             return Ok(());
         }
-        let left_at_utc = OffsetDateTime::now_utc();
+        let left_at_utc = self.now_utc();
         let mut effects = Vec::new();
         if self.records_visits {
             effects.push(ReturnEffect::Visit {
@@ -349,6 +371,40 @@ mod tests {
         std::fs::write(dir.join(RECALL_FILE), b"{}").unwrap();
         trip.come_home(&[]).unwrap();
         assert!(!dir.join(RECEIPT_FILE).exists());
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn a_trip_recalled_before_hill_was_ready_is_not_acknowledged() {
+        let snapshot = formiga_travel::sample::snapshot();
+        let dir = left_by_desktop(&snapshot);
+        std::fs::write(dir.join(RECALL_FILE), b"{}").unwrap();
+        assert!(arrive(&dir, false).is_err());
+        assert!(!dir.join(ACK_FILE).exists());
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
+    }
+
+    /// A wall clock set back an hour after the colony arrived: the visit still leaves after it
+    /// arrived, so Desktop takes the receipt.
+    #[test]
+    fn a_wall_clock_set_back_during_a_visit_still_leaves_after_it_arrived() {
+        let snapshot = formiga_travel::sample::snapshot();
+        let dir = left_by_desktop(&snapshot);
+        let (mut trip, _) = arrive(&dir, false).unwrap();
+        trip.arrived_at_utc = OffsetDateTime::now_utc() + time::Duration::hours(1);
+        trip.come_home(&[]).unwrap();
+        let receipt: ReturnReceipt = read_document(&dir.join(RECEIPT_FILE)).unwrap();
+        let [
+            ReturnEffect::Visit {
+                arrived_at_utc,
+                left_at_utc,
+            },
+        ] = receipt.effects[..]
+        else {
+            panic!("the receipt records the visit");
+        };
+        assert!(arrived_at_utc <= left_at_utc);
+        assert_eq!(receipt.returned_at_utc, left_at_utc);
         std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 

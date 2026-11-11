@@ -488,6 +488,21 @@ impl Games {
         }
     }
 
+    /// Whether nothing is being played: no game on and no competition being run.
+    pub fn idle(&self) -> bool {
+        self.playing().is_none() && !self.contest_on()
+    }
+
+    /// When the gear shows something new of itself after `now`, with nothing being played: the
+    /// bell as it rings, and the hoopla counter's prizes. `None` when none of it moves.
+    pub fn next_change(&self, now: f32) -> Option<f32> {
+        let ringing = self.high_striker.ringing(now).map(|_| now);
+        ringing
+            .into_iter()
+            .chain(self.hoopla.next_change(now))
+            .min_by(f32::total_cmp)
+    }
+
     /// Whether a competition is being run and is not yet over.
     pub fn contest_on(&self) -> bool {
         self.contest

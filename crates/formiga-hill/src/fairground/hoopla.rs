@@ -77,6 +77,9 @@ const CELEBRATE_SECS: f32 = 4.0;
 const BOUNCE_SECS: f32 = 0.35;
 /// How long a rung prize shines for.
 pub const SHINE_SECS: f32 = 1.6;
+/// How often the prizes on show are drawn again as they bob, turn and flutter while no game is
+/// on: their own pace, rather than every frame the screen can show.
+const PRIZE_FRAME_SECS: f32 = 1.0 / 15.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Phase {
@@ -1191,6 +1194,27 @@ impl Hoopla {
             (Phase::Playing { .. }, _) => 0,
             _ => RINGS,
         }
+    }
+
+    /// When the counter shows something new of itself after `now`: straight away while a prize
+    /// shines (or, with motion reduced, as it stops), and while any prize is on show, as its
+    /// next frame of bobbing, turning or fluttering is due. `None` when nothing on it moves.
+    pub fn next_change(&self, now: f32) -> Option<f32> {
+        let shining = self
+            .shine
+            .iter()
+            .flatten()
+            .filter(|at| now - **at < SHINE_SECS)
+            .map(|at| {
+                if self.reduce_motion {
+                    at + SHINE_SECS
+                } else {
+                    now
+                }
+            });
+        let on_show = (!self.reduce_motion && self.taken.iter().any(|taken| !taken))
+            .then_some(now + PRIZE_FRAME_SECS);
+        shining.chain(on_show).min_by(f32::total_cmp)
     }
 
     /// What is set out along the counter: the pegs, the prizes on their blocks and the rings round
