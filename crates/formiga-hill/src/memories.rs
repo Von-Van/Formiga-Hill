@@ -1270,6 +1270,12 @@ mod tests {
         dir
     }
 
+    /// Clears a scratch folder after a test. A save still settling in the background can leave
+    /// the folder briefly not empty, so a failed tidy-up is not the test failing.
+    fn tidy(dir: &Path) {
+        let _ = fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn memories_survive_a_new_visit_and_stay_with_their_colony() {
         let dir = scratch("survive");
@@ -1284,7 +1290,7 @@ mod tests {
 
         let other = Memories::open(Some(&dir), "bbbbbbbbbbbbbbbb");
         assert_eq!(other.colony(), &ColonyMemories::default());
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -1729,7 +1735,7 @@ mod tests {
         let again = Memories::open(Some(&dir), "c");
         assert_eq!(again.colony().hilltop[&9], Standing::from("acorn_stash"));
         assert_eq!(again.colony().visits, 5);
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -1909,7 +1915,7 @@ mod tests {
         alone.finished("p/t".into(), &[]);
         settle();
         assert_eq!(fs::read(dir.join(FILE)).unwrap(), bytes);
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -1927,7 +1933,7 @@ mod tests {
         let memories = Memories::open(Some(&dir), "c");
         assert_eq!(memories.trouble(), Some(Trouble::WentBack));
         assert_eq!(memories.colony().stories.len(), 70_001);
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     /// A Hilltop rearranged many times over writes the book off the window's thread, and what
@@ -1944,7 +1950,7 @@ mod tests {
         let written: Book = serde_json::from_slice(&fs::read(dir.join(FILE)).unwrap()).unwrap();
         assert_eq!(written.colonies["c"].visits, 50);
         assert_eq!(Memories::look(Some(&dir), "c").colony().visits, 50);
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -1970,7 +1976,7 @@ mod tests {
             copy,
             "nor is the copy from the start of the last visit"
         );
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -1982,7 +1988,7 @@ mod tests {
         assert_eq!(memories.colony().visits, 0);
         assert_eq!(memories.trouble(), Some(Trouble::StartedAfresh));
         assert!(dir.join("memories.json.unreadable").exists());
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -2008,7 +2014,7 @@ mod tests {
         let again = Memories::open(Some(&dir), "c");
         assert_eq!(again.trouble(), None);
         assert_eq!(again.colony().visits, 1);
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -2024,7 +2030,7 @@ mod tests {
         assert_eq!(fs::read(dir.join(FILE)).unwrap(), newer, "nothing written");
         assert!(!dir.join("memories.json.unreadable").exists());
         assert!(!dir.join(LAST_GOOD).exists());
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -2045,7 +2051,7 @@ mod tests {
         );
         assert_eq!(fs::read(dir.join(FILE)).unwrap(), b"not json at all");
         assert!(!dir.join("memories.json.unreadable").exists());
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -2069,7 +2075,7 @@ mod tests {
         assert_eq!(Memories::look(Some(&dir), "c").colony().visits, 0);
         assert_eq!(fs::read(dir.join(FILE)).unwrap(), b"not json at all");
         assert!(!dir.join("memories.json.unreadable").exists());
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
@@ -2092,7 +2098,7 @@ mod tests {
             fs::read(dir.join("memories.json.unreadable-2")).unwrap(),
             b"not json at all"
         );
-        fs::remove_dir_all(dir).unwrap();
+        tidy(&dir);
     }
 
     #[test]
