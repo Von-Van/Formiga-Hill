@@ -4,6 +4,23 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.68.23 (2026-11-12)
+
+Hill is built on Formiga Desktop 0.68.23 and still speaks travel version 6, so it takes the same
+trips as 0.68.1.
+
+- A visit's leaving time is counted from its arrival by a steady clock, so setting the computer's
+  clock back during a visit no longer makes Desktop refuse the visit and hold its souvenirs back.
+- A trip called home before Hill was ready is left alone: nothing grows on the Hilltop and nothing
+  is answered, and the first frame checks for a call home straight away.
+- The Fairground with no game on and the Clubhouse with no story wait for something to happen
+  instead of redrawing all the time; their prizes and fire move at a gentle pace, and sit still
+  with Reduce Motion on. The camera flash no longer lingers with Reduce Motion on.
+- Memories are written to disk on a thread of their own, so keeping them never stalls the window,
+  and nothing kept is lost on closing.
+- A review picture of a real trip no longer writes a real receipt.
+- The scene pictures Hill is checked against are drawn again with Desktop 0.68.23's art.
+
 ## 0.68.1 (2026-10-26)
 
 Hill is built on Formiga Desktop 0.68.1 and still speaks travel version 6, so it takes the same
