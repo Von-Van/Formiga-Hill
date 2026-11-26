@@ -1270,10 +1270,13 @@ mod tests {
         dir
     }
 
-    /// Clears a scratch folder after a test. A save still settling in the background can leave
-    /// the folder briefly not empty, so a failed tidy-up is not the test failing.
+    /// Clears a scratch folder after a test. A book opened last may still be alive, and opening
+    /// one can ask the scribe to write it (going back to the last good copy, say), so the folder
+    /// is cleared only once every write asked for has landed: otherwise a book renamed into
+    /// place while the folder is being emptied leaves it not empty, and clearing it fails.
     fn tidy(dir: &Path) {
-        let _ = fs::remove_dir_all(dir);
+        settle();
+        fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
