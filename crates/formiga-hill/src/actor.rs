@@ -10,9 +10,9 @@ use crate::fairground::prizes::{self, CARRIED_ABOVE, Prize};
 use crate::paint::{blit, ellipse, rgba};
 use formiga_art::{
     AccessoryArt, AnimationSpec, BodyClip, Canvas, CreatureRenderer, ExpressionKind, EyelidPose,
-    FRAME_SIZE, FaceRenderState, GazeDirection, PlaybackMode,
+    FRAME_SIZE, FaceRenderState, GazeDirection, PlaybackMode, View, can_turn,
 };
-use formiga_core::{ActionKind, AppearanceGenome};
+use formiga_core::{ActionKind, AppearanceGenome, Gesture};
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
@@ -74,6 +74,9 @@ const BLINK_SECS: f32 = 0.12;
 const SHINE_PER_SECOND: f32 = 2.5;
 /// How much faster a stride is than a stroll.
 const STRIDE: f32 = 1.6;
+/// How long its feet must carry it a new way before a walk turns to it, as Desktop's do: a
+/// path that bends for a moment doesn't swing the body round and back.
+const TURN_SECS: f32 = 0.15;
 
 pub struct Actor {
     pub id: Id,
@@ -105,6 +108,15 @@ pub struct Actor {
     turned: Option<(FrameKey, Canvas)>,
     /// The frame row its feet rest on.
     foot_row: i32,
+    /// Whether `formiga-art` can draw its body turned side-on or away, as Desktop decides.
+    turns: bool,
+    /// Which way a walk shows it, from which way its feet are carrying it: side-on going along,
+    /// its back to the screen going up the scene, facing the screen coming down it.
+    view: View,
+    /// Seconds its feet have been carrying it some other way than `view`.
+    turning: f32,
+    /// Whether it was walking when last advanced, so a walk setting off turns at once.
+    stepping: bool,
     pub pos: (f32, f32),
     pub facing_right: bool,
     pub gaze: GazeDirection,
@@ -161,6 +173,10 @@ impl Actor {
             tipped: false,
             turned: None,
             foot_row: FRAME_SIZE as i32 - 1 - baseline as i32,
+            turns: can_turn(member.genome()),
+            view: View::Front,
+            turning: 0.0,
+            stepping: false,
             pos,
             facing_right,
             gaze: GazeDirection::default(),
@@ -357,6 +373,9 @@ impl Actor {
                     if dx.abs() > 0.5 {
                         self.facing_right = dx > 0.0;
                     }
+                    if distance > 0.5 {
+                        self.head(heading(dx, dy), budget);
+                    }
                     let speed = match step {
                         Step::Stride { .. } => self.character.walk_speed() * STRIDE,
                         _ => self.character.walk_speed(),
@@ -392,6 +411,40 @@ impl Actor {
             self.steps.pop_front();
             self.step_since = now;
         }
+        if !self.walking() {
+            self.stepping = false;
+        }
+    }
+
+    /// Turns a walk to `heading` once its feet have kept to it for a moment, or at once with its
+    /// first step, as Desktop turns a walk.
+    fn head(&mut self, heading: View, dt: f32) {
+        if !self.stepping || heading == self.view {
+            self.view = heading;
+            self.turning = 0.0;
+        } else {
+            self.turning += dt;
+            if self.turning >= TURN_SECS {
+                self.view = heading;
+                self.turning = 0.0;
+            }
+        }
+        self.stepping = true;
+    }
+
+    /// The walk it shows: turned to the way it goes, side-on or away, for a body Desktop draws
+    /// turned; facing the screen coming down the scene, in a sack (which hops facing out), and
+    /// for every body that can't be turned. With motion reduced a walk is a cut and never shows.
+    fn walk_clip(&self) -> BodyClip {
+        let facing_the_screen = BodyClip::Action(ActionKind::Traverse);
+        if !self.turns || self.reduce_motion || self.sack.is_some() {
+            return facing_the_screen;
+        }
+        match self.view {
+            View::Side => BodyClip::Gesture(Gesture::Stride),
+            View::Back => BodyClip::Gesture(Gesture::Depart),
+            View::Front => facing_the_screen,
+        }
     }
 
     fn face_towards(&mut self, x: f32) {
@@ -406,7 +459,7 @@ impl Actor {
         let still = self.reduce_motion;
         let (clip, frame, expression, mut facing_right) = match self.steps.front() {
             Some(Step::Walk { .. } | Step::Stride { .. }) => {
-                let clip = BodyClip::Action(ActionKind::Traverse);
+                let clip = self.walk_clip();
                 (
                     clip,
                     frame_of(clip, elapsed, still),
@@ -903,6 +956,17 @@ fn placed_costume(
     Some((worn, (point.0 - ax, point.1 - ay)))
 }
 
+/// Which way a step of `(dx, dy)` carries a walker, by Desktop's rule: side-on going along,
+/// unless it goes up or down the scene more than across it, when it is going away from whoever
+/// watches (up) or coming towards them (down).
+fn heading(dx: f32, dy: f32) -> View {
+    if dy.abs() > dx.abs() {
+        if dy < 0.0 { View::Back } else { View::Front }
+    } else {
+        View::Side
+    }
+}
+
 fn frame_of(clip: BodyClip, elapsed: f32, still: bool) -> u8 {
     if still {
         0
@@ -956,6 +1020,92 @@ mod tests {
         }
         let held = AnimationSpec::for_action(ActionKind::PresentDiscovery);
         assert_eq!(frame_in(held, 1000.0), held.frames - 1);
+    }
+
+    /// A traveller from the sample colony whose body Desktop draws turned.
+    fn turning_actor(reduce_motion: bool) -> Actor {
+        let cast = crate::cast::Cast::new(formiga_travel::sample::snapshot()).unwrap();
+        let member = cast
+            .members
+            .iter()
+            .find(|member| can_turn(member.genome()))
+            .expect("the sample colony has someone who turns");
+        Actor::new(member, (100.0, 180.0), true, reduce_motion)
+    }
+
+    /// The clip it walks in a moment after setting off for `to`.
+    fn walk_towards(actor: &mut Actor, to: (f32, f32)) -> BodyClip {
+        actor.begin(0.0, [Step::Walk { to }]);
+        actor.advance(0.1, 0.1, &[]);
+        assert!(actor.walking());
+        actor.pose(0.1).clip
+    }
+
+    #[test]
+    fn a_walk_turns_side_on_going_along_and_away_going_up_the_scene() {
+        let mut actor = turning_actor(false);
+        assert_eq!(
+            walk_towards(&mut actor, (20.0, 170.0)),
+            BodyClip::Gesture(Gesture::Stride)
+        );
+        assert!(!actor.facing_right);
+        let mut actor = turning_actor(false);
+        assert_eq!(
+            walk_towards(&mut actor, (110.0, 120.0)),
+            BodyClip::Gesture(Gesture::Depart)
+        );
+        let mut actor = turning_actor(false);
+        assert_eq!(
+            walk_towards(&mut actor, (110.0, 240.0)),
+            BodyClip::Action(ActionKind::Traverse),
+            "coming down the scene it faces whoever is watching"
+        );
+    }
+
+    #[test]
+    fn a_walk_bending_for_a_moment_does_not_swing_round_and_back() {
+        let mut actor = turning_actor(false);
+        actor.begin(
+            0.0,
+            [
+                Step::Walk { to: (40.0, 180.0) },
+                Step::Walk { to: (40.0, 179.0) },
+                Step::Walk { to: (0.0, 179.0) },
+            ],
+        );
+        let mut now = 0.0;
+        while actor.walking() {
+            now += 1.0 / 60.0;
+            actor.advance(now, 1.0 / 60.0, &[]);
+            if actor.walking() {
+                assert_eq!(actor.pose(now).clip, BodyClip::Gesture(Gesture::Stride));
+            }
+        }
+        assert_eq!(actor.pos, (0.0, 179.0));
+    }
+
+    #[test]
+    fn a_walk_turns_only_a_body_desktop_draws_turned_and_never_with_motion_reduced() {
+        let mut actor = turning_actor(false);
+        actor.turns = false;
+        assert_eq!(
+            walk_towards(&mut actor, (20.0, 180.0)),
+            BodyClip::Action(ActionKind::Traverse)
+        );
+        let mut actor = turning_actor(false);
+        actor.sack = Some(0);
+        assert_eq!(
+            walk_towards(&mut actor, (20.0, 180.0)),
+            BodyClip::Action(ActionKind::Traverse)
+        );
+        let mut actor = turning_actor(true);
+        actor.begin(0.0, [Step::Walk { to: (20.0, 120.0) }]);
+        assert_eq!(
+            actor.pos,
+            (20.0, 120.0),
+            "with motion reduced a walk is a cut"
+        );
+        assert_eq!(actor.pose(0.0).clip, BodyClip::Action(ActionKind::Idle));
     }
 
     #[test]
