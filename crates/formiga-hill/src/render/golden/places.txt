@@ -77,7 +77,7 @@ clearing.backdrop 2ec0bcdbdc6496e5
 clearing.foreground 1c9c60e353ef3f55
 clearing.still 2ec0bcdbdc6496e5
 clearing.fixtures 6771a680a6206f32
-station.at.12 779e39dd411cd198
-station.at.6.5 fb722aaac89e4688
-station.at.19.75 f67b10f8569239c6
-station.at.0 9b547db6496074e8
+station.at.12 7ac4e2d42ac5cc4b
+station.at.6.5 c67bab7cd37ee585
+station.at.19.75 ef24a946a4269636
+station.at.0 352b4f56a4ae6b13
