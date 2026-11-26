@@ -140,6 +140,9 @@ fn leaving_the_woods_brings_every_outing_home_and_keeps_it_once() {
             before + 1,
             "{activity:?} was kept twice"
         );
+        // Letting the visit go waits for its last memories to be written, which could
+        // otherwise land in the folder while it is being cleared.
+        drop(app);
         std::fs::remove_dir_all(&data).unwrap();
     }
 }

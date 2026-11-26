@@ -2,6 +2,10 @@
 # Writes a new Hill version, and optionally a new Formiga Desktop release tag, into every place
 # that names them, and refreshes Cargo.lock to match, so a release commit never misses one.
 #
+# Desktop's crates are normally pinned to a release tag. Between releases they may be pinned to a
+# commit on Desktop's main branch instead (`rev = "..."`); every Desktop crate must still name the
+# same one. Giving a Desktop tag moves a commit pin back onto that tag, docs/DEVELOPING.md too.
+#
 # The changelog stays a person's to write: this script only says when the new version has no
 # section in CHANGELOG.md yet, which the release workflow needs for its notes. A new Desktop tag
 # can bring a new travel version; docs/DEVELOPING.md names it beside the tag, so check it there.
@@ -22,10 +26,29 @@ plist=packaging/macos/Info.plist
 tag_docs=(docs/DEVELOPING.md)
 
 current="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
-tag="$(sed -n 's/.*Formiga-Desktop", tag = "\(v[^"]*\)".*/\1/p' Cargo.toml | sort -u)"
-if [ -z "$current" ] || [ "$(printf '%s\n' "$tag" | wc -l)" -ne 1 ] || [ -z "$tag" ]; then
-  echo "Cargo.toml needs one version and one Formiga Desktop tag; it has '$current' and '$tag'" >&2
+# Every Desktop crate's pin, as `tag=v1.2.3` or `rev=<commit>`: they must all be one and the same.
+pins="$(sed -nE 's/.*Formiga-Desktop", (tag|rev) = "([^"]*)".*/\1=\2/p' Cargo.toml | sort -u)"
+desktop_crates="$(grep -c 'git = "https://github.com/Von-Van/Formiga-Desktop"' Cargo.toml || true)"
+pinned_crates="$(grep -cE 'Formiga-Desktop", (tag|rev) = "' Cargo.toml || true)"
+pin_kind="${pins%%=*}"
+pin="${pins#*=}"
+if [ -z "$current" ] || [ -z "$pins" ] || [ "$(printf '%s\n' "$pins" | wc -l)" -ne 1 ] \
+  || [ "$desktop_crates" -ne "$pinned_crates" ] \
+  || { [ "$pin_kind" = tag ] && ! [[ "$pin" =~ ^v[0-9] ]]; } \
+  || { [ "$pin_kind" = rev ] && ! [[ "$pin" =~ ^[0-9a-f]{7,40}$ ]]; }; then
+  echo "Cargo.toml needs one version and one Formiga Desktop tag or commit for all of Desktop's" \
+    "crates; it has '$current' and '$(printf '%s' "$pins" | tr '\n' ' ')'" >&2
   exit 1
+fi
+# How the pin is named in the docs and in Cargo.lock's sources.
+if [ "$pin_kind" = tag ]; then
+  tag="$pin"
+  doc_pin="$pin"
+  described="Formiga Desktop $pin"
+else
+  tag=""
+  doc_pin="${pin:0:7}"
+  described="Formiga Desktop commit $doc_pin"
 fi
 
 if [ "${1:-}" = "--check" ]; then
@@ -33,23 +56,26 @@ if [ "${1:-}" = "--check" ]; then
   grep -qF "<string>$current</string>" "$plist" || { echo "$plist does not name $current" >&2; missing=1; }
   grep -qF "Version $current is current" README.md || { echo "README.md does not name $current" >&2; missing=1; }
   for file in "${tag_docs[@]}"; do
-    grep -qF "\`$tag\`" "$file" || { echo "$file does not name $tag" >&2; missing=1; }
+    grep -qF "\`$doc_pin\`" "$file" || { echo "$file does not name $doc_pin" >&2; missing=1; }
   done
   locked="$(awk '$0 == "name = \"formiga-hill\"" { getline; gsub(/version = |"/, ""); print; exit }' Cargo.lock)"
   [ "$locked" = "$current" ] || { echo "Cargo.lock has formiga-hill $locked, not $current" >&2; missing=1; }
-  if grep 'source = "git+https://github.com/Von-Van/Formiga-Desktop' Cargo.lock | grep -vqF "?tag=$tag#"; then
-    echo "Cargo.lock takes some of Desktop's crates from another tag than $tag" >&2
+  if grep 'source = "git+https://github.com/Von-Van/Formiga-Desktop' Cargo.lock \
+    | grep -vqF "?$pin_kind=$pin#"; then
+    echo "Cargo.lock takes some of Desktop's crates from another $pin_kind than $pin" >&2
     missing=1
   fi
-  [ "$missing" -eq 0 ] && echo "Every place names $current and $tag."
+  [ "$missing" -eq 0 ] && echo "Every place names $current and $described."
   exit "$missing"
 fi
 
 new="${1:-}"
 new="${new#v}"
 new_tag="${2:-$tag}"
-[ "${new_tag#v}" = "$new_tag" ] && new_tag="v$new_tag"
-if ! [[ "$new" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || ! [[ "$new_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+# Pinned to a commit and given no tag, the pin stays as it is and only Hill's version moves.
+[ -n "$new_tag" ] && [ "${new_tag#v}" = "$new_tag" ] && new_tag="v$new_tag"
+if ! [[ "$new" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+  || { [ -n "$new_tag" ] && ! [[ "$new_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; }; then
   echo "usage: $(basename "$0") <version> [<desktop tag>]   e.g. $(basename "$0") 0.67.4 v0.67.4" >&2
   echo "       $(basename "$0") --check" >&2
   exit 2
@@ -60,14 +86,25 @@ fi
 # The dots are literal, and 0.1.1 must not match inside 0.1.10.
 literal() { printf '%s' "$1" | sed 's/\./\\./g'; }
 old_version="$(literal "$current")"
-old_tag="$(literal "$tag")"
 
 perl -pi -e "s/^version = \"$old_version\"\$/version = \"$new\"/" Cargo.toml
 perl -pi -e "s/<string>$old_version<\\/string>/<string>$new<\\/string>/" "$plist"
 perl -pi -e "s/Version $old_version is current/Version $new is current/" README.md
-for file in Cargo.toml "${tag_docs[@]}"; do
-  perl -pi -e "s/(?<![0-9.])$old_tag(?![0-9])/$new_tag/g" "$file"
-done
+if [ "$pin_kind" = tag ]; then
+  old_tag="$(literal "$tag")"
+  for file in Cargo.toml "${tag_docs[@]}"; do
+    perl -pi -e "s/(?<![0-9.])$old_tag(?![0-9])/$new_tag/g" "$file"
+  done
+elif [ -n "$new_tag" ]; then
+  # Back from a commit on Desktop's main branch onto a release tag: the crates take the tag, and
+  # DEVELOPING.md says so in the words it uses for a tag.
+  perl -pi -e "s/(Formiga-Desktop\", )rev = \"$pin\"/\${1}tag = \"$new_tag\"/" Cargo.toml
+  perl -0pi -e "s/agree\\. That source is normally a release tag on GitHub, but for\\s+now it is a commit on Desktop's main branch until Desktop tags its next release, currently\\s+\\\`$doc_pin\\\`/agree, and that source is a release tag on GitHub, currently\\n\\\`$new_tag\\\`/" docs/DEVELOPING.md
+  grep -qF "\`$new_tag\`" docs/DEVELOPING.md \
+    || echo "Still to write by hand: docs/DEVELOPING.md does not name $new_tag yet" >&2
+  described="Formiga Desktop $new_tag"
+fi
+[ "$pin_kind" = tag ] && described="Formiga Desktop $new_tag"
 # Only Desktop's crates and this app's own entry move; nothing else in the lockfile is touched.
 crates=()
 while read -r crate; do crates+=(-p "$crate"); done \
@@ -75,5 +112,5 @@ while read -r crate; do crates+=(-p "$crate"); done \
 cargo update --quiet "${crates[@]}"
 cargo update --workspace --quiet
 
-echo "Hill is now $new on Formiga Desktop $new_tag."
+echo "Hill is now $new on $described."
 grep -qF "## $new " CHANGELOG.md || echo "Still to write by hand: the CHANGELOG.md section, ## $new ($(date +%F))"
