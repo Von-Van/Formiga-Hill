@@ -177,9 +177,8 @@ once there is enough of each to justify it.
 ## Formiga Desktop's crates
 
 `formiga-core`, `formiga-art` and `formiga-travel` all come from Formiga Desktop. They come from a
-single source so that their types agree. That source is normally a release tag on GitHub, but for
-now it is a commit on Desktop's main branch until Desktop tags its next release, currently
-`259b313` (travel version 6). Moving to a newer release means changing the tag on all three in the
+single source so that their types agree, and that source is a release tag on GitHub, currently
+`v0.69.0` (travel version 6). Moving to a newer release means changing the tag on all three in the
 root `Cargo.toml` together, which `scripts/set-version.sh <version> <tag>` does along with Hill's own
 version and `Cargo.lock`. Because the train and the souvenirs are drawn by `formiga-art`, they
 look the same in both apps.

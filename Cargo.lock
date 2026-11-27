@@ -1291,8 +1291,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-art"
-version = "0.68.23"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?rev=259b313d6c424d5afa871dc8f46f909c18b3f4d6#259b313d6c424d5afa871dc8f46f909c18b3f4d6"
+version = "0.69.0"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.69.0#282b0bb232eb91e8a6228fbb33cb05a50eec14fe"
 dependencies = [
  "epaint",
  "formiga-core",
@@ -1305,8 +1305,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-core"
-version = "0.68.23"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?rev=259b313d6c424d5afa871dc8f46f909c18b3f4d6#259b313d6c424d5afa871dc8f46f909c18b3f4d6"
+version = "0.69.0"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.69.0#282b0bb232eb91e8a6228fbb33cb05a50eec14fe"
 dependencies = [
  "getrandom 0.4.3",
  "rand",
@@ -1321,8 +1321,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-expansion-rulebook"
-version = "0.68.23"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?rev=259b313d6c424d5afa871dc8f46f909c18b3f4d6#259b313d6c424d5afa871dc8f46f909c18b3f4d6"
+version = "0.69.0"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.69.0#282b0bb232eb91e8a6228fbb33cb05a50eec14fe"
 dependencies = [
  "directories 6.0.0",
  "getrandom 0.4.3",
@@ -1334,7 +1334,7 @@ dependencies = [
 
 [[package]]
 name = "formiga-hill"
-version = "0.68.23"
+version = "0.69.0"
 dependencies = [
  "anyhow",
  "directories 5.0.1",
@@ -1353,8 +1353,8 @@ dependencies = [
 
 [[package]]
 name = "formiga-travel"
-version = "0.68.23"
-source = "git+https://github.com/Von-Van/Formiga-Desktop?rev=259b313d6c424d5afa871dc8f46f909c18b3f4d6#259b313d6c424d5afa871dc8f46f909c18b3f4d6"
+version = "0.69.0"
+source = "git+https://github.com/Von-Van/Formiga-Desktop?tag=v0.69.0#282b0bb232eb91e8a6228fbb33cb05a50eec14fe"
 dependencies = [
  "formiga-art",
  "formiga-core",
