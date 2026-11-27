@@ -15,9 +15,9 @@ publish = false
 [workspace.dependencies]
 # Formiga Desktop's shared crates, all three from the same Desktop release so their types agree.
 # Move all three to a new release's tag together.
-formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.69.0" }
-formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.69.0" }
-formiga-travel = { git = "https://github.com/Von-Van/Formiga-Desktop", tag = "v0.69.0" }
+formiga-art = { git = "https://github.com/Von-Van/Formiga-Desktop", rev = "69fe9733b368282c3542f46dfd2c769125ad9e39" }
+formiga-core = { git = "https://github.com/Von-Van/Formiga-Desktop", rev = "69fe9733b368282c3542f46dfd2c769125ad9e39" }
+formiga-travel = { git = "https://github.com/Von-Van/Formiga-Desktop", rev = "69fe9733b368282c3542f46dfd2c769125ad9e39" }
 
 anyhow = "1.0.104"
 directories = "5.0.1"

@@ -304,6 +304,61 @@ mod tests {
         assert_ne!(drawn.canvas, instead.canvas);
     }
 
+    /// A companion generated or restyled with Desktop 0.69.1's anatomy (antlers, ear tufts, a
+    /// ruff, a brushy tail tip, a plume) comes up the hill with it: the trip asks for travel
+    /// version 7, the hill reads it, and draws the parts rather than the companion without them.
+    #[test]
+    fn a_companion_with_anatomy_arrives_wearing_it() {
+        use formiga_art::{BodyClip, CreatureRenderer};
+        use formiga_core::{ActionKind, Anatomy};
+        let mut colony = formiga_travel::sample::colony(3);
+        let (index, design) = colony
+            .creatures
+            .iter()
+            .enumerate()
+            .find_map(|(index, creature)| {
+                let design = creature.appearance.design?;
+                Anatomy::Ruff.fits(&design).then_some((index, design))
+            })
+            .expect("the sample colony has a companion that can wear a ruff");
+        let worn = [Anatomy::Antlers, Anatomy::Ruff, Anatomy::Plume]
+            .into_iter()
+            .fold(design, |design, part| part.put_on(design, [240, 230, 210]));
+        assert!(worn.details.has_anatomy());
+        colony.creatures[index].appearance.design = Some(worn);
+        let id = colony.creatures[index].id;
+
+        let snapshot = formiga_travel::project_colony(
+            &colony,
+            formiga_travel::SessionId::parse(formiga_travel::sample::SESSION).unwrap(),
+            formiga_travel::sample::MADE,
+            "sample colony",
+        )
+        .unwrap();
+        assert_eq!(snapshot.min_reader_version, 7);
+        // Read back as the hill reads a trip it is handed.
+        let bytes = formiga_travel::encode(&snapshot).unwrap();
+        let snapshot: formiga_travel::TravelSnapshot = formiga_travel::decode(&bytes).unwrap();
+        let cast = Cast::new(snapshot).unwrap();
+        let member = cast
+            .members
+            .iter()
+            .find(|member| member.creature.id == id)
+            .unwrap();
+        let genome = &member.creature.appearance;
+        assert_eq!(genome.design, Some(worn));
+
+        let clip = BodyClip::Action(ActionKind::Idle);
+        let drawn = CreatureRenderer::render_body_frame(genome, clip, 0, false);
+        let without = formiga_core::AppearanceGenome {
+            design: Some(design),
+            ..genome.clone()
+        };
+        let instead = CreatureRenderer::render_body_frame(&without, clip, 0, false);
+        assert!(drawn.canvas.alpha_bounds().is_some());
+        assert_ne!(drawn.canvas, instead.canvas);
+    }
+
     #[test]
     fn everyone_in_the_sample_can_be_drawn() {
         let cast = Cast::new(formiga_travel::sample::snapshot()).unwrap();

@@ -4,6 +4,17 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.69.1 (2026-11-27)
+
+Hill is built on Formiga Desktop 0.69.1 and reads travel version 7, so it takes trips from
+every Desktop it took them from before, and from 0.69.1 a companion with the new anatomy.
+
+- A companion generated or restyled on Desktop 0.69.1 with antlers, ear tufts, a ruff, a brushy
+  tail tip or a plume tail comes up the hill wearing them. Hill 0.69.0 turns such a trip away as
+  too new; trips without them travel to either.
+- Travellers are drawn with Desktop 0.69.1's art: what a companion wears sits where its turned
+  body puts it. The scene pictures Hill is checked against are drawn again to match.
+
 ## 0.69.0 (2026-11-27)
 
 Hill is built on Formiga Desktop 0.69.0 and still speaks travel version 6, so it takes the same
