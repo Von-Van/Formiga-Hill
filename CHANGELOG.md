@@ -4,6 +4,19 @@ This page records what changed in each version of Formiga Hill. Each version's s
 its release notes: `.github/workflows/release.yml` publishes it alongside the downloads when the
 version is tagged.
 
+## 0.69.0 (2026-11-27)
+
+Hill is built on Formiga Desktop 0.69.0 and still speaks travel version 6, so it takes the same
+trips as 0.68.23.
+
+- Travellers are drawn with Desktop 0.69.0's art, from its animation pass: what they hold sits
+  in the paw or mouth that holds it, and their poses and paces are Desktop's.
+- Walking across a scene a companion is seen side-on, turned the way it is going, and walking up
+  into a scene it has its back to you; coming down it faces you as before. It turns with its
+  first step, and after that only once its feet keep to a new way for a moment. Bodies that
+  Desktop doesn't turn walk as they did.
+- The scene pictures Hill is checked against are drawn again with Desktop 0.69.0's art.
+
 ## 0.68.23 (2026-11-12)
 
 Hill is built on Formiga Desktop 0.68.23 and still speaks travel version 6, so it takes the same
